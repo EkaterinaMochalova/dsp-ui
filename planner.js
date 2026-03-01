@@ -1053,11 +1053,24 @@ function pickScreensByMinBid(screens, n) {
 }
 
 function gridKey(lat, lon, stepKm = 2) {
-  const kmLat = 111;
-  const kmLon = 111 * Math.cos(lat * Math.PI / 180);
-  const gx = Math.floor(lat * kmLat / stepKm);
-  const gy = Math.floor(lon * kmLon / stepKm);
+  const R = 6371; // km
+  const latRad = lat * Math.PI / 180;
+  const lonRad = lon * Math.PI / 180;
+
+  // "псевдо-метры": x учитывает широту, y нет
+  const xKm = R * lonRad * Math.cos(latRad);
+  const yKm = R * latRad;
+
+  const gx = Math.floor(yKm / stepKm);
+  const gy = Math.floor(xKm / stepKm);
   return `${gx}:${gy}`;
+}
+
+function gridStepKmForCount(n) {
+  if (n <= 10) return 6;   // прям разнести по городу
+  if (n <= 25) return 4;
+  if (n <= 60) return 2.5;
+  return 2;
 }
 
 function groupByGrid(screens, stepKm = 2) {
@@ -1078,26 +1091,41 @@ function groupByGrid(screens, stepKm = 2) {
  * Внутри ячейки выбираем самый дешёвый экран (minBid),
  * чтобы не получалось «рандомно дорогие».
  */
-function pickScreensUniformByGrid(pool, count, stepKm = 2) {
+const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
+const chosen = pickScreensUniformByGrid(pool, screensChosenCount, stepKm, perCellMax);
+
+function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2) {
   const cells = groupByGrid(pool, stepKm);
 
-  // внутри каждой ячейки сортируем по цене (minBid)
   for (const cell of cells) {
     cell.sort((a, b) => (a.minBid ?? 1e18) - (b.minBid ?? 1e18));
   }
 
-  // перемешиваем ячейки
   cells.sort(() => Math.random() - 0.5);
 
   const result = [];
+  const takenPerCell = new Map();
+
   let i = 0;
   while (result.length < count && cells.length) {
     const cell = cells[i % cells.length];
-    if (cell.length) result.push(cell.shift()); // ✅ cheapest in cell
+    const key = cell.__key || (cell.__key = String(i % cells.length)); // простая метка
+    const taken = takenPerCell.get(cell) || 0;
+
+    if (taken >= perCellMax) {
+      i++;
+      // если все ячейки упёрлись в лимит, выйдем
+      if (takenPerCell.size >= cells.length) break;
+      continue;
+    }
+
+    if (cell.length) {
+      result.push(cell.shift());
+      takenPerCell.set(cell, taken + 1);
+    }
     i++;
   }
 
-  // добивка если не хватило (например, много ячеек без geo)
   if (result.length < count) {
     const picked = new Set(result);
     const rest = pool.filter(s => !picked.has(s));
@@ -1106,6 +1134,8 @@ function pickScreensUniformByGrid(pool, count, stepKm = 2) {
 
   return result.slice(0, count);
 }
+
+
 
 function downloadXLSX(rows) {
   if (!rows || !rows.length) return;
@@ -2708,8 +2738,9 @@ if (brief.budget.mode !== "goal_ots") {
 const screensChosenCount = Math.min(pool.length, screensNeeded);
 
 // выбор (равномерный по сетке, внутри ячейки — дешевле)
-const chosen = pickScreensUniformByGrid(pool, screensChosenCount, 2);
-
+const stepKm = gridStepKmForCount(screensChosenCount);
+const chosen = pickScreensUniformByGrid(pool, screensChosenCount, stepKm);
+    
 // ===== plays effective (respect capacity) =====
 const capPlaysByChosen = Math.floor(SC_MAX * chosen.length * days * hpd);
 let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
@@ -2836,6 +2867,7 @@ ${perRegionText}`
   if (planBtn) planBtn.disabled = chosenAll.length === 0;
 
   if (el("results")) {
+    const chosenForPreview = [...chosenAll].sort(() => Math.random() - 0.5);
     el("results").innerHTML = `
       <div id="results-toggle"
            style="font-size:13px; color:#555; cursor:pointer; display:flex; align-items:center; gap:6px; user-select:none;">
@@ -2858,7 +2890,7 @@ ${perRegionText}`
             </tr>
           </thead>
           <tbody>
-            ${(chosenAll || []).slice(0, 10).map(r => `
+            ${(chosenForPreview || []).slice(0, 10).map(r => `
               <tr>
                 <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${escapeHtml(r.screen_id || "")}</td>
                 <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${escapeHtml(r.region || "")}</td>
