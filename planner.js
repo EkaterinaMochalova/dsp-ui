@@ -1091,8 +1091,7 @@ function groupByGrid(screens, stepKm = 2) {
  * Внутри ячейки выбираем самый дешёвый экран (minBid),
  * чтобы не получалось «рандомно дорогие».
  */
-const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
-const chosen = pickScreensUniformByGrid(pool, screensChosenCount, stepKm, perCellMax);
+
 
 function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2) {
   const cells = groupByGrid(pool, stepKm);
@@ -2734,11 +2733,20 @@ if (brief.budget.mode !== "goal_ots") {
   screensNeeded = Math.max(screensNeededByCapacity, byStrategy, byHardCap);
 }
 
-// ограничиваем доступным пулом
 const screensChosenCount = Math.min(pool.length, screensNeeded);
 
-// выбор (равномерный по сетке, внутри ячейки — дешевле)
+// шаг сетки адаптивный
 const stepKm = gridStepKmForCount(screensChosenCount);
+
+// максимум экранов из одной ячейки
+const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
+
+const chosen = pickScreensUniformByGrid(
+  pool,
+  screensChosenCount,
+  stepKm,
+  perCellMax
+);
 const chosen = pickScreensUniformByGrid(pool, screensChosenCount, stepKm);
     
 // ===== plays effective (respect capacity) =====
