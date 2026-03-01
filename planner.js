@@ -2735,10 +2735,7 @@ if (brief.budget.mode !== "goal_ots") {
 
 const screensChosenCount = Math.min(pool.length, screensNeeded);
 
-// шаг сетки адаптивный
 const stepKm = gridStepKmForCount(screensChosenCount);
-
-// максимум экранов из одной ячейки
 const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
 
 const chosen = pickScreensUniformByGrid(
@@ -2747,7 +2744,6 @@ const chosen = pickScreensUniformByGrid(
   stepKm,
   perCellMax
 );
-const chosen = pickScreensUniformByGrid(pool, screensChosenCount, stepKm);
     
 // ===== plays effective (respect capacity) =====
 const capPlaysByChosen = Math.floor(SC_MAX * chosen.length * days * hpd);
