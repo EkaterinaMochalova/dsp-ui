@@ -203,10 +203,6 @@ function getScheduleType() {
   return document.querySelector('input[name="schedule"]:checked')?.value || "all_day";
 }
 
-function getReachModeFromUI(){
-  return document.querySelector('input[name="reach_mode"]:checked')?.value || "balanced";
-}
-
 function parseCSV(text) {
   const res = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: false });
   if (res.errors && res.errors.length) console.warn("CSV parse errors:", res.errors.slice(0, 8));
@@ -2509,26 +2505,19 @@ if (avgBid == null) {
 const bidPlus20 = avgBid * BID_MULTIPLIER;
 
 // ✅ нужно для режима goal_ots
-const avgOts = avgNumber(pool.map(s => s.ots)); // может быть null — это ок
+const avgOts = avgNumber(pool.map(s => s.ots)); // ✅ pool, не chosen
 
-// абсолютная ёмкость региона, если использовать ВСЕ доступные экраны (после фильтров)
 const capPlaysAbs = Math.floor(SC_MAX * pool.length * days * hpd);
 const capBudgetAbs = Math.floor(capPlaysAbs * bidPlus20);
-
-// ✅ ёмкость региона по OTS (если OTS есть)
 const capOtsAbs = (avgOts == null) ? null : (capPlaysAbs * avgOts);
 
 prepared.push({
-  region,
-  tier,
-  pool,
-  avgBid,
-  bidPlus20,
+  region, tier, pool,
+  avgBid, bidPlus20,
   avgOts,
-  capPlaysAbs,
-  capBudgetAbs,
-  capOtsAbs
+  capPlaysAbs, capBudgetAbs, capOtsAbs
 });
+
   }
 
   if (!prepared.length) {
@@ -2690,14 +2679,11 @@ prepared.push({
     budget = Math.min(budget, pr.capBudgetAbs);
 
     totalBudgetFinal += budget;
-let plannedPlaysFromGoal = null;
-if (brief.budget.mode === "goal_ots" && typeof __goalPlan === "object" && __goalPlan && __goalPlan[region]) {
-  plannedPlaysFromGoal = Number(__goalPlan[region].playsPlanned || 0);
-  if (!Number.isFinite(plannedPlaysFromGoal) || plannedPlaysFromGoal <= 0) plannedPlaysFromGoal = null;
-}
+
 
 
 // goal_ots: plays считаем от плана (ceil, чтобы цель добрать)
+let totalPlaysTheory = 0;
 if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
   totalPlaysTheory = Math.ceil(Number(goalPlan[region].playsPlanned || 0));
   if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory < 0) totalPlaysTheory = 0;
@@ -2765,7 +2751,7 @@ if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
 
     const avgChosenOts = avgNumber(chosen.map(s => s.ots));
     const otsTotal = (avgChosenOts == null) ? null : totalPlaysEffective * avgChosenOts;
-    if (avgOts == null) hasOts = false;
+    if (avgChosenOts == null) hasOts = false;
     if (otsTotal != null) otsTotalAll += otsTotal;
 
     chosenAll = chosenAll.concat(chosen);
@@ -3155,13 +3141,7 @@ setTimeout(() => {
   updateOwnerCollapseUI();
 }, 0);
 
-  
-// ===== goal_ots input should re-check calc button =====
-const goalOtsInput = el("goal-ots");
-if (goalOtsInput) {
-  goalOtsInput.addEventListener("input", renderProgress);
-  goalOtsInput.addEventListener("change", renderProgress);
-}
+
   
   // ===== Regions input (READY-GUARD + LOADING UI) =====
 const regionSearch = el("city-search");
