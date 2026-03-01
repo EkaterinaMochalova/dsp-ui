@@ -650,17 +650,26 @@ function buildBrief() {
 
   const budgetMode = getBudgetMode();
 
-const budgetVal = Number(el("budget-input")?.value || 0);
-const goalOtsVal = Number(el("goal-ots")?.value || 0);
+  const budgetVal = Number(el("budget-input")?.value || 0);
+  const goalOtsVal = Number(el("goal-ots")?.value || 0);
 
-const budgetOk =
-  (budgetMode === "recommendation") ||
-  (budgetMode === "fixed" && budgetVal > 0) ||
-  (budgetMode === "goal_ots" && goalOtsVal > 0);
+  const budgetOk =
+    (budgetMode === "recommendation") ||
+    (budgetMode === "fixed" && budgetVal > 0) ||
+    (budgetMode === "goal_ots" && goalOtsVal > 0);
 
-  const scheduleType = getScheduleType(); // all_day | peak | custom
+  const scheduleType = getScheduleType(); // all_day | peak | custom | weekly
+
+  // legacy поля (для custom)
   const timeFrom = el("time-from")?.value;
-  const timeTo = el("time-to")?.value;
+  const timeTo   = el("time-to")?.value;
+
+  // weekly интервалы (если включён weekly режим)
+  // IMPORTANT: функция должна быть определена в коде (я давал её ранее):
+  // getWeeklyScheduleFromUI() -> { mon:[{from,to},...], tue:..., ... }
+  const weekly = (scheduleType === "weekly" && typeof getWeeklyScheduleFromUI === "function")
+    ? getWeeklyScheduleFromUI()
+    : null;
 
   const selectionMode = el("selection-mode")?.value || "city_even";
 
@@ -682,11 +691,23 @@ const budgetOk =
       start: el("date-start")?.value || null,
       end: el("date-end")?.value || null
     },
-    schedule: {
-      type: scheduleType,
-      from: scheduleType === "custom" ? timeFrom : null,
-      to: scheduleType === "custom" ? timeTo : null
-    },
+
+    // ✅ schedule: поддержка weekly + backward compat custom/peak/all_day
+    schedule: (() => {
+      if (scheduleType === "weekly") {
+        return {
+          type: "weekly",
+          weekly: weekly || { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
+        };
+      }
+
+      return {
+        type: scheduleType,
+        from: scheduleType === "custom" ? (timeFrom || null) : null,
+        to:   scheduleType === "custom" ? (timeTo   || null) : null
+      };
+    })(),
+
     geo: {
       region: regionOne,
       regions: regions.length ? regions : (regionOne ? [regionOne] : [])
@@ -732,17 +753,17 @@ const budgetOk =
     brief.selection.radius_m = pickAnyNum(500, "#planner-radius", "#radius");
   }
   if (selectionMode === "route") {
-  brief.selection.route_from = pickAnyVal("#route-from");
-  brief.selection.route_to   = pickAnyVal("#route-to");
-  brief.selection.radius_m   = pickAnyNum(300, "#planner-radius", "#radius");
+    brief.selection.route_from = pickAnyVal("#route-from");
+    brief.selection.route_to   = pickAnyVal("#route-to");
+    brief.selection.radius_m   = pickAnyNum(300, "#planner-radius", "#radius");
   }
 
+  // нормализация GRP
   if (!Number.isFinite(brief.grp.min)) brief.grp.min = 0;
   if (!Number.isFinite(brief.grp.max)) brief.grp.max = 9.98;
   brief.grp.min = Math.max(0, Math.min(9.98, brief.grp.min));
   brief.grp.max = Math.max(0, Math.min(9.98, brief.grp.max));
   if (brief.grp.max < brief.grp.min) [brief.grp.min, brief.grp.max] = [brief.grp.max, brief.grp.min];
-
 
   // ✅ goal (для режима "от обратного")
   brief.goal = {
@@ -752,6 +773,9 @@ const budgetOk =
       return Number.isFinite(n) && n > 0 ? n : null;
     })()
   };
+
+  // (не обязательно, но удобно) отдадим в brief, чтобы дальше использовать в прогрессе/валидации
+  brief._ui = { budgetOk };
 
   return brief;
 }
@@ -1681,28 +1705,22 @@ function cityCenterFromScreens(screens) {
 // ===== Nominatim (geocoding) =====
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
-async function geocodeAddressNominatim(query) {
-  const q = String(query || "").trim();
-  if (!q) return null;
+async function geocodeAddressNominatim(query, regionHint) {
+  const q0 = String(query || "").trim();
+  if (!q0) return null;
+
+  // если указан регион — добавим в хвост запроса (очень помогает)
+  const q = regionHint ? `${q0}, ${String(regionHint).trim()}` : q0;
 
   const url =
     `${NOMINATIM_URL}?format=jsonv2&limit=1&addressdetails=0&accept-language=ru&q=` +
     encodeURIComponent(q);
 
-  console.log("[geo] nominatim request:", url);
-
   const res = await fetch(url, { method: "GET" });
   const txt = await res.text();
+  if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}: ${txt.slice(0, 200)}`);
 
-  if (!res.ok) {
-    throw new Error(`Nominatim HTTP ${res.status}: ${txt.slice(0, 200)}`);
-  }
-
-  let json;
-  try { json = JSON.parse(txt); } catch {
-    throw new Error("Nominatim returned non-JSON: " + txt.slice(0, 200));
-  }
-
+  const json = JSON.parse(txt);
   const hit = Array.isArray(json) && json.length ? json[0] : null;
   if (!hit) return null;
 
