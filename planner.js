@@ -2421,39 +2421,29 @@ async function onCalcClick() {
     }
   }
 
-  const days = daysInclusive(brief.dates.start, brief.dates.end);
-if (!Number.isFinite(days) || days <= 0) {
-  alert("Выберите корректные даты начала и окончания.");
-  return;
-}
-
-let hpdFixed = hoursPerDay(brief.schedule);
-
-// weekly override
-
-if (brief.schedule?.type === "weekly") {
-  const h = scheduleMeta(brief.dates.start, brief.dates.end, brief.schedule);
-  hpdFixed = h.avgHpd;
-
-  if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
-    alert("В weekly-графике не задано время вещания (0 часов).");
+    const days = daysInclusive(brief.dates.start, brief.dates.end);
+  if (!Number.isFinite(days) || days <= 0) {
+    alert("Выберите корректные даты начала и окончания.");
     return;
   }
-}
 
-  // валидация: weekly пустой
+  // base hours per day (for non-weekly schedules)
+  let hpdFixed = hoursPerDay(brief.schedule);
+
+  // weekly override: avg hours per day across the whole date range
+  if (brief.schedule?.type === "weekly") {
+    const h = scheduleMeta(brief.dates.start, brief.dates.end, brief.schedule);
+    hpdFixed = h.avgHpd;
+  }
+
+  // ✅ schedule validation (one place, for all schedule types)
   if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
-    alert("В weekly-графике не задано время вещания (0 часов).");
+    alert("Проверь расписание: не задано время вещания (0 часов).");
     return;
   }
-}
 
-if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
-  alert("Проверь расписание.");
-  return;
-}
+  const hpd = (brief.budget.mode !== "fixed") ? RECO_HOURS_PER_DAY : hpdFixed;
 
-const hpd = (brief.budget.mode !== "fixed") ? RECO_HOURS_PER_DAY : hpdFixed;
   // aggregates
   let chosenAll = [];
   let totalBudgetFinal = 0;
