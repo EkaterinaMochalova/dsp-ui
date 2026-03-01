@@ -357,21 +357,21 @@ function _getByAnyId(...ids) {
 }
 
 window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
-  const keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-  const out = { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] };
+  const keys = ["mon","tue","wed","thu","fri","sat","sun"];
+  const out = { mon:[], tue:[], wed:[], thu:[], fri:[], sat:[], sun:[] };
 
   for (const k of keys) {
-    // поддерживаем разные схемы id
-    const fromEl = _getByAnyId(`${k}-from`, `${k}_from`, `${k}From`, `${k}-from-1`, `${k}_from_1`);
-    const toEl   = _getByAnyId(`${k}-to`,   `${k}_to`,   `${k}To`,   `${k}-to-1`,   `${k}_to_1`);
+    const wrap = document.getElementById(`${k}-rows`);
+    if (!wrap) continue;
 
-    const from = String(fromEl?.value || "").trim();
-    const to   = String(toEl?.value || "").trim();
-
-    if (!from || !to) continue;
-    out[k].push({ from, to });
+    const rows = [...wrap.querySelectorAll(".row")];
+    for (const row of rows) {
+      const from = String(row.querySelector(".w-from")?.value || "").trim();
+      const to   = String(row.querySelector(".w-to")?.value || "").trim();
+      if (!from || !to) continue;
+      out[k].push({ from, to });
+    }
   }
-
   return out;
 };
 
@@ -2230,6 +2230,43 @@ function bindPlannerUI() {
   document.querySelectorAll('input[name="reach_mode"]').forEach(x =>
     x.addEventListener("change", renderProgress)
   );
+
+  document.querySelectorAll(".w-add").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const day = btn.dataset.day; // mon/tue...
+    const wrap = document.getElementById(`${day}-rows`);
+    if (!wrap) return;
+
+    const div = document.createElement("div");
+    div.className = "row";
+    div.innerHTML = `
+      <input type="time" class="w-from" value="07:00">
+      <input type="time" class="w-to" value="10:00">
+      <button type="button" class="w-del">×</button>
+    `;
+    wrap.appendChild(div);
+
+    div.querySelector(".w-del").addEventListener("click", () => {
+      div.remove();
+      renderProgress();
+    });
+
+    div.querySelectorAll("input").forEach(i => {
+      i.addEventListener("input", renderProgress);
+      i.addEventListener("change", renderProgress);
+    });
+
+    renderProgress();
+  });
+});
+
+document.addEventListener("click", (e) => {
+  const del = e.target?.closest?.(".w-del");
+  if (!del) return;
+  const row = del.closest(".row");
+  if (row) row.remove();
+  renderProgress();
+});
 
   document.querySelectorAll('input[name="schedule"]').forEach(r => {
     r.addEventListener("change", () => {
