@@ -268,6 +268,66 @@ function hoursPerDay(schedule) {
   return 15;
 }
 
+function _weekdayKeyFromDate(d){
+  // d: Date
+  // JS: 0=Sun..6=Sat
+  const map = ["sun","mon","tue","wed","thu","fri","sat"];
+  return map[d.getDay()];
+}
+
+function _intervalHours(it){
+  if (!it) return 0;
+  const a = String(it.from || "").split(":").map(Number);
+  const b = String(it.to || "").split(":").map(Number);
+  if (a.length < 2 || b.length < 2) return 0;
+  const from = a[0] + a[1] / 60;
+  const to   = b[0] + b[1] / 60;
+  // без ночных переходов (если надо через ночь — скажи, добавим)
+  return Math.max(0, to - from);
+}
+
+function _hoursForWeekdayIntervals(list){
+  if (!Array.isArray(list) || !list.length) return 0;
+  return list.reduce((sum, it) => sum + _intervalHours(it), 0);
+}
+
+function computeScheduleHoursForPeriod(schedule, startStr, endStr){
+  const days = daysInclusive(startStr, endStr);
+  if (!days || days <= 0) return { days: 0, totalHours: 0, avgHpd: 0 };
+
+  if (!schedule || typeof schedule !== "object") {
+    return { days, totalHours: 0, avgHpd: 0 };
+  }
+
+  // old modes
+  if (schedule.type === "all_day" || schedule.type === "peak" || schedule.type === "custom") {
+    const hpd = hoursPerDay(schedule);
+    const totalHours = hpd * days;
+    return { days, totalHours, avgHpd: hpd };
+  }
+  window.getWeeklyScheduleFromUI = function () { ... return { mon:[...], ... } }
+
+  // weekly mode
+  if (schedule.type === "weekly") {
+    const weekly = schedule.weekly || {};
+    let totalHours = 0;
+
+    for (let i = 0; i < days; i++) {
+      const dt = new Date(startStr + "T00:00:00");
+      dt.setDate(dt.getDate() + i);
+
+      const key = _weekdayKeyFromDate(dt); // mon..sun
+      totalHours += _hoursForWeekdayIntervals(weekly[key]);
+    }
+
+    const avgHpd = totalHours / days;
+    return { days, totalHours, avgHpd };
+  }
+
+  // fallback
+  return { days, totalHours: 0, avgHpd: 0 };
+}
+
 function formatMeta(fmt) {
   return FORMAT_LABELS[fmt] || {
     label: fmt,
@@ -2298,26 +2358,31 @@ async function onCalcClick() {
   }
 
   const days = daysInclusive(brief.dates.start, brief.dates.end);
-  if (!Number.isFinite(days) || days <= 0) {
-    alert("Выберите корректные даты начала и окончания.");
-    return;
-  }
+if (!Number.isFinite(days) || days <= 0) {
+  alert("Выберите корректные даты начала и окончания.");
+  return;
+}
 
-  let selectedFormatsText = "—";
-  const formatsMode = brief?.formats?.mode || "auto";
-  const manualFormats = Array.isArray(brief?.formats?.selected) ? brief.formats.selected : [];
+let hpdFixed = hoursPerDay(brief.schedule);
 
-  if (formatsMode === "manual" && manualFormats.length > 0) selectedFormatsText = manualFormats.join(", ");
-  else if (formatsMode === "auto") selectedFormatsText = "рекомендация";
-  else selectedFormatsText = "не выбраны";
+// weekly override
+if (brief.schedule?.type === "weekly") {
+  const h = computeScheduleHoursForPeriod(brief.schedule, brief.dates.start, brief.dates.end);
+  hpdFixed = h.avgHpd;
 
-  const hpdFixed = hoursPerDay(brief.schedule);
+  // валидация: weekly пустой
   if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
-    alert("Проверь расписание.");
+    alert("В weekly-графике не задано время вещания (0 часов).");
     return;
   }
-  const hpd = (brief.budget.mode !== "fixed") ? RECO_HOURS_PER_DAY : hpdFixed;
+}
 
+if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
+  alert("Проверь расписание.");
+  return;
+}
+
+const hpd = (brief.budget.mode !== "fixed") ? RECO_HOURS_PER_DAY : hpdFixed;
   // aggregates
   let chosenAll = [];
   let totalBudgetFinal = 0;
@@ -2943,6 +3008,13 @@ function calcCompletion() {
 
   // step 2: dates
   const step2 = !!(brief?.dates?.start && brief?.dates?.end);
+  let scheduleOk = true;
+if (brief.schedule?.type === "weekly") {
+  const w = brief.schedule.weekly || {};
+  const keys = ["mon","tue","wed","thu","fri","sat","sun"];
+  const total = keys.reduce((sum, k) => sum + _hoursForWeekdayIntervals(w[k]), 0);
+  scheduleOk = total > 0;
+}
 
   // step 3: budget OR goal
   const mode = brief?.budget?.mode || "recommendation";
@@ -2959,7 +3031,7 @@ function calcCompletion() {
   const selected = Array.isArray(brief?.formats?.selected) ? brief.formats.selected : [];
   const step4 = (formatsMode === "auto") || (selected.length > 0);
 
-  const done = [step1, step2, step3, step4].filter(Boolean).length;
+  const done = [step1, step2, step3, step4, scheduleOk].filter(Boolean).length;
   return { done, step1, step2, step3, step4, mode };
 }
 
@@ -3008,12 +3080,17 @@ document.querySelectorAll('input[name="reach_mode"]').forEach(x =>
   x.addEventListener("change", renderProgress)
 );
   document.querySelectorAll('input[name="schedule"]').forEach(r => {
-    r.addEventListener("change", () => {
-      const v = getScheduleType();
-      const wrap = el("custom-time-wrap");
-      if (wrap) wrap.style.display = (v === "custom") ? "flex" : "none";
-    });
+  r.addEventListener("change", () => {
+    const v = getScheduleType();
+    const customWrap = el("custom-time-wrap");
+    const weeklyWrap = el("weekly-wrap"); // <div id="weekly-wrap">...</div>
+
+    if (customWrap) customWrap.style.display = (v === "custom") ? "flex" : "none";
+    if (weeklyWrap) weeklyWrap.style.display = (v === "weekly") ? "block" : "none";
+
+    renderProgress();
   });
+});
 
   const grpEnabled = el("grp-enabled");
   if (grpEnabled) {
