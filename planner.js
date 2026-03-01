@@ -269,13 +269,19 @@ function daysInclusive(startStr, endStr) {
 }
 
 function hoursPerDay(schedule) {
-  if (schedule.type === "all_day") return 15;
-  if (schedule.type === "peak") return 7;
-  if (schedule.type === "custom") {
-    const [fh, fm] = (schedule.from || "07:00").split(":").map(Number);
-    const [th, tm] = (schedule.to || "22:00").split(":").map(Number);
-    return Math.max(0, (th + tm / 60) - (fh + fm / 60));
+  if (schedule?.type === "all_day") return 15;
+  if (schedule?.type === "peak") return 7;
+
+  if (schedule?.type === "custom") {
+    const a = _timeToMin(schedule.from || "07:00");
+    const b = _timeToMin(schedule.to || "22:00");
+    if (a == null || b == null) return 0;
+
+    // allow overnight
+    const minutes = (b >= a) ? (b - a) : ((1440 - a) + b);
+    return Math.max(0, minutes / 60);
   }
+
   // weekly handled elsewhere
   return 15;
 }
@@ -342,16 +348,25 @@ function computeScheduleHoursForPeriod(schedule, startStr, endStr) {
   return { days, totalHours: hpd * days, avgHpd: hpd };
 }
 
+function _getByAnyId(...ids) {
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) return el;
+  }
+  return null;
+}
+
 window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
   const keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
   const out = { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] };
 
   for (const k of keys) {
-    const fromEl = document.getElementById(`${k}-from`);
-    const toEl = document.getElementById(`${k}-to`);
+    // поддерживаем разные схемы id
+    const fromEl = _getByAnyId(`${k}-from`, `${k}_from`, `${k}From`, `${k}-from-1`, `${k}_from_1`);
+    const toEl   = _getByAnyId(`${k}-to`,   `${k}_to`,   `${k}To`,   `${k}-to-1`,   `${k}_to_1`);
 
     const from = String(fromEl?.value || "").trim();
-    const to = String(toEl?.value || "").trim();
+    const to   = String(toEl?.value || "").trim();
 
     if (!from || !to) continue;
     out[k].push({ from, to });
@@ -2139,17 +2154,19 @@ function calcCompletion() {
 
   const step2 = !!(brief?.dates?.start && brief?.dates?.end);
 
-  let scheduleOk = true;
-  if (brief.schedule?.type === "weekly") {
-    const w = brief.schedule.weekly || {};
-    const keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-    const total = keys.reduce((sum, k) => sum + _hoursForWeekdayIntervals(w[k]), 0);
-    scheduleOk = total > 0;
-  } else if (brief.schedule?.type === "custom") {
-    const from = _timeToMin(brief.schedule.from);
-    const to = _timeToMin(brief.schedule.to);
-    scheduleOk = (from != null && to != null && (to !== from));
+ let scheduleOk = true;
+
+if (brief.schedule?.type === "weekly") {
+  if (brief?.dates?.start && brief?.dates?.end) {
+    const meta = computeScheduleHoursForPeriod(brief.schedule, brief.dates.start, brief.dates.end);
+    scheduleOk = Number.isFinite(meta.avgHpd) && meta.avgHpd > 0;
+  } else {
+    scheduleOk = false;
   }
+} else if (brief.schedule?.type === "custom") {
+  const h = hoursPerDay(brief.schedule);
+  scheduleOk = Number.isFinite(h) && h > 0;
+}
 
   const mode = brief?.budget?.mode || "recommendation";
   const budgetVal = Number(brief?.budget?.amount || 0);
