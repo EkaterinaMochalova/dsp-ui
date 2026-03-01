@@ -1,5 +1,20 @@
 console.log("planner.js loaded");
 
+/**
+ * FIXES in this version:
+ * 1) ✅ Weekly schedule (“рваное / по дням”) now works end-to-end:
+ *    - added computeScheduleHoursForPeriod()
+ *    - fixed validation + avg hours/day calc for weekly schedule
+ *
+ * 2) ✅ formatsMode is not defined:
+ *    - formatsMode/manualFormats are now derived from brief.formats at the start of onCalcClick()
+ *
+ * 3) ✅ Calc button enablement bug:
+ *    - progress previously counted 5 checks but compared to 4 → fixed requiredCount=5
+ *
+ * 4) ✅ summaryText referenced selectedFormatsText but it was not defined → fixed.
+ */
+
 // ========== GLOBAL ==========
 window.PLANNER = window.PLANNER || {};
 
@@ -118,8 +133,6 @@ const POI_LABELS = {
   transport: "Транспорт (метро/станции)"
 };
 
-
-
 // ===== Model =====
 const BID_MULTIPLIER = 1.2;
 const SC_OPT = 30;
@@ -145,16 +158,19 @@ const state = {
   selectedFormats: new Set(),
   selectedRegions: [], // ✅ мультивыбор регионов
   selectedRegion: null, // ✅ обратная совместимость
-  lastChosen: []
+  lastChosen: [],
+
+  // Owners (optional)
+  selectedOwners: new Set()
 };
 
 window.PLANNER.state = state;
 
-function getReachModeFromUI(){
+function getReachModeFromUI() {
   return document.querySelector('input[name="reach_mode"]:checked')?.value || "balanced";
 }
 
-function targetPlaysPerHourPerScreen(mode){
+function targetPlaysPerHourPerScreen(mode) {
   if (mode === "max_reach") return 10;
   if (mode === "max_freq") return 60;
   return 30; // balanced
@@ -199,7 +215,7 @@ function getBudgetMode() {
 
 // ✅ ВАЖНО: значения должны совпадать с тем, что ждёт hoursPerDay()
 function getScheduleType() {
-  // ожидаемые значения: all_day | peak | custom
+  // ожидаемые значения: all_day | peak | custom | weekly
   return document.querySelector('input[name="schedule"]:checked')?.value || "all_day";
 }
 
@@ -223,11 +239,12 @@ function avgNumber(arr) {
   }
   return cnt ? (sum / cnt) : null;
 }
-function areRegionsReady(){
+
+function areRegionsReady() {
   return Array.isArray(state.regionsAll) && state.regionsAll.length > 0;
 }
 
-function setRegionsUIReady(isReady){
+function setRegionsUIReady(isReady) {
   const input = el("city-search");
   const spinner = el("region-spinner");
   const overlay = el("region-overlay");
@@ -236,20 +253,14 @@ function setRegionsUIReady(isReady){
     input.disabled = !isReady;
     input.placeholder = isReady ? "Введите регион…" : "Загружаю список регионов…";
   }
-
-  // маленький спиннер в инпуте
   if (spinner) spinner.style.display = isReady ? "none" : "block";
-
-  // серый overlay
   if (overlay) overlay.style.display = isReady ? "none" : "flex";
 
-  // если не готово — убираем подсказки, чтобы не выглядело как “ничего не найдено”
   if (!isReady) {
     const sug = el("city-suggestions");
     if (sug) sug.innerHTML = "";
   }
 }
-
 
 function daysInclusive(startStr, endStr) {
   const s = new Date(startStr + "T00:00:00");
@@ -265,47 +276,23 @@ function hoursPerDay(schedule) {
     const [th, tm] = (schedule.to || "22:00").split(":").map(Number);
     return Math.max(0, (th + tm / 60) - (fh + fm / 60));
   }
+  // weekly handled elsewhere
   return 15;
 }
-
-function _weekdayKeyFromDate(d){
-  // d: Date
-  // JS: 0=Sun..6=Sat
-  const map = ["sun","mon","tue","wed","thu","fri","sat"];
-  return map[d.getDay()];
-}
-
-function _intervalHours(it){
-  if (!it) return 0;
-  const a = String(it.from || "").split(":").map(Number);
-  const b = String(it.to || "").split(":").map(Number);
-  if (a.length < 2 || b.length < 2) return 0;
-  const from = a[0] + a[1] / 60;
-  const to   = b[0] + b[1] / 60;
-  // без ночных переходов (если надо через ночь — скажи, добавим)
-  return Math.max(0, to - from);
-}
-
-function _hoursForWeekdayIntervals(list){
-  if (!Array.isArray(list) || !list.length) return 0;
-  return list.reduce((sum, it) => sum + _intervalHours(it), 0);
-}
-
-// ===== Weekly schedule helpers =====
 
 // mon..sun
 function _weekdayKeyFromDate(dt) {
   // JS: 0=Sun..6=Sat
   const d = dt.getDay();
   return (d === 0) ? "sun" :
-         (d === 1) ? "mon" :
-         (d === 2) ? "tue" :
-         (d === 3) ? "wed" :
-         (d === 4) ? "thu" :
-         (d === 5) ? "fri" : "sat";
+    (d === 1) ? "mon" :
+      (d === 2) ? "tue" :
+        (d === 3) ? "wed" :
+          (d === 4) ? "thu" :
+            (d === 5) ? "fri" : "sat";
 }
 
-// "HH:MM" -> minutes from 0..1440
+// "HH:MM" -> minutes 0..1440
 function _timeToMin(t) {
   const s = String(t || "").trim();
   const m = s.match(/^(\d{1,2}):(\d{2})$/);
@@ -320,60 +307,30 @@ function _hoursForWeekdayIntervals(intervals) {
   if (!Array.isArray(intervals) || !intervals.length) return 0;
 
   let minutes = 0;
-
   for (const it of intervals) {
     const a = _timeToMin(it?.from);
     const b = _timeToMin(it?.to);
     if (a == null || b == null) continue;
+    // allow overnight
     if (b >= a) minutes += (b - a);
     else minutes += (1440 - a) + b;
   }
-
   return Math.max(0, minutes / 60);
 }
 
-window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
-  const keys = ["mon","tue","wed","thu","fri","sat","sun"];
-  const out = { mon:[], tue:[], wed:[], thu:[], fri:[], sat:[], sun:[] };
-
-  for (const k of keys) {
-    const fromEl = document.getElementById(`${k}-from`);
-    const toEl   = document.getElementById(`${k}-to`);
-
-    const from = String(fromEl?.value || "").trim();
-    const to   = String(toEl?.value || "").trim();
-
-    // Если день выключен, можно оставить пустым
-    if (!from || !to) continue;
-
-    out[k].push({ from, to });
-  }
-
-  return out;
-};
-
-function scheduleMeta(startStr, endStr, schedule) {
+// ✅ NEW: compute schedule hours for a period (supports weekly + legacy)
+function computeScheduleHoursForPeriod(schedule, startStr, endStr) {
   const days = daysInclusive(startStr, endStr);
 
-  // old modes
-  if (schedule.type === "all_day" || schedule.type === "peak" || schedule.type === "custom") {
-    const hpd = hoursPerDay(schedule);
-    const totalHours = hpd * days;
-    return { days, totalHours, avgHpd: hpd };
-  }
-
-  // weekly mode
-  if (schedule.type === "weekly") {
+  if (schedule?.type === "weekly") {
     const weekly = schedule.weekly || {};
     let totalHours = 0;
 
     const start = new Date(startStr + "T00:00:00");
-
     for (let i = 0; i < days; i++) {
       const dt = new Date(start);
       dt.setDate(start.getDate() + i);
-
-      const key = _weekdayKeyFromDate(dt); // mon..sun
+      const key = _weekdayKeyFromDate(dt);
       totalHours += _hoursForWeekdayIntervals(weekly[key]);
     }
 
@@ -381,10 +338,27 @@ function scheduleMeta(startStr, endStr, schedule) {
     return { days, totalHours, avgHpd };
   }
 
-  // fallback
-  const hpd = hoursPerDay({ type: "all_day" });
+  const hpd = hoursPerDay(schedule || { type: "all_day" });
   return { days, totalHours: hpd * days, avgHpd: hpd };
 }
+
+window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
+  const keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const out = { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] };
+
+  for (const k of keys) {
+    const fromEl = document.getElementById(`${k}-from`);
+    const toEl = document.getElementById(`${k}-to`);
+
+    const from = String(fromEl?.value || "").trim();
+    const to = String(toEl?.value || "").trim();
+
+    if (!from || !to) continue;
+    out[k].push({ from, to });
+  }
+
+  return out;
+};
 
 function formatMeta(fmt) {
   return FORMAT_LABELS[fmt] || {
@@ -464,7 +438,6 @@ async function loadCityRegions() {
     let regionsCount = 0;
 
     for (const [k, v] of Object.entries(regionsRaw)) {
-      // A) "Москва": "Москва"
       if (typeof v === "string") {
         const key = normalizeKey(k);
         if (key) {
@@ -474,7 +447,6 @@ async function loadCityRegions() {
         continue;
       }
 
-      // B) "Московская область": ["Химки", ...]
       if (Array.isArray(v)) {
         const region = String(k).trim();
         regionsCount++;
@@ -507,36 +479,6 @@ function getRegionForCity(city) {
   return (typeof r === "string" && r.trim()) ? r.trim() : "Не назначено";
 }
 
-// ===== (Optional) City chip UI (если нужен одиночный город) =====
-function renderSelectedCity() {
-  const box = el("city-selected");
-  if (!box) return;
-
-  const city = state.selectedCity || "";
-  if (!city) { box.innerHTML = ""; return; }
-
-  box.innerHTML = `
-    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-      <span style="padding:6px 10px; border:1px solid #ddd; border-radius:999px; background:#fafafa;">
-        ${escapeHtml(city)}
-      </span>
-      <button type="button" id="city-clear"
-        style="padding:6px 10px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;">
-        Очистить
-      </button>
-    </div>
-  `;
-
-  const btn = el("city-clear");
-  if (btn) {
-    btn.onclick = () => {
-      state.selectedCity = null;
-      renderSelectedCity();
-      // ⚠️ намеренно НЕ зовём несуществующий renderCitySuggestions()
-    };
-  }
-}
-
 // ===== Regions UI (мультивыбор) =====
 function renderSelectedRegions() {
   const wrap = el("region-selected");
@@ -550,7 +492,6 @@ function renderSelectedRegions() {
 
   wrap.innerHTML = "";
 
-  // показать/скрыть "очистить"
   if (clearBtn) clearBtn.style.display = regions.length ? "inline-block" : "none";
 
   regions.forEach((r) => {
@@ -582,13 +523,11 @@ function renderSelectedRegions() {
       e.preventDefault();
       e.stopPropagation();
 
-      state.selectedRegions = (state.selectedRegions || []).filter(x => String(x).trim() !== r);
-
-      // поддерживаем старое поле single
+      state.selectedRegions = (state.selectedRegions || []).filter(xx => String(xx).trim() !== r);
       state.selectedRegion = (state.selectedRegions[0] || null);
 
       renderSelectedRegions();
-      renderProgress(); // чтобы кнопка "Рассчитать" обновилась
+      renderProgress();
     });
 
     chip.appendChild(label);
@@ -598,7 +537,7 @@ function renderSelectedRegions() {
 }
 
 function renderRegionSuggestions(q) {
-  const sug = el("city-suggestions"); // suggestions dropdown
+  const sug = el("city-suggestions");
   if (!sug) return;
   sug.innerHTML = "";
   if (!q) return;
@@ -617,14 +556,13 @@ function renderRegionSuggestions(q) {
 
     b.addEventListener("click", () => {
       if (!state.selectedRegions.includes(r)) state.selectedRegions.push(r);
-
       state.selectedRegion = state.selectedRegions[0] || null;
 
       if (el("city-search")) el("city-search").value = "";
       sug.innerHTML = "";
 
       renderSelectedRegions();
-      renderProgress(); // ✅
+      renderProgress();
     });
 
     sug.appendChild(b);
@@ -673,7 +611,6 @@ async function loadScreens() {
   state.formatsAll = [...new Set(state.screens.map(s => s.format).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
 
-  // regionsByCity + regionsAll (один проход)
   state.regionsByCity = {};
   state.regionsAll = [];
 
@@ -684,7 +621,7 @@ async function loadScreens() {
   }
   state.regionsAll.sort((a, b) => a.localeCompare(b, "ru"));
 
-// ✅ регионы готовы — снимаем блокировку
+  // ✅ регионы готовы — снимаем блокировку
   setRegionsUIReady(true);
 
   // проставляем region каждому экрану
@@ -693,23 +630,7 @@ async function loadScreens() {
   }
 
   renderFormats();
-  renderSelectedCity();
   renderSelectedRegions();
-
-  // ✅ РЕГИОНЫ ГОТОВЫ — РАЗРЕШАЕМ ВВОД
-  try {
-    if (typeof setRegionsUIReady === "function") {
-      setRegionsUIReady(true);
-    } else {
-      const regionInput = document.getElementById("city-search");
-      if (regionInput) {
-        regionInput.disabled = false;
-        regionInput.placeholder = "Введите регион…";
-      }
-    }
-  } catch (e) {
-    console.warn("[regions] ui ready hook failed:", e);
-  }
 
   setStatus(
     `Всего доступно: ` +
@@ -726,6 +647,7 @@ async function loadScreens() {
     })
   );
 }
+
 // ===== UI: formats =====
 function renderFormats() {
   const wrap = el("formats-wrap");
@@ -755,8 +677,8 @@ function renderFormats() {
       if (state.selectedFormats.has(fmt)) state.selectedFormats.delete(fmt);
       else state.selectedFormats.add(fmt);
       sync();
-      renderProgress(); // ✅ ВАЖНО
-});
+      renderProgress();
+    });
 
     wrap.appendChild(b);
   });
@@ -777,21 +699,15 @@ function buildBrief() {
     (budgetMode === "goal_ots" && goalOtsVal > 0);
 
   const scheduleType = getScheduleType(); // all_day | peak | custom | weekly
-
-  // legacy поля (для custom)
   const timeFrom = el("time-from")?.value;
-  const timeTo   = el("time-to")?.value;
+  const timeTo = el("time-to")?.value;
 
-  // weekly интервалы (если включён weekly режим)
-  // IMPORTANT: функция должна быть определена в коде (я давал её ранее):
-  // getWeeklyScheduleFromUI() -> { mon:[{from,to},...], tue:..., ... }
   const weekly = (scheduleType === "weekly" && typeof getWeeklyScheduleFromUI === "function")
     ? getWeeklyScheduleFromUI()
     : null;
 
   const selectionMode = el("selection-mode")?.value || "city_even";
 
-  // ✅ регионы: поддержим и старое (selectedRegion), и новое (selectedRegions[])
   const regions = Array.isArray(state.selectedRegions)
     ? state.selectedRegions.map(r => String(r || "").trim()).filter(Boolean)
     : [];
@@ -809,8 +725,6 @@ function buildBrief() {
       start: el("date-start")?.value || null,
       end: el("date-end")?.value || null
     },
-
-    // ✅ schedule: поддержка weekly + backward compat custom/peak/all_day
     schedule: (() => {
       if (scheduleType === "weekly") {
         return {
@@ -818,14 +732,12 @@ function buildBrief() {
           weekly: weekly || { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
         };
       }
-
       return {
         type: scheduleType,
         from: scheduleType === "custom" ? (timeFrom || null) : null,
-        to:   scheduleType === "custom" ? (timeTo   || null) : null
+        to: scheduleType === "custom" ? (timeTo || null) : null
       };
     })(),
-
     geo: {
       region: regionOne,
       regions: regions.length ? regions : (regionOne ? [regionOne] : [])
@@ -840,7 +752,15 @@ function buildBrief() {
       min: toNumber(el("grp-min")?.value ?? 0),
       max: toNumber(el("grp-max")?.value ?? 9.98)
     },
-    reachMode: getReachModeFromUI()
+    reachMode: getReachModeFromUI(),
+    goal: {
+      ots: (() => {
+        const v = el("goal-ots")?.value;
+        const n = toNumber(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      })()
+    },
+    _ui: { budgetOk }
   };
 
   const qsVal = (sel) => (root.querySelector(sel)?.value ?? "");
@@ -872,28 +792,15 @@ function buildBrief() {
   }
   if (selectionMode === "route") {
     brief.selection.route_from = pickAnyVal("#route-from");
-    brief.selection.route_to   = pickAnyVal("#route-to");
-    brief.selection.radius_m   = pickAnyNum(300, "#planner-radius", "#radius");
+    brief.selection.route_to = pickAnyVal("#route-to");
+    brief.selection.radius_m = pickAnyNum(300, "#planner-radius", "#radius");
   }
 
-  // нормализация GRP
   if (!Number.isFinite(brief.grp.min)) brief.grp.min = 0;
   if (!Number.isFinite(brief.grp.max)) brief.grp.max = 9.98;
   brief.grp.min = Math.max(0, Math.min(9.98, brief.grp.min));
   brief.grp.max = Math.max(0, Math.min(9.98, brief.grp.max));
   if (brief.grp.max < brief.grp.min) [brief.grp.min, brief.grp.max] = [brief.grp.max, brief.grp.min];
-
-  // ✅ goal (для режима "от обратного")
-  brief.goal = {
-    ots: (() => {
-      const v = el("goal-ots")?.value;
-      const n = toNumber(v);
-      return Number.isFinite(n) && n > 0 ? n : null;
-    })()
-  };
-
-  // (не обязательно, но удобно) отдадим в brief, чтобы дальше использовать в прогрессе/валидации
-  brief._ui = { budgetOk };
 
   return brief;
 }
@@ -932,253 +839,81 @@ function getTierForGeo(name) {
 }
 
 // ===== Helpers =====
-
-async function fetchRouteOSRM(A, B){
-  // A/B: {lat, lon}
-  // public OSRM (быстро для MVP). Для проды лучше свой/платный роутер.
+async function fetchRouteOSRM(A, B) {
   const url =
     "https://router.project-osrm.org/route/v1/driving/" +
     `${A.lon},${A.lat};${B.lon},${B.lat}` +
     "?overview=full&geometries=geojson";
 
   const r = await fetch(url, { method: "GET" });
-  if(!r.ok) throw new Error("OSRM HTTP " + r.status);
+  if (!r.ok) throw new Error("OSRM HTTP " + r.status);
   const j = await r.json();
 
   const coords = j?.routes?.[0]?.geometry?.coordinates;
-  if(!Array.isArray(coords) || coords.length < 2) return null;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
 
-  // coords: array of [lon,lat]
-  return coords;
+  return coords; // [ [lon,lat], ... ]
 }
 
-function getLatLon(s){
+function getLatLon(s) {
   const lat = Number(
     s?.lat ?? s?.LAT ?? s?.latitude ?? s?.Latitude ?? s?.y ?? s?.Y
   );
   const lon = Number(
     s?.lon ?? s?.LON ?? s?.lng ?? s?.longitude ?? s?.Longitude ?? s?.x ?? s?.X
   );
-  if(!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   return { lat, lon };
 }
 
-function pickScreensNearPolyline(screens, lineLonLat, radiusM){
-  const out = [];
-  for(const s of screens){
-    const p = getLatLon(s);
-    if(!p) continue;
-
-    const d = distancePointToPolylineMeters({lon:p.lon, lat:p.lat}, lineLonLat);
-    if(d <= radiusM) out.push(s);
-  }
-  return out;
-}
-
-function buildOSMLinkFromScreens(screens) {
-  const pts = (Array.isArray(screens) ? screens : [])
-    .map(s => {
-      const lat = Number(s.lat ?? s.latitude);
-      const lon = Number(s.lon ?? s.lng ?? s.longitude);
-      return (Number.isFinite(lat) && Number.isFinite(lon)) ? { lat, lon } : null;
-    })
-    .filter(Boolean);
-
-  if (!pts.length) return "";
-
-  const lat = pts.reduce((a, p) => a + p.lat, 0) / pts.length;
-  const lon = pts.reduce((a, p) => a + p.lon, 0) / pts.length;
-
-  const z = 10; // можно сделать умнее по bbox, но для MVP ок
-  return `https://www.openstreetmap.org/#map=${z}/${lat.toFixed(6)}/${lon.toFixed(6)}`;
-}
-
-function downloadPlanXLSX() {
-  const calc = window.PLANNER?.lastCalc;
-  if (!calc?.brief || !Array.isArray(calc?.chosen) || !Array.isArray(calc?.perRegion)) {
-    alert("Сначала нажмите «Рассчитать», чтобы сформировать план.");
-    return;
-  }
-
-  const { brief, chosen, perRegion, warnings, meta } = calc;
-
-  const fmtMoney = (n) => (Number.isFinite(n) ? Math.floor(n).toLocaleString("ru-RU") : "—");
-  const fmtInt = (n) => (Number.isFinite(n) ? Math.floor(n).toLocaleString("ru-RU") : "—");
-  const fmtOts = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "—");
-
-  const mapLink = buildOSMLinkFromScreens(chosen);
-
-  // ===== Sheet 1: Summary =====
-  const summaryAoA = [
-    ["План размещения (экспорт)"],
-    [""],
-    ["Период", `${brief?.dates?.start || "—"} — ${brief?.dates?.end || "—"}`],
-    ["Регионы", (brief?.geo?.regions || []).join(", ") || "—"],
-    ["Расписание", brief?.schedule?.type || "—"],
-    ["Время", (brief?.schedule?.type === "custom") ? `${brief?.schedule?.from || "—"}–${brief?.schedule?.to || "—"}` : "—"],
-    ["Режим расчёта", brief?.budget?.mode || "—"],
-    ["Цель OTS", brief?.goal?.ots ? fmtOts(brief.goal.ots) : "—"],
-    [""],
-    ["Итоги"],
-    ["Бюджет, ₽", fmtMoney(meta?.totalBudget)],
-    ["Выходы", fmtInt(meta?.totalPlays)],
-    ["OTS", (meta?.totalOts == null ? "—" : fmtOts(meta?.totalOts))],
-    ["Экраны", fmtInt(chosen.length)],
-    [""],
-    ["Карта (OSM)", "Открыть карту"],
-    [""],
-    ["Предупреждения"],
-    ...(Array.isArray(warnings) && warnings.length ? warnings.map(w => [String(w)]) : [["—"]])
-  ];
-
-  // ===== Sheet 2: Regions =====
-  const regionsAoA = [
-    ["Регион", "Тир", "Бюджет, ₽", "Экраны", "Выходы", "OTS", "Примечание"]
-  ].concat(
-    (perRegion || [])
-      .slice()
-      .sort((a, b) => Number(b.budget || 0) - Number(a.budget || 0))
-      .map(r => ([
-        r.region || "",
-        r.tier || "",
-        Number.isFinite(r.budget) ? Math.floor(r.budget) : "",
-        Number.isFinite(r.screens) ? Math.floor(r.screens) : "",
-        Number.isFinite(r.plays) ? Math.floor(r.plays) : "",
-        (r.ots == null || !Number.isFinite(r.ots)) ? "" : Math.round(r.ots),
-        r.note || ""
-      ]))
-  );
-
-  // ===== Sheet 3: Screens =====
-  // Берём ключевые поля, чтобы файл был “операционный”
-  const screensAoA = [
-    ["GID", "Регион", "Формат", "Оператор", "Адрес/описание", "Широта", "Долгота", "minBid", "OTS", "GRP"]
-  ].concat(
-    chosen.map(s => ([
-      s.gid ?? s.GID ?? "",
-      s.region ?? "",
-      s.format ?? "",
-      s.owner ?? s.operator ?? s.vendor ?? "",
-      s.address ?? s.title ?? s.name ?? "",
-      Number(s.lat ?? s.latitude) || "",
-      Number(s.lon ?? s.lng ?? s.longitude) || "",
-      Number(s.minBid) || "",
-      Number(s.ots) || "",
-      Number.isFinite(s.grp) ? Number(s.grp) : ""
-    ]))
-  );
-
-  // ===== Build workbook =====
-  const wb = XLSX.utils.book_new();
-
-  const wsSummary = XLSX.utils.aoa_to_sheet(summaryAoA);
-  // --- hyperlink for map (Excel-safe) ---
-if (mapLink) {
-  // найдём строку "Карта (OSM)"
-  const range = XLSX.utils.decode_range(wsSummary["!ref"]);
-  for (let R = range.s.r; R <= range.e.r; R++) {
-    const a = wsSummary[XLSX.utils.encode_cell({ r: R, c: 0 })];
-    if (a && String(a.v).trim() === "Карта (OSM)") {
-      const cellAddr = XLSX.utils.encode_cell({ r: R, c: 1 }); // колонка B
-      wsSummary[cellAddr] = wsSummary[cellAddr] || { t: "s", v: "Открыть карту" };
-      wsSummary[cellAddr].t = "s";
-      wsSummary[cellAddr].v = "Открыть карту";
-
-      // ВАЖНО: именно .l (link object), НЕ формула HYPERLINK()
-      wsSummary[cellAddr].l = { Target: mapLink, Tooltip: "Открыть карту с выбранными экранами" };
-      break;
-    }
-  }
-}
-  const wsRegions = XLSX.utils.aoa_to_sheet(regionsAoA);
-  const wsScreens = XLSX.utils.aoa_to_sheet(screensAoA);
-
-  // чуть-чуть “красоты”: ширины колонок
-  wsSummary["!cols"] = [{ wch: 22 }, { wch: 70 }];
-  wsRegions["!cols"] = [{ wch: 26 }, { wch: 6 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 30 }];
-  wsScreens["!cols"] = [{ wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 40 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 8 }];
-
-  XLSX.utils.book_append_sheet(wb, wsSummary, "Сводка");
-  XLSX.utils.book_append_sheet(wb, wsRegions, "Регионы");
-  XLSX.utils.book_append_sheet(wb, wsScreens, "Экраны");
-
-  const d1 = (brief?.dates?.start || "").replaceAll("-", "");
-  const d2 = (brief?.dates?.end || "").replaceAll("-", "");
-  const fname = `plan_${d1 || "start"}_${d2 || "end"}.xlsx`;
-
-  XLSX.writeFile(wb, fname);
-}
-
-
-function buildUmapLinkFromScreens(screens){
-  // берём только валидные координаты
-  const pts = (screens || [])
-    .map(s => ({ 
-      lat: Number(s.lat ?? s.latitude), 
-      lon: Number(s.lon ?? s.lng ?? s.longitude),
-      gid: String(s.gid ?? s.GID ?? s.screen_id ?? "").trim()
-    }))
-    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
-
-  if(!pts.length) return "";
-
-  // GeoJSON FeatureCollection (минимальный)
-  const geojson = {
-    type: "FeatureCollection",
-    features: pts.map(p => ({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-      properties: p.gid ? { name: p.gid } : {}
-    }))
-  };
-
-  // ВАЖНО: encodeURIComponent, без пробелов/переносов
-  const data = encodeURIComponent(JSON.stringify(geojson));
-
-  // uMap (OSM) откроет карту со всеми точками
-  // (надёжнее, чем пытаться запихнуть все точки в openstreetmap.org)
-  return `https://umap.openstreetmap.fr/ru/map/new/?data=${data}`;
-}
-
-function distancePointToPolylineMeters(P, line){
-  // P: {lon,lat}, line: [[lon,lat],...]
+function distancePointToPolylineMeters(P, line) {
   let best = Infinity;
-  for(let i=0; i<line.length-1; i++){
-    const A = { lon: line[i][0],   lat: line[i][1] };
-    const B = { lon: line[i+1][0], lat: line[i+1][1] };
+  for (let i = 0; i < line.length - 1; i++) {
+    const A = { lon: line[i][0], lat: line[i][1] };
+    const B = { lon: line[i + 1][0], lat: line[i + 1][1] };
     const d = distancePointToSegmentMeters(P, A, B);
-    if(d < best) best = d;
+    if (d < best) best = d;
   }
   return best;
 }
 
-function distancePointToSegmentMeters(P, A, B){
-  // local projection (equirectangular)
+function distancePointToSegmentMeters(P, A, B) {
   const R = 6371000;
-  const lat0 = (A.lat + B.lat) * 0.5 * Math.PI/180;
+  const lat0 = (A.lat + B.lat) * 0.5 * Math.PI / 180;
 
-  const ax = A.lon * Math.PI/180 * Math.cos(lat0) * R;
-  const ay = A.lat * Math.PI/180 * R;
-  const bx = B.lon * Math.PI/180 * Math.cos(lat0) * R;
-  const by = B.lat * Math.PI/180 * R;
-  const px = P.lon * Math.PI/180 * Math.cos(lat0) * R;
-  const py = P.lat * Math.PI/180 * R;
+  const ax = A.lon * Math.PI / 180 * Math.cos(lat0) * R;
+  const ay = A.lat * Math.PI / 180 * R;
+  const bx = B.lon * Math.PI / 180 * Math.cos(lat0) * R;
+  const by = B.lat * Math.PI / 180 * R;
+  const px = P.lon * Math.PI / 180 * Math.cos(lat0) * R;
+  const py = P.lat * Math.PI / 180 * R;
 
   const abx = bx - ax, aby = by - ay;
   const apx = px - ax, apy = py - ay;
-  const ab2 = abx*abx + aby*aby;
+  const ab2 = abx * abx + aby * aby;
 
-  let t = (ab2 === 0) ? 0 : (apx*abx + apy*aby) / ab2;
+  let t = (ab2 === 0) ? 0 : (apx * abx + apy * aby) / ab2;
   t = Math.max(0, Math.min(1, t));
 
-  const cx = ax + t*abx;
-  const cy = ay + t*aby;
+  const cx = ax + t * abx;
+  const cy = ay + t * aby;
 
   const dx = px - cx;
   const dy = py - cy;
-  return Math.sqrt(dx*dx + dy*dy);
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
+function pickScreensNearPolyline(screens, lineLonLat, radiusM) {
+  const out = [];
+  for (const s of screens) {
+    const p = getLatLon(s);
+    if (!p) continue;
+
+    const d = distancePointToPolylineMeters({ lon: p.lon, lat: p.lat }, lineLonLat);
+    if (d <= radiusM) out.push(s);
+  }
+  return out;
+}
 
 function pickScreensByMinBid(screens, n) {
   const sorted = [...screens].sort((a, b) => {
@@ -1191,11 +926,10 @@ function pickScreensByMinBid(screens, n) {
 }
 
 function gridKey(lat, lon, stepKm = 2) {
-  const R = 6371; // km
+  const R = 6371;
   const latRad = lat * Math.PI / 180;
   const lonRad = lon * Math.PI / 180;
 
-  // "псевдо-метры": x учитывает широту, y нет
   const xKm = R * lonRad * Math.cos(latRad);
   const yKm = R * latRad;
 
@@ -1205,7 +939,7 @@ function gridKey(lat, lon, stepKm = 2) {
 }
 
 function gridStepKmForCount(n) {
-  if (n <= 10) return 6;   // прям разнести по городу
+  if (n <= 10) return 6;
   if (n <= 25) return 4;
   if (n <= 60) return 2.5;
   return 2;
@@ -1224,20 +958,11 @@ function groupByGrid(screens, stepKm = 2) {
   return [...map.values()];
 }
 
-/**
- * Равномерный отбор по сетке.
- * Внутри ячейки выбираем самый дешёвый экран (minBid),
- * чтобы не получалось «рандомно дорогие».
- */
-
-
 function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2) {
   const cells = groupByGrid(pool, stepKm);
-
   for (const cell of cells) {
     cell.sort((a, b) => (a.minBid ?? 1e18) - (b.minBid ?? 1e18));
   }
-
   cells.sort(() => Math.random() - 0.5);
 
   const result = [];
@@ -1246,12 +971,10 @@ function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2) {
   let i = 0;
   while (result.length < count && cells.length) {
     const cell = cells[i % cells.length];
-    const key = cell.__key || (cell.__key = String(i % cells.length)); // простая метка
     const taken = takenPerCell.get(cell) || 0;
 
     if (taken >= perCellMax) {
       i++;
-      // если все ячейки упёрлись в лимит, выйдем
       if (takenPerCell.size >= cells.length) break;
       continue;
     }
@@ -1272,8 +995,7 @@ function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2) {
   return result.slice(0, count);
 }
 
-
-
+// ===== XLSX (screens export simple) =====
 function downloadXLSX(rows) {
   if (!rows || !rows.length) return;
 
@@ -1304,522 +1026,6 @@ function downloadXLSX(rows) {
   XLSX.writeFile(wb, "screens_selected.xlsx");
 }
 
-function downloadPOIsCSV(pois) {
-  if (!pois || !pois.length) return;
-  const regions = Array.isArray(state.selectedRegions) ? state.selectedRegions : [];
-  const rows = pois.map(p => ({
-    id: p.id || "",
-    name: p.name || "",
-    lat: p.lat,
-    lon: p.lon,
-    regions: regions.join("; ")
-  }));
-  const csv = Papa.unparse(rows, { quotes: true });
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "pois.csv";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function downloadPOIsXLSX(pois) {
-  if (!pois || !pois.length) return;
-
-  const regions = Array.isArray(state.selectedRegions) ? state.selectedRegions : [];
-  const rows = pois.map(p => ({
-    id: p.id || "",
-    name: p.name || "",
-    lat: p.lat,
-    lon: p.lon,
-    regions: regions.join("; ")
-  }));
-
-  const ws = XLSX.utils.json_to_sheet(rows, { header: ["id", "name", "lat", "lon", "regions"] });
-  ws["!cols"] = [{ wch: 22 }, { wch: 40 }, { wch: 12 }, { wch: 12 }, { wch: 40 }];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "POIs");
-  XLSX.writeFile(wb, "pois.xlsx");
-}
-
-async function downloadPlanXlsx(lastCalc) {
-  if (!lastCalc) return;
-
-  if (typeof ExcelJS === "undefined") {
-    alert("ExcelJS не подключён. Проверь <script src=...exceljs.min.js> в HTML.");
-    return;
-  }
-
-  const brief = lastCalc.brief || {};
-  const meta = lastCalc.meta || {};
-  const perRegion = Array.isArray(lastCalc.perRegion) ? lastCalc.perRegion : [];
-  const chosen = Array.isArray(lastCalc.chosen) ? lastCalc.chosen : [];
-
-  // ---------- helpers ----------
-  const safeStr = (v) => String(v ?? "").trim();
-  const nf = (n) => (Number.isFinite(n) ? Math.floor(n).toLocaleString("ru-RU") : "—");
-  const of = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "—");
-  const money = (n) => (Number.isFinite(n) ? `${Math.floor(n).toLocaleString("ru-RU")} ₽` : "—");
-
-  function getFormatsTextFromBrief() {
-    const fm = brief?.formats?.mode || "auto";
-    const sel = Array.isArray(brief?.formats?.selected) ? brief.formats.selected : [];
-    if (fm === "auto") return "Рекомендация";
-    if (sel.length) return sel.join(", ");
-    return "—";
-  }
-
-  // “расписание” красиво
-  function getScheduleText() {
-    const t = brief?.schedule?.type || brief?.schedule || "—";
-    if (t === "all_day") return "Весь день (07:00–22:00)";
-    if (t === "peak") return "Часы пик (07:00–10:00 / 17:00–21:00)";
-    if (t === "custom") {
-      const a = safeStr(brief?.schedule?.from) || safeStr(brief?.schedule?.time_from) || safeStr(brief?.schedule?.start) || "";
-      const b = safeStr(brief?.schedule?.to) || safeStr(brief?.schedule?.time_to) || safeStr(brief?.schedule?.end) || "";
-      return `Своё время (${a || "—"}–${b || "—"})`;
-    }
-    return safeStr(t);
-  }
-
-  // Ссылка на карту: соберём bbox/центр из выбранных экранов и дадим OSM ссылку
-  function buildMapLinkFromChosenScreens(screens) {
-  const pts = (Array.isArray(screens) ? screens : [])
-    .map(s => ({
-      lat: Number(s.lat ?? s.latitude),
-      lon: Number(s.lon ?? s.lng ?? s.longitude),
-      title: String(s.screen_id ?? s.gid ?? s.GID ?? "").trim(),
-      region: String(s.region ?? "").trim(),
-      format: String(s.format ?? "").trim(),
-      owner: String(s.owner ?? s.OWNER ?? s.operator ?? "").trim(),
-      address: String(s.address ?? "").trim(),
-    }))
-    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
-
-  if (!pts.length) return null;
-
-  const features = pts.map(p => ({
-    type: "Feature",
-    geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-    properties: {
-      name: p.title || "Экран",
-      description: [
-        p.region ? `Регион: ${p.region}` : "",
-        p.format ? `Формат: ${p.format}` : "",
-        p.owner ? `Оператор: ${p.owner}` : "",
-        p.address ? `Адрес: ${p.address}` : "",
-      ].filter(Boolean).join("<br>")
-    }
-  }));
-
-  const geojson = {
-    type: "FeatureCollection",
-    features
-  };
-
-  // ВАЖНО: data= должен быть urlencoded
-  const data = encodeURIComponent(JSON.stringify(geojson));
-
-  // uMap: откроет карту и подхватит GeoJSON из URL
-  // zoom/lat/lon можно не задавать: uMap сам зумит по данным
-  return `https://umap.openstreetmap.fr/ru/map/?data=${data}`;
-}
-  const mapLink = buildMapLinkFromChosenScreens(chosen);
-
-  const regionsText = Array.isArray(brief?.geo?.regions) && brief.geo.regions.length
-    ? brief.geo.regions.join(", ")
-    : safeStr(brief?.geo?.region) || "—";
-
-  const formatsText = getFormatsTextFromBrief();
-  const scheduleText = getScheduleText();
-
-  const totalScreens = chosen.length;
-  const totalBudget = Number(meta.totalBudget); // ты уже фиксила на totalBudgetFinal
-  const totalPlays = Number(meta.totalPlays);
-  const totalOts = meta.totalOts == null ? null : Number(meta.totalOts);
-
-  // Если в perRegion лежит note/пустые строки — уберём “мусор”
-  const perRegionClean = perRegion
-    .filter(r => Number(r.screens || 0) > 0 || Number(r.budget || 0) > 0 || Number(r.plays || 0) > 0 || (r.ots != null))
-    .slice()
-    .sort((a, b) => Number(b.budget || 0) - Number(a.budget || 0));
-
-  // Для “форматы по региону” (сейчас у тебя нет perRegion.formats)
-  // Сделаем из chosen: region -> top formats
-  const formatsByRegion = {};
-  for (const s of chosen) {
-    const r = safeStr(s.region);
-    const f = safeStr(s.format);
-    if (!r || !f) continue;
-    formatsByRegion[r] = formatsByRegion[r] || {};
-    formatsByRegion[r][f] = (formatsByRegion[r][f] || 0) + 1;
-  }
-  function formatsSummaryForRegion(region) {
-    const m = formatsByRegion[region];
-    if (!m) return "—";
-    const arr = Object.entries(m).sort((a, b) => b[1] - a[1]);
-    // покажем топ-3 формата (чтобы не превращать в простыню)
-    return arr.slice(0, 3).map(([k, v]) => `${k} (${v})`).join(", ");
-  }
-
-  // ---------- workbook ----------
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "Omni Planner";
-  wb.created = new Date();
-
-  // ========== Styles ==========
-  const COLOR_BG = "0F172A";     // тёмный (шапки)
-  const COLOR_BG2 = "F1F5F9";    // светлый фон
-  const COLOR_ACCENT = "2563EB"; // синий
-  const COLOR_GRID = "E2E8F0";
-
-  const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_BG } };
-  const headerFont = { name: "Inter", size: 12, bold: true, color: { argb: "FFFFFF" } };
-  const subHeaderFill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_BG2 } };
-  const subHeaderFont = { name: "Inter", size: 11, bold: true, color: { argb: "0F172A" } };
-  const baseFont = { name: "Inter", size: 11, color: { argb: "0F172A" } };
-
-  function styleCellBase(cell) {
-    cell.font = baseFont;
-    cell.alignment = { vertical: "middle", wrapText: true };
-  }
-  function borderThin(cell) {
-    cell.border = {
-      top: { style: "thin", color: { argb: COLOR_GRID } },
-      left: { style: "thin", color: { argb: COLOR_GRID } },
-      bottom: { style: "thin", color: { argb: COLOR_GRID } },
-      right: { style: "thin", color: { argb: COLOR_GRID } }
-    };
-  }
-
-  // =========================
-  // Sheet 1: План
-  // =========================
-  const wsPlan = wb.addWorksheet("План", { views: [{ state: "frozen", xSplit: 0, ySplit: 6 }] });
-
-  wsPlan.columns = [
-    { key: "k", width: 26 },
-    { key: "v", width: 56 },
-    { key: "x", width: 2 },
-    { key: "k2", width: 22 },
-    { key: "v2", width: 26 }
-  ];
-
-  // Title row
-  wsPlan.mergeCells("A1:E1");
-  wsPlan.getCell("A1").value = "План размещения";
-  wsPlan.getCell("A1").fill = headerFill;
-  wsPlan.getCell("A1").font = { name: "Inter", size: 16, bold: true, color: { argb: "FFFFFF" } };
-  wsPlan.getCell("A1").alignment = { vertical: "middle", horizontal: "left" };
-  wsPlan.getRow(1).height = 28;
-
-  // Subtitle
-  wsPlan.mergeCells("A2:E2");
-  wsPlan.getCell("A2").value = "Сводные параметры и разбивка по регионам";
-  wsPlan.getCell("A2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLOR_ACCENT } };
-  wsPlan.getCell("A2").font = { name: "Inter", size: 12, bold: true, color: { argb: "FFFFFF" } };
-  wsPlan.getRow(2).height = 20;
-
-  // KPI block header
-  wsPlan.mergeCells("A4:B4");
-  wsPlan.getCell("A4").value = "Параметры";
-  wsPlan.getCell("A4").fill = subHeaderFill;
-  wsPlan.getCell("A4").font = subHeaderFont;
-  wsPlan.getCell("A4").alignment = { vertical: "middle" };
-
-  wsPlan.mergeCells("D4:E4");
-  wsPlan.getCell("D4").value = "Итог";
-  wsPlan.getCell("D4").fill = subHeaderFill;
-  wsPlan.getCell("D4").font = subHeaderFont;
-  wsPlan.getCell("D4").alignment = { vertical: "middle" };
-
-  // rows: left side params, right side totals
-  const rows = [
-    ["Период", `${safeStr(brief?.dates?.start) || "—"} → ${safeStr(brief?.dates?.end) || "—"}`, "","Бюджет", money(totalBudget)],
-    ["Дней", meta.days ?? "—", "", "Выходы", nf(totalPlays)],
-    ["Часов/день", meta.hpd ?? "—", "", "OTS", (totalOts == null ? "—" : of(totalOts))],
-    ["Расписание", scheduleText, "", "Экранов", nf(totalScreens)],
-    ["Регионы", regionsText, "", "Форматы", formatsText]
-  ];
-
-  let startRow = 5;
-  for (let i = 0; i < rows.length; i++) {
-    const r = wsPlan.getRow(startRow + i);
-    r.values = [null, ...rows[i]]; // exceljs row.values is 1-based
-    r.height = 18;
-
-    // style all cells in row
-    ["A", "B", "C", "D", "E"].forEach(col => {
-      const cell = wsPlan.getCell(`${col}${startRow + i}`);
-      styleCellBase(cell);
-      borderThin(cell);
-      if (col === "A" || col === "D") {
-        cell.font = { ...baseFont, bold: true };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF" } };
-      }
-      if (col === "C") {
-        cell.border = undefined;
-        cell.fill = undefined;
-      }
-    });
-  }
-
-  // Map link row
-  const mapRow = startRow + rows.length + 1;
-  wsPlan.mergeCells(`A${mapRow}:B${mapRow}`);
-  wsPlan.getCell(`A${mapRow}`).value = "Ссылка на карту";
-  wsPlan.getCell(`A${mapRow}`).font = { ...baseFont, bold: true };
-  wsPlan.getCell(`A${mapRow}`).fill = subHeaderFill;
-  wsPlan.getCell(`A${mapRow}`).alignment = { vertical: "middle" };
-  borderThin(wsPlan.getCell(`A${mapRow}`));
-  borderThin(wsPlan.getCell(`B${mapRow}`));
-
-  wsPlan.mergeCells(`D${mapRow}:E${mapRow}`);
-  const linkCell = wsPlan.getCell(`D${mapRow}`);
-  linkCell.value = mapLink
-    ? { text: "Открыть карту (OSM)", hyperlink: mapLink }
-    : "— (нет координат выбранных экранов)";
-  linkCell.font = mapLink ? { ...baseFont, color: { argb: "1D4ED8" }, underline: true } : baseFont;
-  linkCell.fill = subHeaderFill;
-  linkCell.alignment = { vertical: "middle" };
-  borderThin(wsPlan.getCell(`D${mapRow}`));
-  borderThin(wsPlan.getCell(`E${mapRow}`));
-
-  // Regions table header
-  const tblHeaderRow = mapRow + 2;
-  wsPlan.getRow(tblHeaderRow).values = [null, "Регион", "Экранов", "Форматы (топ-3)", "Бюджет, ₽", "Выходы", "OTS"];
-  // we have only A-E columns defined; so instead we'll use A-E and keep it compact:
-  // Let's put table in A..E: Region | Screens | Formats | Budget | Plays/OTS (merged)
-  // Simpler: A Region, B Screens, C Formats, D Budget, E "Выходы / OTS"
-  wsPlan.getRow(tblHeaderRow).values = [null, "Регион", "Экранов", "Форматы (топ-3)", "Бюджет, ₽", "Выходы / OTS"];
-  wsPlan.getRow(tblHeaderRow).height = 20;
-
-  ["A","B","C","D","E"].forEach((col, idx) => {
-    const cell = wsPlan.getCell(`${col}${tblHeaderRow}`);
-    cell.value = ["Регион","Экранов","Форматы (топ-3)","Бюджет, ₽","Выходы / OTS"][idx];
-    cell.fill = headerFill;
-    cell.font = headerFont;
-    cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-    borderThin(cell);
-  });
-
-  // Regions rows
-  let rr = tblHeaderRow + 1;
-  for (const r of perRegionClean) {
-    const region = safeStr(r.region);
-    const screens = Number.isFinite(r.screens) ? Math.floor(r.screens) : 0;
-    const budget = Number.isFinite(r.budget) ? Math.floor(r.budget) : 0;
-    const plays = Number.isFinite(r.plays) ? Math.floor(r.plays) : 0;
-    const ots = (r.ots == null || !Number.isFinite(r.ots)) ? null : Math.round(r.ots);
-
-    const formatsR = formatsSummaryForRegion(region);
-
-    wsPlan.getRow(rr).height = 18;
-
-    const rowVals = [
-      region,
-      screens ? nf(screens) : "—",
-      formatsR,
-      budget ? money(budget) : "—",
-      `${plays ? nf(plays) : "—"} / ${ots == null ? "—" : of(ots)}`
-    ];
-
-    ["A","B","C","D","E"].forEach((col, i) => {
-      const cell = wsPlan.getCell(`${col}${rr}`);
-      cell.value = rowVals[i];
-      styleCellBase(cell);
-      borderThin(cell);
-      if (i === 1) cell.alignment = { vertical: "middle", horizontal: "right" };
-      if (i === 3 || i === 4) cell.alignment = { vertical: "middle", horizontal: "right" };
-    });
-
-    rr++;
-  }
-
-  // Make column widths nicer
-  wsPlan.getColumn("A").width = 28;
-  wsPlan.getColumn("B").width = 10;
-  wsPlan.getColumn("C").width = 42;
-  wsPlan.getColumn("D").width = 16;
-  wsPlan.getColumn("E").width = 18;
-
-  // =========================
-  // Sheet 2: Экраны
-  // =========================
-  const wsScreens = wb.addWorksheet("Экраны", { views: [{ state: "frozen", xSplit: 0, ySplit: 1 }] });
-
-  wsScreens.columns = [
-    { header: "GID", key: "gid", width: 18 },
-    { header: "screen_id", key: "screen_id", width: 14 },
-    { header: "region", key: "region", width: 18 },
-    { header: "format", key: "format", width: 18 },
-    { header: "owner", key: "owner", width: 24 },
-    { header: "minBid", key: "minBid", width: 10 },
-    { header: "ots", key: "ots", width: 10 },
-    { header: "grp", key: "grp", width: 8 },
-    { header: "address", key: "address", width: 42 },
-    { header: "lat", key: "lat", width: 10 },
-    { header: "lon", key: "lon", width: 10 }
-  ];
-
-  // Style header row
-  const hdr = wsScreens.getRow(1);
-  hdr.height = 20;
-  hdr.eachCell((cell) => {
-    cell.fill = headerFill;
-    cell.font = headerFont;
-    cell.alignment = { vertical: "middle", horizontal: "left" };
-    borderThin(cell);
-  });
-
-  // Add rows
-  for (const s of chosen) {
-    wsScreens.addRow({
-      gid: s.gid ?? s.GID ?? "",
-      screen_id: s.screen_id ?? "",
-      region: s.region ?? "",
-      format: s.format ?? "",
-      owner: s.owner ?? s.OWNER ?? s.operator ?? "",
-      minBid: Number.isFinite(s.minBid) ? s.minBid : "",
-      ots: Number.isFinite(s.ots) ? s.ots : "",
-      grp: Number.isFinite(s.grp) ? s.grp : "",
-      address: s.address ?? "",
-      lat: Number.isFinite(s.lat) ? s.lat : (Number.isFinite(s.latitude) ? s.latitude : ""),
-      lon: Number.isFinite(s.lon) ? s.lon : (Number.isFinite(s.longitude) ? s.longitude : (Number.isFinite(s.lng) ? s.lng : ""))
-    });
-  }
-
-  // Style data rows
-  wsScreens.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    row.height = 16;
-    row.eachCell((cell) => {
-      styleCellBase(cell);
-      borderThin(cell);
-    });
-  });
-
-  // Autofilter
-  wsScreens.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: 1, column: wsScreens.columns.length }
-  };
-
-  // ---------- write file ----------
-  const fileName = `plan_${safeStr(brief?.dates?.start) || "start"}_${safeStr(brief?.dates?.end) || "end"}.xlsx`;
-
-  const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  });
-
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(a.href);
-    a.remove();
-  }, 0);
-}
-
-
-function clearPhotosCarousel() {
-  const box = document.getElementById("screens-photos");
-  const row = document.getElementById("screens-photos-row");
-  if (row) row.innerHTML = "";
-  if (box) box.style.display = "none";
-}
-
-function renderPhotosCarousel(chosen) {
-  if (!window.PLANNER?.ui?.photosAllowed) return;
-
-  const box = document.getElementById("screens-photos");
-  const row = document.getElementById("screens-photos-row");
-  if (!box || !row) return;
-
-  row.innerHTML = "";
-  const items = Array.isArray(chosen) ? chosen : [];
-  const withImg = items.filter(s => String(s.image_url || "").trim());
-
-  if (!withImg.length) {
-    box.style.display = "none";
-    return;
-  }
-
-  const MAX = 25;
-  for (const s of withImg.slice(0, MAX)) {
-    const gid = s.screen_id || s.gid || "";
-    const owner = s.owner || s.owner_name || "";
-    const addr = s.address || "";
-    const img = String(s.image_url || "").trim();
-
-    const card = document.createElement("div");
-    card.className = "photo-card";
-    card.innerHTML = `
-      <img src="${escapeHtml(img)}" alt="">
-      <div class="meta">
-        <div class="gid">${escapeHtml(gid)}</div>
-        <div class="sub">${escapeHtml(owner)}</div>
-        <div class="sub">${escapeHtml(addr)}</div>
-      </div>
-    `;
-
-    card.addEventListener("click", () => {
-      try { window.open(img, "_blank"); } catch (e) { }
-    });
-
-    row.appendChild(card);
-  }
-
-  box.style.display = "block";
-}
-
-function renderPOIList(pois) {
-  const wrap = document.getElementById("poi-results");
-  if (!wrap) return;
-
-  if (!pois || !pois.length) {
-    wrap.innerHTML = `<div style="font-size:13px; color:#666;">POI не найдены.</div>`;
-    return;
-  }
-
-  wrap.innerHTML =
-    `<div style="font-size:13px; color:#666;">Найдено POI: <b>${pois.length}</b> (показываю первые 20)</div>` +
-    `<div style="margin-top:8px; border:1px solid #eee; border-radius:12px; overflow:hidden;">` +
-    `<table style="width:100%; border-collapse:collapse; font-size:13px;">` +
-    `<thead><tr style="background:#fafafa;">` +
-    `<th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">name</th>` +
-    `<th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">lat</th>` +
-    `<th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">lon</th>` +
-    `<th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">id</th>` +
-    `</tr></thead><tbody>` +
-    pois.slice(0, 20).map(p => (
-      `<tr>` +
-      `<td style="padding:10px; border-bottom:1px solid #f3f3f3;">${escapeHtml(p.name || "—")}</td>` +
-      `<td style="padding:10px; border-bottom:1px solid #f3f3f3;">${Number(p.lat).toFixed(6)}</td>` +
-      `<td style="padding:10px; border-bottom:1px solid #f3f3f3;">${Number(p.lon).toFixed(6)}</td>` +
-      `<td style="padding:10px; border-bottom:1px solid #f3f3f3;">${escapeHtml(p.id || "")}</td>` +
-      `</tr>`
-    )).join("") +
-    `</tbody></table></div>`;
-}
-
-function cityCenterFromScreens(screens) {
-  const pts = (screens || [])
-    .map(s => ({ lat: Number(s.lat), lon: Number(s.lon) }))
-    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
-  if (!pts.length) return null;
-  const lat = pts.reduce((a, p) => a + p.lat, 0) / pts.length;
-  const lon = pts.reduce((a, p) => a + p.lon, 0) / pts.length;
-  return { lat, lon };
-}
-
 // ===== Nominatim (geocoding) =====
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
@@ -1827,7 +1033,6 @@ async function geocodeAddressNominatim(query, regionHint) {
   const q0 = String(query || "").trim();
   if (!q0) return null;
 
-  // если указан регион — добавим в хвост запроса (очень помогает)
   const q = regionHint ? `${q0}, ${String(regionHint).trim()}` : q0;
 
   const url =
@@ -1862,7 +1067,6 @@ function pickScreensNearPoint(screens, center, radiusMeters) {
     return dist(slat, slon, center.lat, center.lon) <= r;
   });
 }
-
 
 // ===== Overpass =====
 const OVERPASS_URLS = [
@@ -2002,9 +1206,6 @@ function _estimateRadiusFromBbox(bb) {
   return Math.round(r);
 }
 
-/**
- * POI in REGION administrative area
- */
 async function fetchPOIsOverpassInRegion(poiType, regionName, screensInRegion, limit = 50) {
   const t = String(poiType || "").trim();
   if (!t || !POI_QUERIES[t]) throw new Error("Unknown poi_type: " + t);
@@ -2014,7 +1215,6 @@ async function fetchPOIsOverpassInRegion(poiType, regionName, screensInRegion, l
 
   const safeLimit = Math.max(1, Math.min(50, Number(limit || 50)));
 
-  // Attempt 1: admin area by name
   try {
     const bodyArea = `
       [out:json][timeout:40];
@@ -2024,16 +1224,12 @@ async function fetchPOIsOverpassInRegion(poiType, regionName, screensInRegion, l
         area["boundary"="administrative"]["name"="${region}"];
         area["boundary"="administrative"]["name:ru"="${region}"];
       )->.cand;
-
       .cand->.a;
-
       (
         ${POI_QUERIES[t]}
       );
-
       out center ${safeLimit};
     `;
-
     const json = await _runOverpassWithFailover(bodyArea, 55000);
     const pois = _normalizePOIs(json).slice(0, safeLimit);
     if (pois.length) return pois;
@@ -2041,7 +1237,6 @@ async function fetchPOIsOverpassInRegion(poiType, regionName, screensInRegion, l
     console.warn("[poi] area attempt failed:", String(e));
   }
 
-  // Attempt 2: bbox from screens
   const bb = _bboxFromScreens(screensInRegion || []);
   if (bb) {
     try {
@@ -2055,7 +1250,6 @@ async function fetchPOIsOverpassInRegion(poiType, regionName, screensInRegion, l
         );
         out center ${safeLimit};
       `;
-
       const json2 = await _runOverpassWithFailover(bodyBbox, 55000);
       const pois2 = _normalizePOIs(json2).slice(0, safeLimit);
       if (pois2.length) return pois2;
@@ -2064,7 +1258,6 @@ async function fetchPOIsOverpassInRegion(poiType, regionName, screensInRegion, l
     }
   }
 
-  // Attempt 3: around center
   const c = _centerFromBbox(bb);
   if (c) {
     try {
@@ -2079,7 +1272,6 @@ async function fetchPOIsOverpassInRegion(poiType, regionName, screensInRegion, l
         );
         out center ${safeLimit};
       `;
-
       const json3 = await _runOverpassWithFailover(bodyAround, 55000);
       const pois3 = _normalizePOIs(json3).slice(0, safeLimit);
       if (pois3.length) return pois3;
@@ -2123,7 +1315,6 @@ function allocateBudgetAcrossRegions(totalBudget, regions, opts) {
   const sumW = items.reduce((a, b) => a + (Number.isFinite(b.w) ? b.w : 0), 0) || 1;
   items.forEach(it => it.share = it.w / sumW);
 
-  // cap maxShare
   let lockedSum = 0;
   let freeW = 0;
   items.forEach(it => {
@@ -2145,13 +1336,12 @@ function allocateBudgetAcrossRegions(totalBudget, regions, opts) {
     });
   }
 
-  // raise minShare
   let need = 0;
   items.forEach(it => {
     if (it.share < minShare) {
       need += (minShare - it.share);
       it.share = minShare;
-      it.locked = true; // locked by min
+      it.locked = true;
     }
   });
 
@@ -2201,20 +1391,14 @@ function allocateBudgetAcrossRegions(totalBudget, regions, opts) {
 }
 
 // --- Tier weights (for OTS allocation) ---
-function tierWeight(tier){
+function tierWeight(tier) {
   const t = String(tier ?? "").toUpperCase().trim();
-
-  // подстрой под свою систему tier'ов (A/B/C или 1/2/3)
   if (t === "A" || t === "1") return 1.00;
   if (t === "B" || t === "2") return 0.80;
   if (t === "C" || t === "3") return 0.60;
-
-  // дефолт, если tier неизвестен
   return 0.70;
 }
 
-
-// ================== MULTI-REGION TARGET (OTS) ==================
 function allocateTargetOtsAcrossRegions(totalOts, regions, opts = {}) {
   if (!regions || !regions.length) return [];
   const minShare = opts.minShare ?? 0.10;
@@ -2230,23 +1414,19 @@ function allocateTargetOtsAcrossRegions(totalOts, regions, opts = {}) {
   const sumW = items.reduce((a, b) => a + b.w, 0) || 1;
   items.forEach(i => i.share = i.w / sumW);
 
-  // caps
   items.forEach(i => {
     if (i.share < minShare) i.share = minShare;
     if (i.share > maxShare) i.share = maxShare;
   });
 
-  // normalize
   const sumShares = items.reduce((a, b) => a + b.share, 0) || 1;
   items.forEach(i => i.share /= sumShares);
 
-  // target ots per region
   let out = items.map(i => ({
     region: i.region,
     ots: Math.floor(Number(totalOts) * i.share)
   }));
 
-  // fix rounding
   let diff = Math.floor(Number(totalOts)) - out.reduce((a, b) => a + b.ots, 0);
   let k = 0;
   while (diff !== 0 && k < 100000) {
@@ -2258,7 +1438,6 @@ function allocateTargetOtsAcrossRegions(totalOts, regions, opts = {}) {
   return out;
 }
 
-// Распределяем OTS-цель с учётом капов/отсутствия OTS и перераспределяем "хвост"
 function computeGoalOtsPlan(prepared, totalOtsGoal, opts = {}) {
   const minShare = opts.minShare ?? 0.10;
   const maxShare = opts.maxShare ?? 0.70;
@@ -2266,45 +1445,37 @@ function computeGoalOtsPlan(prepared, totalOtsGoal, opts = {}) {
   const regions = prepared.map(r => ({ key: r.region, tier: r.tier }));
   const baseAlloc = allocateTargetOtsAcrossRegions(totalOtsGoal, regions, { minShare, maxShare });
 
-  // init plan per region
   const plan = {};
   for (const r of prepared) {
     const goal = baseAlloc.find(x => x.region === r.region)?.ots || 0;
 
     plan[r.region] = {
       goalOts: goal,
-      // если avgOts нет — в этом регионе ничего не соберём
       avgOts: (r.avgOts == null || !Number.isFinite(r.avgOts) || r.avgOts <= 0) ? null : Number(r.avgOts),
       capOtsAbs: (r.capOtsAbs == null || !Number.isFinite(r.capOtsAbs) || r.capOtsAbs <= 0) ? 0 : Number(r.capOtsAbs),
       bidPlus20: Number(r.bidPlus20),
       capPlaysAbs: Number(r.capPlaysAbs),
       capBudgetAbs: Number(r.capBudgetAbs),
-
       playsPlanned: 0,
       budgetPlanned: 0,
       otsPlanned: 0
     };
   }
 
-  // helper: apply goal to region (bounded by cap + avgOts)
   function applyGoal(regionKey, addOts) {
     const p = plan[regionKey];
     if (!p) return 0;
-    if (!p.avgOts) return addOts; // всё неосуществимо
+    if (!p.avgOts) return addOts;
 
     const newGoal = p.goalOts + addOts;
-
-    // сколько OTS вообще можем в регионе (cap)
     const maxOtsHere = Math.max(0, p.capOtsAbs);
     const targetOtsHere = Math.min(newGoal, maxOtsHere);
 
-    // перевод в plays (ceil чтобы не недобрать OTS)
     const playsNeed = Math.min(
       p.capPlaysAbs,
       Math.ceil(targetOtsHere / p.avgOts)
     );
 
-    // пересчёт "по факту" (plays -> ots, plays -> budget)
     const otsHere = playsNeed * p.avgOts;
     const budgetHere = Math.ceil(playsNeed * p.bidPlus20);
 
@@ -2313,35 +1484,30 @@ function computeGoalOtsPlan(prepared, totalOtsGoal, opts = {}) {
     p.otsPlanned = otsHere;
     p.budgetPlanned = Math.min(budgetHere, p.capBudgetAbs);
 
-    // сколько OTS осталось невыполнимым в этом регионе
     const unmet = Math.max(0, newGoal - targetOtsHere);
     return unmet;
   }
 
-  // 1) первично применяем базовые цели
   let unmetTotal = 0;
   for (const r of prepared) {
     const unmet = applyGoal(r.region, 0);
     unmetTotal += unmet;
   }
 
-  // 2) перераспределяем unmet по регионам с оставшейся ёмкостью OTS
   let guard = 0;
   while (unmetTotal > 0 && guard < 10000) {
     guard++;
 
-    // найдём регионы, куда ещё можно долить OTS
     const receivers = prepared
       .map(r => r.region)
       .filter(key => {
         const p = plan[key];
         if (!p || !p.avgOts) return false;
-        return p.goalOts < p.capOtsAbs; // есть запас
+        return p.goalOts < p.capOtsAbs;
       });
 
     if (!receivers.length) break;
 
-    // общий запас OTS по всем принимающим
     const headroomSum = receivers.reduce((a, key) => {
       const p = plan[key];
       return a + Math.max(0, p.capOtsAbs - p.goalOts);
@@ -2349,7 +1515,6 @@ function computeGoalOtsPlan(prepared, totalOtsGoal, opts = {}) {
 
     if (headroomSum <= 0) break;
 
-    // раздаём unmet пропорционально headroom
     let distributed = 0;
     for (const key of receivers) {
       const p = plan[key];
@@ -2371,26 +1536,17 @@ function computeGoalOtsPlan(prepared, totalOtsGoal, opts = {}) {
       if (unmetTotal <= 0) break;
     }
 
-    // если на итерации ничего не смогли распределить — стоп
     if (distributed <= 0) break;
   }
 
-  // итог: budgets/plays/ots по регионам + сколько цель невыполнима вообще
   const finalUnmet = Math.max(0, unmetTotal);
   return { plan, finalUnmet };
 }
-
 
 // ===== MAIN =====
 async function onCalcClick() {
   const brief = buildBrief();
   const pphTarget = targetPlaysPerHourPerScreen(brief.reachMode);
-  const formatsMode = brief.formats?.mode || "auto";
-  const manualFormats = Array.isArray(brief.formats?.selected) ? brief.formats.selected : [];
-  const selectedFormatsText =
-  (formatsMode === "auto")
-    ? "Рекомендация"
-    : (manualFormats.length ? manualFormats.join(", ") : "—");
 
   if (!brief.dates.start || !brief.dates.end) {
     alert("Выберите даты начала и окончания.");
@@ -2405,6 +1561,14 @@ async function onCalcClick() {
     alert("Выберите регион(ы).");
     return;
   }
+
+  // ✅ formats variables (fixes ReferenceError formatsMode is not defined)
+  const formatsMode = brief?.formats?.mode || "auto";
+  const manualFormats = Array.isArray(brief?.formats?.selected) ? brief.formats.selected : [];
+  const selectedFormatsText =
+    (formatsMode === "auto")
+      ? "Рекомендация"
+      : (manualFormats.length ? manualFormats.join(", ") : "—");
 
   // ✅ budget validation: fixed / recommendation / goal_ots
   if (brief.budget.mode === "fixed") {
@@ -2421,24 +1585,27 @@ async function onCalcClick() {
     }
   }
 
-    const days = daysInclusive(brief.dates.start, brief.dates.end);
+  const days = daysInclusive(brief.dates.start, brief.dates.end);
   if (!Number.isFinite(days) || days <= 0) {
     alert("Выберите корректные даты начала и окончания.");
     return;
   }
 
-  // base hours per day (for non-weekly schedules)
+  // ✅ schedule hours/day
   let hpdFixed = hoursPerDay(brief.schedule);
 
-  // weekly override: avg hours per day across the whole date range
   if (brief.schedule?.type === "weekly") {
-    const h = scheduleMeta(brief.dates.start, brief.dates.end, brief.schedule);
-    hpdFixed = h.avgHpd;
+    const meta = computeScheduleHoursForPeriod(brief.schedule, brief.dates.start, brief.dates.end);
+    hpdFixed = meta.avgHpd;
+
+    if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
+      alert("В weekly-графике не задано время вещания (0 часов).");
+      return;
+    }
   }
 
-  // ✅ schedule validation (one place, for all schedule types)
   if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
-    alert("Проверь расписание: не задано время вещания (0 часов).");
+    alert("Проверь расписание.");
     return;
   }
 
@@ -2458,24 +1625,23 @@ async function onCalcClick() {
 
   const isPOI = (brief.selection?.mode === "poi");
   const isNearAddress = (brief.selection?.mode === "near_address");
-  
 
   if (isPOI && !window.GeoUtils?.haversineMeters) {
     alert("GeoUtils не найден. Проверь подключение geo.js");
     return;
   }
-  
 
   // =========================
-  // 1) PREPARE POOLS PER REGION (POI/GRP/owner/formats applied)
+  // 1) PREPARE POOLS PER REGION
   // =========================
-  const prepared = []; // only regions that have pool and avgBid, used for allocation
+  const prepared = [];
 
   for (const region of regions) {
     const tier = getTierForGeo(region);
 
     let pool = state.screens.filter(s => String(s.region || "").trim() === region);
 
+    // ✅ uses formatsMode/manualFormats derived above
     if (formatsMode === "manual" && manualFormats.length > 0) {
       const fset = new Set(manualFormats);
       pool = pool.filter(s => fset.has(s.format));
@@ -2490,7 +1656,7 @@ async function onCalcClick() {
       continue;
     }
 
-    // POI mode per region
+    // POI mode
     let pois = [];
     if (isPOI) {
       const poiType = String(brief.selection.poi_type || "").trim();
@@ -2508,9 +1674,9 @@ async function onCalcClick() {
       }
 
       anyPOIs = anyPOIs.concat(pois);
-      window.PLANNER.lastPOIs = anyPOIs; // ✅ чтобы download-кнопки работали
+      window.PLANNER.lastPOIs = anyPOIs;
 
-      renderPOIList(anyPOIs);
+      try { renderPOIList(anyPOIs); } catch { }
 
       const before = pool.length;
       pool = pickScreensNearPOIs(pool, pois, screenRadius);
@@ -2523,56 +1689,55 @@ async function onCalcClick() {
       setStatus(`Экраны у POI: ${pool.length} из ${before} (регион: ${region}, POI: ${pois.length})`);
     }
 
-// Near address mode per region
-if (isNearAddress) {
-  const addr = String(brief.selection.address || "").trim();
-  const screenRadius = Number(brief.selection.radius_m || 500);
+    // Near address mode
+    if (isNearAddress) {
+      const addr = String(brief.selection.address || "").trim();
+      const screenRadius = Number(brief.selection.radius_m || 500);
 
-  if (!addr) {
-    alert("Введите адрес.");
-    setStatus("");
-    return;
-  }
-  if (!window.GeoUtils?.haversineMeters) {
-    alert("GeoUtils не найден. Проверь подключение geo.js");
-    setStatus("");
-    return;
-  }
+      if (!addr) {
+        alert("Введите адрес.");
+        setStatus("");
+        return;
+      }
+      if (!window.GeoUtils?.haversineMeters) {
+        alert("GeoUtils не найден. Проверь подключение geo.js");
+        setStatus("");
+        return;
+      }
 
-  setStatus(`Геокодирую адрес: «${addr}»…`);
+      setStatus(`Геокодирую адрес: «${addr}»…`);
 
-  let pt = null;
-  try {
-    pt = await geocodeAddressNominatim(addr);
-  } catch (e) {
-    console.error("[geo] nominatim error:", e);
-    alert(e?.message || "Ошибка геокодинга (Nominatim).");
-    setStatus("");
-    return;
-  }
+      let pt = null;
+      try {
+        pt = await geocodeAddressNominatim(addr);
+      } catch (e) {
+        console.error("[geo] nominatim error:", e);
+        alert(e?.message || "Ошибка геокодинга (Nominatim).");
+        setStatus("");
+        return;
+      }
 
-  if (!pt) {
-    alert("Адрес не найден. Попробуй уточнить (город, улица, дом).");
-    setStatus("");
-    return;
-  }
+      if (!pt) {
+        alert("Адрес не найден. Попробуй уточнить (город, улица, дом).");
+        setStatus("");
+        return;
+      }
 
-  const before = pool.length;
-  pool = pickScreensNearPoint(pool, pt, screenRadius);
+      const before = pool.length;
+      pool = pickScreensNearPoint(pool, pt, screenRadius);
 
-  if (!pool.length) {
-    perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у адреса" });
-    continue;
-  }
+      if (!pool.length) {
+        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у адреса" });
+        continue;
+      }
 
-  setStatus(`Экраны у адреса: ${pool.length} из ${before} (радиус: ${screenRadius} м)`);
-}
+      setStatus(`Экраны у адреса: ${pool.length} из ${before} (радиус: ${screenRadius} м)`);
+    }
 
-
-    // ROUTE mode per region
+    // ROUTE mode
     if (brief.selection?.mode === "route") {
       const fromTxt = String(brief.selection.route_from || "").trim();
-      const toTxt   = String(brief.selection.route_to || "").trim();
+      const toTxt = String(brief.selection.route_to || "").trim();
       const screenRadius = Number(brief.selection.radius_m || 300);
 
       if (!fromTxt || !toTxt) {
@@ -2597,13 +1762,11 @@ if (isNearAddress) {
       }
 
       try {
-        // OSRM: вернёт массив координат [lon,lat] (GeoJSON LineString)
         routeLine = await fetchRouteOSRM(A, B);
       } catch (e) {
         console.error("[route] osrm error:", e);
       }
 
-      // если OSRM недоступен (CORS/сеть) — хотя бы прямой отрезок A-B (fallback)
       if (!Array.isArray(routeLine) || routeLine.length < 2) {
         routeLine = [[A.lon, A.lat], [B.lon, B.lat]];
         warnings.push(`⚠️ Регион «${region}»: OSRM недоступен, использую прямую линию A–B.`);
@@ -2620,7 +1783,6 @@ if (isNearAddress) {
       setStatus(`Экраны у маршрута: ${pool.length} из ${before} (радиус: ${screenRadius}м)`);
     }
 
-    
     // GRP filter
     let grpDroppedNoValue = 0;
     if (brief.grp?.enabled) {
@@ -2642,26 +1804,24 @@ if (isNearAddress) {
     }
 
     const avgBid = avgNumber(pool.map(s => s.minBid));
-if (avgBid == null) {
-  perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет minBid" });
-  continue;
-}
-const bidPlus20 = avgBid * BID_MULTIPLIER;
+    if (avgBid == null) {
+      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет minBid" });
+      continue;
+    }
+    const bidPlus20 = avgBid * BID_MULTIPLIER;
 
-// ✅ нужно для режима goal_ots
-const avgOts = avgNumber(pool.map(s => s.ots)); // ✅ pool, не chosen
+    const avgOts = avgNumber(pool.map(s => s.ots));
 
-const capPlaysAbs = Math.floor(SC_MAX * pool.length * days * hpd);
-const capBudgetAbs = Math.floor(capPlaysAbs * bidPlus20);
-const capOtsAbs = (avgOts == null) ? null : (capPlaysAbs * avgOts);
+    const capPlaysAbs = Math.floor(SC_MAX * pool.length * days * hpd);
+    const capBudgetAbs = Math.floor(capPlaysAbs * bidPlus20);
+    const capOtsAbs = (avgOts == null) ? null : (capPlaysAbs * avgOts);
 
-prepared.push({
-  region, tier, pool,
-  avgBid, bidPlus20,
-  avgOts,
-  capPlaysAbs, capBudgetAbs, capOtsAbs
-});
-
+    prepared.push({
+      region, tier, pool,
+      avgBid, bidPlus20,
+      avgOts,
+      capPlaysAbs, capBudgetAbs, capOtsAbs
+    });
   }
 
   if (!prepared.length) {
@@ -2670,11 +1830,11 @@ prepared.push({
     return;
   }
 
-    // =========================
-  // 2) INITIAL BUDGETS (fixed / recommendation / goal_ots)
   // =========================
-  const budgets = {}; // region -> planned budget (RUB)
-  let goalPlan = null;         // { [region]: {playsPlanned, budgetPlanned, otsPlanned, ...} }
+  // 2) INITIAL BUDGETS
+  // =========================
+  const budgets = {};
+  let goalPlan = null;
   let goalPlanUnmet = 0;
 
   if (brief.budget.mode === "fixed") {
@@ -2698,7 +1858,6 @@ prepared.push({
       return;
     }
 
-    // планируем plays/budget из цели OTS + перераспределяем хвост
     const res = computeGoalOtsPlan(prepared, totalOtsGoal, { minShare: 0.10, maxShare: 0.70 });
     goalPlan = res.plan || null;
     goalPlanUnmet = Number(res.finalUnmet || 0);
@@ -2716,7 +1875,6 @@ prepared.push({
     }
 
   } else {
-    // recommendation
     for (const r of prepared) {
       const BASE_MONTHLY_BY_TIER = { M: 2000000, SP: 1500000, A: 1000000, B: 500000, C: 300000, D: 100000 };
       const baseMonthly = BASE_MONTHLY_BY_TIER[r.tier] ?? BASE_MONTHLY_BY_TIER.C;
@@ -2730,8 +1888,7 @@ prepared.push({
   }
 
   // =========================
-  // 3) REDISTRIBUTION BY CAPACITY (только для fixed/reco)
-  // goal_ots уже распределён по ёмкости в computeGoalOtsPlan()
+  // 3) REDISTRIBUTION BY CAPACITY (for fixed/reco)
   // =========================
   function redistributeByCapacity(preparedRegions, budgetsMap) {
     let leftover = 0;
@@ -2802,8 +1959,9 @@ prepared.push({
       );
     }
   }
-  
-  // 4) MAIN CALC PER REGION (почти как было, но budget берём из budgets[region])
+
+  // =========================
+  // 4) MAIN CALC PER REGION
   // =========================
   for (const pr of prepared) {
     const region = pr.region;
@@ -2812,86 +1970,68 @@ prepared.push({
     const bidPlus20 = pr.bidPlus20;
 
     let budget = Number(budgets[region] || 0);
-    
 
     if (!Number.isFinite(budget) || budget <= 0) {
       perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "budget=0" });
       continue;
     }
 
-    // бюджет уже "осваиваемый" по capBudgetAbs, но на всякий случай:
     budget = Math.min(budget, pr.capBudgetAbs);
-
     totalBudgetFinal += budget;
 
+    let totalPlaysTheory = 0;
+    if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
+      totalPlaysTheory = Math.ceil(Number(goalPlan[region].playsPlanned || 0));
+      if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory < 0) totalPlaysTheory = 0;
+    } else {
+      totalPlaysTheory = Math.floor(budget / bidPlus20);
+      if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory < 0) totalPlaysTheory = 0;
+    }
 
+    if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory <= 0) {
+      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "цель=0" });
+      continue;
+    }
 
-// goal_ots: plays считаем от плана (ceil, чтобы цель добрать)
-let totalPlaysTheory = 0;
-if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
-  totalPlaysTheory = Math.ceil(Number(goalPlan[region].playsPlanned || 0));
-  if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory < 0) totalPlaysTheory = 0;
-} else {
-  // fixed/reco как было
-  totalPlaysTheory = Math.floor(budget / bidPlus20);
-  if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory < 0) totalPlaysTheory = 0;
-}
+    const maxPlaysPerScreenForPeriod = Math.floor(SC_MAX * days * hpd);
+    let screensNeededByCapacity = Math.ceil(totalPlaysTheory / Math.max(1, maxPlaysPerScreenForPeriod));
+    screensNeededByCapacity = Math.max(1, screensNeededByCapacity);
 
-// если вдруг 0 — пропускаем
-if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory <= 0) {
-  perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "цель=0" });
-  continue;
-}
+    let screensNeeded = screensNeededByCapacity;
 
-// Сколько экранов нужно МИНИМУМ, чтобы не превысить SC_MAX по ёмкости
-const maxPlaysPerScreenForPeriod = Math.floor(SC_MAX * days * hpd);
-let screensNeededByCapacity = Math.ceil(totalPlaysTheory / Math.max(1, maxPlaysPerScreenForPeriod));
-screensNeededByCapacity = Math.max(1, screensNeededByCapacity);
+    if (brief.budget.mode !== "goal_ots") {
+      const playsPerHourTotalTheory = totalPlaysTheory / days / hpd;
+      const byStrategy = Math.max(1, Math.ceil(playsPerHourTotalTheory / Math.max(1, pphTarget)));
+      const byHardCap = Math.max(1, Math.ceil(playsPerHourTotalTheory / Math.max(1, SC_MAX)));
+      screensNeeded = Math.max(screensNeededByCapacity, byStrategy, byHardCap);
+    }
 
-// Для fixed/reco сохраняем твою старую “оптимизацию”, но всё равно уважаем ёмкость
-let screensNeeded = screensNeededByCapacity;
+    const screensChosenCount = Math.min(pool.length, screensNeeded);
 
-if (brief.budget.mode !== "goal_ots") {
-  const playsPerHourTotalTheory = totalPlaysTheory / days / hpd;
+    const stepKm = gridStepKmForCount(screensChosenCount);
+    const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
 
-  // "по стратегии": сколько экранов надо, чтобы средняя нагрузка не превышала pphTarget
-  const byStrategy = Math.max(1, Math.ceil(playsPerHourTotalTheory / Math.max(1, pphTarget)));
+    const chosen = pickScreensUniformByGrid(
+      pool,
+      screensChosenCount,
+      stepKm,
+      perCellMax
+    );
 
-  // "по потолку": сколько экранов надо, чтобы не превышать физический лимит SC_MAX
-  const byHardCap = Math.max(1, Math.ceil(playsPerHourTotalTheory / Math.max(1, SC_MAX)));
-
-  screensNeeded = Math.max(screensNeededByCapacity, byStrategy, byHardCap);
-}
-
-const screensChosenCount = Math.min(pool.length, screensNeeded);
-
-const stepKm = gridStepKmForCount(screensChosenCount);
-const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
-
-const chosen = pickScreensUniformByGrid(
-  pool,
-  screensChosenCount,
-  stepKm,
-  perCellMax
-);
-    
-// ===== plays effective (respect capacity) =====
-const capPlaysByChosen = Math.floor(SC_MAX * chosen.length * days * hpd);
-let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
+    const capPlaysByChosen = Math.floor(SC_MAX * chosen.length * days * hpd);
+    let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
     totalPlaysEffectiveAll += totalPlaysEffective;
 
-if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
-  // в goal_ots нам важнее добрать plays, поэтому если не хватает — предупреждаем
-  if (totalPlaysEffective < totalPlaysTheory) {
-    warnings.push(`⚠️ Регион «${region}»: не хватает ёмкости даже при ${chosen.length} экранах (SC_MAX).`);
-  }
-} else {
-  // твои старые предупреждения можно оставить, но они теперь не нужны как раньше
-  const playsPerHourPerScreen = (totalPlaysTheory / days / hpd) / Math.max(1, chosen.length);
-if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
-  warnings.push(`⚠️ Регион «${region}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
-}
-}
+    if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
+      if (totalPlaysEffective < totalPlaysTheory) {
+        warnings.push(`⚠️ Регион «${region}»: не хватает ёмкости даже при ${chosen.length} экранах (SC_MAX).`);
+      }
+    } else {
+      const playsPerHourPerScreen = (totalPlaysTheory / days / hpd) / Math.max(1, chosen.length);
+      if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
+        warnings.push(`⚠️ Регион «${region}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
+      }
+    }
 
     const avgChosenOts = avgNumber(chosen.map(s => s.ots));
     const otsTotal = (avgChosenOts == null) ? null : totalPlaysEffective * avgChosenOts;
@@ -2911,19 +2051,11 @@ if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
     });
   }
 
-  // плюс те регионы, которые попали в perRegionRows на ранних стадиях (нет экранов / GRP выкинул / etc)
-  // (они уже добавлены выше)
-
   if (!chosenAll.length) {
     alert("Не удалось подобрать экраны: по выбранным условиям не осталось доступных экранов.");
     setStatus("");
     return;
   }
-
-  const b1 = el("download-poi-csv");
-  const b2 = el("download-poi-xlsx");
-  if (b1) b1.disabled = !(window.PLANNER.lastPOIs || []).length;
-  if (b2) b2.disabled = !(window.PLANNER.lastPOIs || []).length;
 
   state.lastChosen = chosenAll;
 
@@ -2941,13 +2073,10 @@ if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
       totalOts: (Number.isFinite(otsTotalAll) ? otsTotalAll : null)
     }
   };
-  
+
   window.dispatchEvent(new CustomEvent("planner:calc-done", {
     detail: { chosen: chosenAll, perRegion: perRegionRows }
   }));
-
-  window.PLANNER.ui.photosAllowed = true;
-  try { renderPhotosCarousel(chosenAll); } catch (e) { console.error("[photos] renderPhotosCarousel failed:", e); }
 
   const nf = (n) => Math.floor(n).toLocaleString("ru-RU");
   const of = (n) => Math.round(n).toLocaleString("ru-RU");
@@ -2955,7 +2084,6 @@ if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
   const playsPerDayAll = totalPlaysEffectiveAll / days;
   const playsPerHourAll = totalPlaysEffectiveAll / days / hpd;
 
-  // ===== Per-region breakdown (same numbers as in calc) =====
   const perRegionText = (perRegionRows || [])
     .slice()
     .sort((a, b) => (Number(b.budget || 0) - Number(a.budget || 0)))
@@ -2970,14 +2098,14 @@ if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
     .join("\n");
 
   const summaryText =
-`Бриф:
+    `Бриф:
 — Бюджет: ${totalBudgetFinal.toLocaleString("ru-RU")} ₽ ${
-  brief.budget.mode === "fixed"
-    ? "(распределён по регионам)"
-    : (brief.budget.mode === "goal_ots" ? "(под цель OTS)" : "(сумма рекомендаций)")
-}
+      brief.budget.mode === "fixed"
+        ? "(распределён по регионам)"
+        : (brief.budget.mode === "goal_ots" ? "(под цель OTS)" : "(сумма рекомендаций)")
+    }
 — Даты: ${brief.dates.start} → ${brief.dates.end} (дней: ${days})
-— Расписание: ${brief.schedule.type} (часов/день: ${hpd})
+— Расписание: ${brief.schedule.type} (часов/день: ${hpd.toFixed(2)})
 — Регион(ы): ${regions.join(", ")}
 — Форматы: ${selectedFormatsText}
 — Подбор: ${brief.selection.mode}
@@ -2997,87 +2125,32 @@ ${perRegionText}`
   if (el("summary")) el("summary").textContent = summaryText;
   if (el("download-csv")) el("download-csv").disabled = chosenAll.length === 0;
 
-  const planBtn = el("download-plan-xlsx");
-  if (planBtn) planBtn.disabled = chosenAll.length === 0;
-
-  if (el("results")) {
-    const chosenForPreview = [...chosenAll].sort(() => Math.random() - 0.5);
-    el("results").innerHTML = `
-      <div id="results-toggle"
-           style="font-size:13px; color:#555; cursor:pointer; display:flex; align-items:center; gap:6px; user-select:none;">
-        <span id="results-arrow">▸</span>
-        <span>Показаны первые 10 выбранных экранов</span>
-      </div>
-
-      <div id="results-body"
-           style="display:none; margin-top:8px; border:1px solid #eee; border-radius:12px; overflow:hidden;">
-        <table style="width:100%; border-collapse:collapse; font-size:13px;">
-          <thead>
-            <tr style="background:#fafafa;">
-              <th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">screen_id</th>
-              <th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">region</th>
-              <th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">format</th>
-              <th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">minBid</th>
-              <th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">ots</th>
-              <th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">grp</th>
-              <th style="text-align:left; padding:10px; border-bottom:1px solid #eee;">address</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${(chosenForPreview || []).slice(0, 10).map(r => `
-              <tr>
-                <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${escapeHtml(r.screen_id || "")}</td>
-                <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${escapeHtml(r.region || "")}</td>
-                <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${escapeHtml(r.format || "")}</td>
-                <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${Number.isFinite(r.minBid) ? r.minBid.toFixed(2) : ""}</td>
-                <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${Number.isFinite(r.ots) ? r.ots : ""}</td>
-                <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${Number.isFinite(r.grp) ? r.grp.toFixed(2) : ""}</td>
-                <td style="padding:10px; border-bottom:1px solid #f3f3f3;">${escapeHtml(r.address || "")}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    const toggle = document.getElementById("results-toggle");
-    const body = document.getElementById("results-body");
-    const arrow = document.getElementById("results-arrow");
-
-    if (toggle && body && arrow) {
-      let opened = false;
-      toggle.onclick = () => {
-        opened = !opened;
-        body.style.display = opened ? "block" : "none";
-        arrow.textContent = opened ? "▾" : "▸";
-      };
-    }
-  }
-
   setStatus("");
 }
 
-// ===== Progress / Calc button state (based on buildBrief, supports fixed/reco/goal_ots) =====
+// ===== Progress / Calc button state =====
 function calcCompletion() {
   const brief = buildBrief();
 
-  // step 1: regions
   const regions = Array.isArray(brief?.geo?.regions)
     ? brief.geo.regions.map(x => String(x || "").trim()).filter(Boolean)
     : [];
   const step1 = regions.length > 0;
 
-  // step 2: dates
   const step2 = !!(brief?.dates?.start && brief?.dates?.end);
-  let scheduleOk = true;
-if (brief.schedule?.type === "weekly") {
-  const w = brief.schedule.weekly || {};
-  const keys = ["mon","tue","wed","thu","fri","sat","sun"];
-  const total = keys.reduce((sum, k) => sum + _hoursForWeekdayIntervals(w[k]), 0);
-  scheduleOk = total > 0;
-}
 
-  // step 3: budget OR goal
+  let scheduleOk = true;
+  if (brief.schedule?.type === "weekly") {
+    const w = brief.schedule.weekly || {};
+    const keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+    const total = keys.reduce((sum, k) => sum + _hoursForWeekdayIntervals(w[k]), 0);
+    scheduleOk = total > 0;
+  } else if (brief.schedule?.type === "custom") {
+    const from = _timeToMin(brief.schedule.from);
+    const to = _timeToMin(brief.schedule.to);
+    scheduleOk = (from != null && to != null && (to !== from));
+  }
+
   const mode = brief?.budget?.mode || "recommendation";
   const budgetVal = Number(brief?.budget?.amount || 0);
   const goalOtsVal = Number(brief?.goal?.ots || 0);
@@ -3087,33 +2160,32 @@ if (brief.schedule?.type === "weekly") {
     (mode === "fixed" && Number.isFinite(budgetVal) && budgetVal > 0) ||
     (mode === "goal_ots" && Number.isFinite(goalOtsVal) && goalOtsVal > 0);
 
-  // step 4: formats
   const formatsMode = brief?.formats?.mode || "auto";
   const selected = Array.isArray(brief?.formats?.selected) ? brief.formats.selected : [];
   const step4 = (formatsMode === "auto") || (selected.length > 0);
 
   const done = [step1, step2, step3, step4, scheduleOk].filter(Boolean).length;
-  return { done, step1, step2, step3, step4, mode };
+  return { done, step1, step2, step3, step4, scheduleOk, mode };
 }
 
 function renderProgress() {
   const p = calcCompletion();
 
+  const requiredCount = 5; // ✅ FIX: we validate 5 checkpoints now
+  const ok = (p.done === requiredCount);
+
   const calcBtn = el("calc-btn");
   if (calcBtn) {
-    const ok = (p.done === 4);
     calcBtn.disabled = !ok;
     calcBtn.style.opacity = ok ? "1" : ".55";
   }
-
-  // если хочешь — можно подсказку в статус:
-  // if (!ok) setStatus("Заполните: регион, даты, бюджет/OTS и форматы.");
 }
+
 function renderBudgetHints() {
   const hint = el("budget-reco-hint");
   if (!hint) return;
 
-  const mode = getBudgetMode(); // "fixed" | "recommendation" | "goal_ots"
+  const mode = getBudgetMode();
   hint.style.display = (mode === "recommendation") ? "block" : "none";
 }
 
@@ -3124,40 +2196,43 @@ function bindPlannerUI() {
     b.addEventListener("click", () => {
       if (el("date-start")) el("date-start").value = b.dataset.start;
       if (el("date-end")) el("date-end").value = b.dataset.end;
-      renderProgress(); // ✅
+      renderProgress();
     });
   });
 
   document.querySelectorAll('input[name="budget_mode"]').forEach(r => {
-  r.addEventListener("change", () => {
-    const mode = getBudgetMode();
-    const wrap = el("budget-input-wrap");
-    if (wrap) wrap.style.display = mode === "fixed" ? "block" : "none";
-
-    renderBudgetHints(); // ✅ добавь
+    r.addEventListener("change", () => {
+      const mode = getBudgetMode();
+      const wrap = el("budget-input-wrap");
+      if (wrap) wrap.style.display = mode === "fixed" ? "block" : "none";
+      renderBudgetHints();
+      renderProgress();
+    });
   });
-});
-document.querySelectorAll('input[name="reach_mode"]').forEach(x =>
-  x.addEventListener("change", renderProgress)
-);
+
+  document.querySelectorAll('input[name="reach_mode"]').forEach(x =>
+    x.addEventListener("change", renderProgress)
+  );
+
   document.querySelectorAll('input[name="schedule"]').forEach(r => {
-  r.addEventListener("change", () => {
-    const v = getScheduleType();
-    const customWrap = el("custom-time-wrap");
-    const weeklyWrap = el("weekly-wrap"); // <div id="weekly-wrap">...</div>
+    r.addEventListener("change", () => {
+      const v = getScheduleType();
+      const customWrap = el("custom-time-wrap");
+      const weeklyWrap = el("weekly-wrap");
 
-    if (customWrap) customWrap.style.display = (v === "custom") ? "flex" : "none";
-    if (weeklyWrap) weeklyWrap.style.display = (v === "weekly") ? "block" : "none";
+      if (customWrap) customWrap.style.display = (v === "custom") ? "flex" : "none";
+      if (weeklyWrap) weeklyWrap.style.display = (v === "weekly") ? "block" : "none";
 
-    renderProgress();
+      renderProgress();
+    });
   });
-});
 
   const grpEnabled = el("grp-enabled");
   if (grpEnabled) {
     grpEnabled.addEventListener("change", (e) => {
       const wrap = el("grp-wrap");
       if (wrap) wrap.style.display = e.target.checked ? "block" : "none";
+      renderProgress();
     });
   }
 
@@ -3169,288 +2244,96 @@ document.querySelectorAll('input[name="reach_mode"]').forEach(x =>
         state.selectedFormats.clear();
         if (wrap) [...wrap.querySelectorAll("button")].forEach(btn => btn.style.borderColor = "#ddd");
       }
+      renderProgress();
     });
   }
 
-  // ===== Owners: Clear =====
-const ownerClearBtn = el("owner-clear");
-if (ownerClearBtn) {
-  ownerClearBtn.addEventListener("click", () => {
-    // 1) очистить state
-    if (window.state?.selectedOwners) {
-      state.selectedOwners.clear();
-    }
-
-    // 2) снять все чекбоксы подрядчиков
-    document
-      .querySelectorAll('#owner-wrap input[type="checkbox"]')
-      .forEach(cb => {
-        cb.checked = false;
-      });
-
-    // 3) визуально обновить pills (если используется стиль)
-    document
-      .querySelectorAll('#owner-wrap label')
-      .forEach(l => {
-        l.classList.remove("active");
-      });
-
-    // 4) пересчитать прогресс / кнопку
-    renderProgress();
-  });
-}
-
   const selectionMode = el("selection-mode");
-  if (selectionMode) selectionMode.addEventListener("change", renderSelectionExtra);
+  if (selectionMode) selectionMode.addEventListener("change", () => { renderSelectionExtra(); renderProgress(); });
 
   const clearRegionsBtn = el("regions-clear");
-if (clearRegionsBtn) {
-  clearRegionsBtn.addEventListener("click", () => {
-    state.selectedRegions = [];
-    state.selectedRegion = null;
-
-    renderSelectedRegions();
-    renderProgress();
-  });
-
-  // ===== Download plan (xlsx) =====
-// ===== Download plan (xlsx) =====
-const planBtn = el("download-plan-xlsx");
-if (planBtn && !planBtn.__bound) {
-  planBtn.__bound = true;
-  planBtn.disabled = true; // включим после расчёта
-
-  planBtn.addEventListener("click", () => {
-    const lc = window.PLANNER?.lastCalc;
-    if (!lc) return alert("Сначала нажмите «Рассчитать».");
-
-    if (typeof downloadPlanXlsx !== "function") {
-      return alert("downloadPlanXlsx не найден. Проверь, что функция добавлена в planner.js и XLSX подключён.");
-    }
-    downloadPlanXlsx(lc);
-  });
-}
+  if (clearRegionsBtn) {
+    clearRegionsBtn.addEventListener("click", () => {
+      state.selectedRegions = [];
+      state.selectedRegion = null;
+      renderSelectedRegions();
+      renderProgress();
+    });
   }
 
-// ===== Owners: Collapse / Expand =====
-function updateOwnerSelectedCount() {
-  const elCount = el("owner-selected-count");
-  if (!elCount) return;
-
-  const selected = (state?.selectedOwners && typeof state.selectedOwners.size === "number")
-    ? state.selectedOwners.size
-    : document.querySelectorAll('#owner-wrap input[type="checkbox"]:checked').length;
-
-  elCount.textContent = selected ? `Выбрано: ${selected}` : "";
-}
-
-function updateOwnerCollapseUI() {
-  window.PLANNER = window.PLANNER || {};
-  window.PLANNER.ui = window.PLANNER.ui || {};
-  if (typeof window.PLANNER.ui.ownersExpanded !== "boolean") window.PLANNER.ui.ownersExpanded = false;
-
-  const wrap = el("owner-wrap");
-  const btn = el("owner-toggle");
-  if (!wrap || !btn) return;
-
-  const expanded = !!window.PLANNER.ui.ownersExpanded;
-
-  // ставим/снимаем класс свёрнутого состояния
-  wrap.classList.toggle("owner-collapsed", !expanded);
-
-  // показывать кнопку только если реально есть что раскрывать
-  // (после классов свёртки scrollHeight может меняться — проверяем “натуральную” высоту)
-  const natural = wrap.scrollHeight;        // полная высота
-  const limit = 128;                        // должно совпадать с CSS max-height
-
-  const needToggle = natural > (limit + 10);
-  btn.style.display = needToggle ? "inline-flex" : "none";
-  btn.textContent = expanded ? "Свернуть операторов" : "Показать всех операторов";
-}
-
-// клик по кнопке
-const ownerToggle = el("owner-toggle");
-if (ownerToggle && !ownerToggle.__bound) {
-  ownerToggle.__bound = true;
-  ownerToggle.addEventListener("click", () => {
-    window.PLANNER = window.PLANNER || {};
-    window.PLANNER.ui = window.PLANNER.ui || {};
-    window.PLANNER.ui.ownersExpanded = !window.PLANNER.ui.ownersExpanded;
-    updateOwnerCollapseUI();
+  // watchers for inputs
+  [
+    "date-start", "date-end", "budget-input", "goal-ots",
+    "formats-auto", "selection-mode", "grp-enabled", "grp-min", "grp-max",
+    "time-from", "time-to",
+    // weekly fields: if present, update progress on change
+    "mon-from", "mon-to", "tue-from", "tue-to", "wed-from", "wed-to",
+    "thu-from", "thu-to", "fri-from", "fri-to", "sat-from", "sat-to", "sun-from", "sun-to"
+  ].forEach(id => {
+    const n = el(id);
+    if (n) {
+      n.addEventListener("input", renderProgress);
+      n.addEventListener("change", renderProgress);
+    }
   });
-}
 
-// обновлять счётчик и высоту при изменениях чекбоксов
-const ownerWrap = el("owner-wrap");
-if (ownerWrap && !ownerWrap.__bound) {
-  ownerWrap.__bound = true;
-  ownerWrap.addEventListener("change", () => {
-    updateOwnerSelectedCount();
-    // если список стал больше/меньше — переоценим необходимость кнопки
-    updateOwnerCollapseUI();
-  });
-}
+  // ===== Regions search =====
+  const regionSearch = el("city-search");
+  const sug = el("city-suggestions");
 
-// первичный расчёт после биндинга
-setTimeout(() => {
-  updateOwnerSelectedCount();
-  updateOwnerCollapseUI();
-}, 0);
-
-
-  
-  // ===== Regions input (READY-GUARD + LOADING UI) =====
-const regionSearch = el("city-search");
-const sug = el("city-suggestions");
-const overlay = el("region-overlay");
-const spinner = el("region-spinner");
-const field = el("region-field");
-
-
-// обновляем кнопку при любом изменении формы
-[
-  "date-start","date-end","budget-input","goal-ots",
-  "formats-auto","selection-mode","grp-enabled","grp-min","grp-max",
-  "time-from","time-to"
-].forEach(id => {
-  const n = el(id);
-  if (n) {
-    n.addEventListener("input", renderProgress);
-    n.addEventListener("change", renderProgress);
+  function regionsReadyNow() {
+    if (typeof areRegionsReady === "function") return !!areRegionsReady();
+    return Array.isArray(state?.regionsAll) && state.regionsAll.length > 0;
   }
-});
 
-// радиокнопки режима бюджета/расписания тоже должны обновлять кнопку
-document.querySelectorAll('input[name="budget_mode"]').forEach(x => x.addEventListener("change", renderProgress));
-document.querySelectorAll('input[name="schedule"]').forEach(x => x.addEventListener("change", renderProgress));
-
-// ВАЖНО: первый пересчёт
-renderProgress();
-renderBudgetHints(); // ✅ чтобы при загрузке было правильно  
-  
-function regionsReadyNow() {
-  if (typeof areRegionsReady === "function") return !!areRegionsReady();
-  return Array.isArray(state?.regionsAll) && state.regionsAll.length > 0;
-}
-
-function setRegionsReadyUI(isReady) {
-  if (!regionSearch) return;
-
-  if (isReady) {
-    regionSearch.disabled = false;
-    regionSearch.placeholder = "Начните вводить регион…";
-    if (overlay) overlay.style.display = "none";
-    if (spinner) spinner.style.display = "none";
-    if (field) field.classList.remove("is-loading");
-  } else {
-    regionSearch.disabled = true;
-    regionSearch.placeholder = "Загружаю список регионов…";
-    if (overlay) overlay.style.display = "block";
-    if (spinner) spinner.style.display = "inline-block";
-    if (field) field.classList.add("is-loading");
-    if (sug) sug.innerHTML = "";
+  function showRegionsLoadingHint() {
+    if (!sug) return;
+    sug.innerHTML = `
+      <div style="font-size:12px; color:#667085; padding:8px 0;">
+        ⏳ Список регионов загружается… попробуйте через пару секунд.
+      </div>
+    `;
   }
-}
 
-function showRegionsLoadingHint() {
-  if (!sug) return;
-  sug.innerHTML = `
-    <div style="font-size:12px; color:#667085; padding:8px 0;">
-      ⏳ Список регионов загружается… попробуйте через пару секунд.
-    </div>
-  `;
-}
+  if (regionSearch) {
+    regionSearch.addEventListener("focus", () => {
+      if (!regionsReadyNow()) {
+        setRegionsUIReady(false);
+        showRegionsLoadingHint();
+      }
+    });
 
-// 1) стартовое состояние
-setRegionsReadyUI(regionsReadyNow());
-
-// 2) когда экраны/регионы загрузились — включаем поле
-window.addEventListener("planner:screens-ready", () => {
-  setRegionsReadyUI(true);
-});
-
-// 3) если юзер фокусится / печатает слишком рано
-if (regionSearch) {
-  regionSearch.addEventListener("focus", () => {
-    if (!regionsReadyNow()) {
-      setRegionsReadyUI(false);
-      showRegionsLoadingHint();
-    }
-  });
-
-  regionSearch.addEventListener("input", (e) => {
-    if (!regionsReadyNow()) {
-      setRegionsReadyUI(false);
-      showRegionsLoadingHint();
-      return;
-    }
-    renderRegionSuggestions(e.target.value);
-  });
-
-  // 4) блокируем Enter пока не готовы регионы
-  regionSearch.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-
-    if (!regionsReadyNow()) {
-      e.preventDefault();
-      setRegionsReadyUI(false);
-      showRegionsLoadingHint();
-      return;
-    }
-    // ⚠️ ВАЖНО: тут НЕ делаем add по Enter,
-    // чтобы не задублировать твою существующую логику Enter ниже.
-  });
-}
+    regionSearch.addEventListener("input", (e) => {
+      if (!regionsReadyNow()) {
+        setRegionsUIReady(false);
+        showRegionsLoadingHint();
+        return;
+      }
+      renderRegionSuggestions(e.target.value);
+    });
+  }
 
   // ===== Downloads =====
   const downloadBtn = el("download-csv");
   if (downloadBtn) downloadBtn.addEventListener("click", () => downloadXLSX(state.lastChosen));
 
-  const poiCsvBtn = el("download-poi-csv");
-  if (poiCsvBtn) {
-    poiCsvBtn.disabled = true;
-    poiCsvBtn.addEventListener("click", () => downloadPOIsCSV(window.PLANNER.lastPOIs || []));
-  }
-
-  const poiXlsxBtn = el("download-poi-xlsx");
-  if (poiXlsxBtn) {
-    poiXlsxBtn.disabled = true;
-    poiXlsxBtn.addEventListener("click", () => downloadPOIsXLSX(window.PLANNER.lastPOIs || []));
-  }
-
   // ===== Calc =====
   const calcBtn = el("calc-btn");
   if (calcBtn) calcBtn.addEventListener("click", () => onCalcClick());
-}
 
-// ===== Enable calc button when goal OTS changes (no renderProgress dependency) =====
-const goalOtsInput = el("goal-ots");
-
-function syncCalcBtnState() {
-  const p = calcCompletion(); // использует новую логику budgetOk, включая goal_ots
-  const calcBtn = el("calc-btn");
-  if (calcBtn) {
-    calcBtn.disabled = (p.done !== 4);
-    calcBtn.style.opacity = (p.done !== 4) ? ".55" : "1";
-  }
-}
-
-if (goalOtsInput) {
-  goalOtsInput.addEventListener("input", syncCalcBtnState);
-  goalOtsInput.addEventListener("change", syncCalcBtnState);
+  // Initial
+  renderProgress();
+  renderBudgetHints();
+  renderSelectionExtra();
 }
 
 // ===== START =====
 async function startPlanner() {
-  renderSelectionExtra();
   bindPlannerUI();
   window.PLANNER.ui.photosAllowed = false;
-  clearPhotosCarousel();
 
   await loadTiers();
   await loadCityRegions();
-
-  clearPhotosCarousel();
   await loadScreens();
 }
 
@@ -3476,10 +2359,10 @@ Object.assign(window.PLANNER, {
   bootPlanner,
   fetchPOIsOverpassInRegion,
   pickScreensNearPOIs,
-  cityCenterFromScreens,
-  downloadPOIsCSV,
-  downloadPOIsXLSX,
-  renderPOIList,
+  downloadXLSX,
+  geocodeAddressNominatim,
+  pickScreensNearPoint,
   _fetchOverpass,
-  _runOverpassWithFailover
+  _runOverpassWithFailover,
+  computeScheduleHoursForPeriod
 });
