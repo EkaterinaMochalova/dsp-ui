@@ -2385,6 +2385,12 @@ function computeGoalOtsPlan(prepared, totalOtsGoal, opts = {}) {
 async function onCalcClick() {
   const brief = buildBrief();
   const pphTarget = targetPlaysPerHourPerScreen(brief.reachMode);
+  const formatsMode = brief.formats?.mode || "auto";
+  const manualFormats = Array.isArray(brief.formats?.selected) ? brief.formats.selected : [];
+  const selectedFormatsText =
+  (formatsMode === "auto")
+    ? "Рекомендация"
+    : (manualFormats.length ? manualFormats.join(", ") : "—");
 
   if (!brief.dates.start || !brief.dates.end) {
     alert("Выберите даты начала и окончания.");
@@ -2424,9 +2430,16 @@ if (!Number.isFinite(days) || days <= 0) {
 let hpdFixed = hoursPerDay(brief.schedule);
 
 // weekly override
+
 if (brief.schedule?.type === "weekly") {
-  const h = computeScheduleHoursForPeriod(brief.schedule, brief.dates.start, brief.dates.end);
+  const h = scheduleMeta(brief.dates.start, brief.dates.end, brief.schedule);
   hpdFixed = h.avgHpd;
+
+  if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
+    alert("В weekly-графике не задано время вещания (0 часов).");
+    return;
+  }
+}
 
   // валидация: weekly пустой
   if (!Number.isFinite(hpdFixed) || hpdFixed <= 0) {
