@@ -2763,8 +2763,8 @@ if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
 }
 }
 
-    const avgOts = avgNumber(pool.map(s => s.ots));
-    const otsTotal = (avgOts == null) ? null : totalPlaysEffective * avgOts;
+    const avgChosenOts = avgNumber(chosen.map(s => s.ots));
+    const otsTotal = (avgChosenOts == null) ? null : totalPlaysEffective * avgChosenOts;
     if (avgOts == null) hasOts = false;
     if (otsTotal != null) otsTotalAll += otsTotal;
 
