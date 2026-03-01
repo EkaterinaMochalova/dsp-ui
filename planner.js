@@ -291,13 +291,69 @@ function _hoursForWeekdayIntervals(list){
   return list.reduce((sum, it) => sum + _intervalHours(it), 0);
 }
 
-function computeScheduleHoursForPeriod(schedule, startStr, endStr){
-  const days = daysInclusive(startStr, endStr);
-  if (!days || days <= 0) return { days: 0, totalHours: 0, avgHpd: 0 };
+// ===== Weekly schedule helpers =====
 
-  if (!schedule || typeof schedule !== "object") {
-    return { days, totalHours: 0, avgHpd: 0 };
+// mon..sun
+function _weekdayKeyFromDate(dt) {
+  // JS: 0=Sun..6=Sat
+  const d = dt.getDay();
+  return (d === 0) ? "sun" :
+         (d === 1) ? "mon" :
+         (d === 2) ? "tue" :
+         (d === 3) ? "wed" :
+         (d === 4) ? "thu" :
+         (d === 5) ? "fri" : "sat";
+}
+
+// "HH:MM" -> minutes from 0..1440
+function _timeToMin(t) {
+  const s = String(t || "").trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = Number(m[1]), mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+function _hoursForWeekdayIntervals(intervals) {
+  if (!Array.isArray(intervals) || !intervals.length) return 0;
+
+  let minutes = 0;
+
+  for (const it of intervals) {
+    const a = _timeToMin(it?.from);
+    const b = _timeToMin(it?.to);
+    if (a == null || b == null) continue;
+    if (b >= a) minutes += (b - a);
+    else minutes += (1440 - a) + b;
   }
+
+  return Math.max(0, minutes / 60);
+}
+
+window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
+  const keys = ["mon","tue","wed","thu","fri","sat","sun"];
+  const out = { mon:[], tue:[], wed:[], thu:[], fri:[], sat:[], sun:[] };
+
+  for (const k of keys) {
+    const fromEl = document.getElementById(`${k}-from`);
+    const toEl   = document.getElementById(`${k}-to`);
+
+    const from = String(fromEl?.value || "").trim();
+    const to   = String(toEl?.value || "").trim();
+
+    // Если день выключен, можно оставить пустым
+    if (!from || !to) continue;
+
+    out[k].push({ from, to });
+  }
+
+  return out;
+};
+
+function scheduleMeta(startStr, endStr, schedule) {
+  const days = daysInclusive(startStr, endStr);
 
   // old modes
   if (schedule.type === "all_day" || schedule.type === "peak" || schedule.type === "custom") {
@@ -305,27 +361,29 @@ function computeScheduleHoursForPeriod(schedule, startStr, endStr){
     const totalHours = hpd * days;
     return { days, totalHours, avgHpd: hpd };
   }
-  window.getWeeklyScheduleFromUI = function () { ... return { mon:[...], ... } }
 
   // weekly mode
   if (schedule.type === "weekly") {
     const weekly = schedule.weekly || {};
     let totalHours = 0;
 
+    const start = new Date(startStr + "T00:00:00");
+
     for (let i = 0; i < days; i++) {
-      const dt = new Date(startStr + "T00:00:00");
-      dt.setDate(dt.getDate() + i);
+      const dt = new Date(start);
+      dt.setDate(start.getDate() + i);
 
       const key = _weekdayKeyFromDate(dt); // mon..sun
       totalHours += _hoursForWeekdayIntervals(weekly[key]);
     }
 
-    const avgHpd = totalHours / days;
+    const avgHpd = days ? (totalHours / days) : 0;
     return { days, totalHours, avgHpd };
   }
 
   // fallback
-  return { days, totalHours: 0, avgHpd: 0 };
+  const hpd = hoursPerDay({ type: "all_day" });
+  return { days, totalHours: hpd * days, avgHpd: hpd };
 }
 
 function formatMeta(fmt) {
