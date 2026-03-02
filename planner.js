@@ -161,6 +161,7 @@ const state = {
   lastChosen: [],
 
   // Owners (optional)
+  ownersAll: [],          // ✅ список операторов
   selectedOwners: new Set()
 };
 
@@ -410,6 +411,12 @@ function formatMeta(fmt) {
     label: fmt,
     desc: "Описание формата пока не задано (можно добавить в словарь FORMAT_LABELS)."
   };
+}
+
+function getScreensFilteredByOwner(pool) {
+  const sel = state.selectedOwners;
+  if (!sel || sel.size === 0) return pool;
+  return (pool || []).filter(s => sel.has(String(s.owner ?? "").trim()));
 }
 
 // ===== UI: selection extra =====
@@ -664,6 +671,12 @@ async function loadScreens() {
     state.regionsByCity[c] = reg;
     if (!state.regionsAll.includes(reg)) state.regionsAll.push(reg);
   }
+
+  state.ownersAll = [...new Set(
+  state.screens
+    .map(s => String(s.owner ?? s.Owner ?? "").trim())
+    .filter(Boolean)
+)].sort((a,b) => a.localeCompare(b, "ru"));
   state.regionsAll.sort((a, b) => a.localeCompare(b, "ru"));
 
   // ✅ регионы готовы — снимаем блокировку
@@ -676,6 +689,7 @@ async function loadScreens() {
 
   renderFormats();
   renderSelectedRegions();
+  renderOwners();
 
   setStatus(
     `Всего доступно: ` +
@@ -691,6 +705,36 @@ async function loadScreens() {
       detail: { count: state.screens.length }
     })
   );
+}
+
+function renderOwners() {
+  const wrap = el("owner-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  const owners = Array.isArray(state.ownersAll) ? state.ownersAll : [];
+  owners.forEach(owner => {
+    const b = document.createElement("button");
+    cssButtonBase(b);
+    b.textContent = owner;
+
+    const sync = () => {
+      b.style.borderColor = state.selectedOwners.has(owner) ? "#111" : "#ddd";
+    };
+    sync();
+
+    b.addEventListener("click", () => {
+      if (state.selectedOwners.has(owner)) state.selectedOwners.delete(owner);
+      else state.selectedOwners.add(owner);
+      sync();
+      renderProgress();
+      // если у тебя UI где-то показывает "Выбрано: N"
+      const cnt = el("owners-count");
+      if (cnt) cnt.textContent = String(state.selectedOwners.size || 0);
+    });
+
+    wrap.appendChild(b);
+  });
 }
 
 // ===== UI: formats =====
@@ -2515,4 +2559,6 @@ Object.assign(window.PLANNER, {
   _fetchOverpass,
   _runOverpassWithFailover,
   computeScheduleHoursForPeriod
+  getScreensFilteredByOwner,
+  renderOwners,
 });
