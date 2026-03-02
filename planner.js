@@ -329,20 +329,28 @@ function computeScheduleHoursForPeriod(schedule, startStr, endStr) {
   const days = daysInclusive(startStr, endStr);
 
   if (schedule?.type === "weekly") {
-    const weekly = schedule.weekly || {};
-    let totalHours = 0;
+  const mode = schedule.mode || "by_dow";
+  const weekly = schedule.weekly || {};
+  const globalIntervals = Array.isArray(schedule.globalIntervals) ? schedule.globalIntervals : [];
 
-    const start = new Date(startStr + "T00:00:00");
-    for (let i = 0; i < days; i++) {
-      const dt = new Date(start);
-      dt.setDate(start.getDate() + i);
+  let totalHours = 0;
+
+  const start = new Date(startStr + "T00:00:00");
+  for (let i = 0; i < days; i++) {
+    const dt = new Date(start);
+    dt.setDate(start.getDate() + i);
+
+    if (mode === "global") {
+      totalHours += _hoursForWeekdayIntervals(globalIntervals);
+    } else {
       const key = _weekdayKeyFromDate(dt);
       totalHours += _hoursForWeekdayIntervals(weekly[key]);
     }
-
-    const avgHpd = days ? (totalHours / days) : 0;
-    return { days, totalHours, avgHpd };
   }
+
+  const avgHpd = days ? (totalHours / days) : 0;
+  return { days, totalHours, avgHpd };
+}
 
   const hpd = hoursPerDay(schedule || { type: "all_day" });
   return { days, totalHours: hpd * days, avgHpd: hpd };
@@ -371,6 +379,28 @@ window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
       if (!from || !to) continue;
       out[k].push({ from, to });
     }
+  }
+  return out;
+};
+
+function getWeeklyModeFromUI() {
+  // radio name="weekly_mode" values: "global" | "by_dow"
+  return document.querySelector('input[name="weekly_mode"]:checked')?.value || "by_dow";
+}
+
+window.getGlobalScheduleFromUI = function getGlobalScheduleFromUI() {
+  // reads rows from #global-rows, same row markup but classes g-from / g-to
+  const out = [];
+
+  const wrap = document.getElementById("global-rows");
+  if (!wrap) return out;
+
+  const rows = [...wrap.querySelectorAll(".row")];
+  for (const row of rows) {
+    const from = String(row.querySelector(".g-from")?.value || "").trim();
+    const to   = String(row.querySelector(".g-to")?.value || "").trim();
+    if (!from || !to) continue;
+    out.push({ from, to });
   }
   return out;
 };
@@ -717,9 +747,15 @@ function buildBrief() {
   const timeFrom = el("time-from")?.value;
   const timeTo = el("time-to")?.value;
 
-  const weekly = (scheduleType === "weekly" && typeof getWeeklyScheduleFromUI === "function")
-    ? getWeeklyScheduleFromUI()
-    : null;
+  const weeklyMode = (scheduleType === "weekly") ? getWeeklyModeFromUI() : null;
+
+const weekly = (scheduleType === "weekly" && typeof getWeeklyScheduleFromUI === "function")
+  ? getWeeklyScheduleFromUI()
+  : null;
+
+const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFromUI === "function")
+  ? getGlobalScheduleFromUI()
+  : [];
 
   const selectionMode = el("selection-mode")?.value || "city_even";
 
@@ -742,11 +778,13 @@ function buildBrief() {
     },
     schedule: (() => {
       if (scheduleType === "weekly") {
-        return {
-          type: "weekly",
-          weekly: weekly || { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
-        };
-      }
+  return {
+    type: "weekly",
+    mode: weeklyMode || "by_dow",                 // ✅ NEW
+    globalIntervals: globalIntervals || [],       // ✅ NEW (рваный "общее")
+    weekly: weekly || { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } // existing
+  };
+}
       return {
         type: scheduleType,
         from: scheduleType === "custom" ? (timeFrom || null) : null,
@@ -2157,15 +2195,22 @@ function calcCompletion() {
  let scheduleOk = true;
 
 if (brief.schedule?.type === "weekly") {
-  if (brief?.dates?.start && brief?.dates?.end) {
-    const meta = computeScheduleHoursForPeriod(brief.schedule, brief.dates.start, brief.dates.end);
-    scheduleOk = Number.isFinite(meta.avgHpd) && meta.avgHpd > 0;
-  } else {
+  if (!(brief?.dates?.start && brief?.dates?.end)) {
     scheduleOk = false;
+  } else {
+    const mode = brief.schedule.mode || "by_dow";
+    if (mode === "global") {
+      scheduleOk = Array.isArray(brief.schedule.globalIntervals) && brief.schedule.globalIntervals.length > 0;
+    } else {
+      const w = brief.schedule.weekly || {};
+      scheduleOk = ["mon","tue","wed","thu","fri","sat","sun"].some(k => Array.isArray(w[k]) && w[k].length > 0);
+    }
+
+    if (scheduleOk) {
+      const meta = computeScheduleHoursForPeriod(brief.schedule, brief.dates.start, brief.dates.end);
+      scheduleOk = Number.isFinite(meta.avgHpd) && meta.avgHpd > 0;
+    }
   }
-} else if (brief.schedule?.type === "custom") {
-  const h = hoursPerDay(brief.schedule);
-  scheduleOk = Number.isFinite(h) && h > 0;
 }
 
   const mode = brief?.budget?.mode || "recommendation";
@@ -2260,6 +2305,43 @@ function bindPlannerUI() {
   });
 });
 
+document.querySelectorAll(".g-add").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const wrap = document.getElementById("global-rows");
+    if (!wrap) return;
+
+    const div = document.createElement("div");
+    div.className = "row";
+    div.innerHTML = `
+      <input type="time" class="g-from" value="07:00">
+      <input type="time" class="g-to" value="10:00">
+      <button type="button" class="g-del">×</button>
+    `;
+    wrap.appendChild(div);
+
+    div.querySelector(".g-del").addEventListener("click", () => {
+      div.remove();
+      renderProgress();
+    });
+
+    div.querySelectorAll("input").forEach(i => {
+      i.addEventListener("input", renderProgress);
+      i.addEventListener("change", renderProgress);
+    });
+
+    renderProgress();
+  });
+});
+
+// delete for global rows
+document.addEventListener("click", (e) => {
+  const del = e.target?.closest?.(".g-del");
+  if (!del) return;
+  const row = del.closest(".row");
+  if (row) row.remove();
+  renderProgress();
+});
+  
 document.addEventListener("click", (e) => {
   const del = e.target?.closest?.(".w-del");
   if (!del) return;
@@ -2280,6 +2362,20 @@ document.addEventListener("click", (e) => {
       renderProgress();
     });
   });
+
+  // ===== Weekly mode toggle: global / by_dow =====
+document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
+  r.addEventListener("change", () => {
+    const m = getWeeklyModeFromUI();
+    const globalWrap = el("weekly-global-wrap"); // container for global rows
+    const byDowWrap  = el("weekly-by-dow-wrap"); // container for mon..sun rows
+
+    if (globalWrap) globalWrap.style.display = (m === "global") ? "block" : "none";
+    if (byDowWrap)  byDowWrap.style.display  = (m === "by_dow") ? "block" : "none";
+
+    renderProgress();
+  });
+});
 
   const grpEnabled = el("grp-enabled");
   if (grpEnabled) {
