@@ -737,6 +737,12 @@ function renderOwners() {
   });
 }
 
+function getScreensFilteredByOwner(pool) {
+  const sel = state.selectedOwners;
+  if (!sel || sel.size === 0) return pool;
+  return (pool || []).filter(s => sel.has(String(s.owner ?? "").trim()));
+}
+
 // ===== UI: formats =====
 function renderFormats() {
   const wrap = el("formats-wrap");
@@ -2558,7 +2564,7 @@ Object.assign(window.PLANNER, {
   pickScreensNearPoint,
   _fetchOverpass,
   _runOverpassWithFailover,
-  computeScheduleHoursForPeriod
+  computeScheduleHoursForPeriod,
   getScreensFilteredByOwner,
   renderOwners,
 });
