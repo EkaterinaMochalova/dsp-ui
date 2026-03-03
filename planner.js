@@ -134,7 +134,7 @@ const POI_LABELS = {
 };
 
 // ===== Model =====
-const BID_MULTIPLIER = 1.6;
+const BID_MULTIPLIER = 1.8;
 const SC_OPT = 30;
 const SC_MAX = 60;
 const RECO_HOURS_PER_DAY = 12; // для режима "нужна рекомендация"
