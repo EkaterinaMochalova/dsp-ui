@@ -2115,7 +2115,6 @@ async function onCalcClick() {
     }
 
     budget = Math.min(budget, effectiveCapBudget);
-    totalBudgetFinal += budget;
 
     let totalPlaysTheory = 0;
     if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
@@ -2163,6 +2162,10 @@ async function onCalcClick() {
     let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
     totalPlaysEffectiveAll += totalPlaysEffective;
 
+    // Реальный расход = фактические выходы × ставка (не выделенный бюджет)
+    const actualBudget = Math.ceil(totalPlaysEffective * effectiveBid);
+    totalBudgetFinal += actualBudget;
+
     if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
       if (totalPlaysEffective < totalPlaysTheory) {
         warnings.push(`⚠️ Регион «${region}»: не хватает ёмкости даже при ${chosen.length} экранах (SC_MAX).`);
@@ -2184,7 +2187,7 @@ async function onCalcClick() {
     perRegionRows.push({
       region,
       tier,
-      budget,
+      budget: actualBudget,
       screens: chosen.length,
       plays: totalPlaysEffective,
       ots: otsTotal,
