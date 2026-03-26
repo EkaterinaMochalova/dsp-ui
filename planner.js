@@ -859,6 +859,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
       enabled: !!el("constructions-enabled")?.checked,
       count:   toNumber(el("constructions-count")?.value ?? 0),
     },
+    bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
     reachMode: getReachModeFromUI(),
     goal: {
       ots: (() => {
@@ -1921,13 +1922,14 @@ async function onCalcClick() {
 
     const capPlaysAbs = Math.floor(SC_MAX * pool.length * days * hpd);
     const capBudgetAbs = Math.floor(capPlaysAbs * bidPlus20);
+    const capBudgetAbsMin = Math.floor(capPlaysAbs * avgBid);
     const capOtsAbs = (avgOts == null) ? null : (capPlaysAbs * avgOts);
 
     prepared.push({
       region, tier, pool,
       avgBid, bidPlus20,
       avgOts,
-      capPlaysAbs, capBudgetAbs, capOtsAbs
+      capPlaysAbs, capBudgetAbs, capBudgetAbsMin, capOtsAbs
     });
   }
 
@@ -2074,7 +2076,8 @@ async function onCalcClick() {
     const region = pr.region;
     const tier = pr.tier;
     const pool = pr.pool;
-    const bidPlus20 = pr.bidPlus20;
+    const effectiveBid = brief.bidMode === "min" ? pr.avgBid : pr.bidPlus20;
+    const effectiveCapBudget = brief.bidMode === "min" ? pr.capBudgetAbsMin : pr.capBudgetAbs;
 
     let budget = Number(budgets[region] || 0);
 
@@ -2083,7 +2086,7 @@ async function onCalcClick() {
       continue;
     }
 
-    budget = Math.min(budget, pr.capBudgetAbs);
+    budget = Math.min(budget, effectiveCapBudget);
     totalBudgetFinal += budget;
 
     let totalPlaysTheory = 0;
@@ -2091,7 +2094,7 @@ async function onCalcClick() {
       totalPlaysTheory = Math.ceil(Number(goalPlan[region].playsPlanned || 0));
       if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory < 0) totalPlaysTheory = 0;
     } else {
-      totalPlaysTheory = Math.floor(budget / bidPlus20);
+      totalPlaysTheory = Math.floor(budget / effectiveBid);
       if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory < 0) totalPlaysTheory = 0;
     }
 
@@ -2219,6 +2222,7 @@ async function onCalcClick() {
 — Регион(ы): ${regions.join(", ")}
 — Форматы: ${selectedFormatsText}
 — Подбор: ${brief.selection.mode}
+— Режим ставки: ${brief.bidMode === "min" ? "Минимальная (minBid)" : "Рекомендованная"}
 — GRP: ${brief.grp.enabled ? `${brief.grp.min.toFixed(2)}–${brief.grp.max.toFixed(2)}` : "не учитываем"}
 — Конструкций (лимит): ${brief.constructions?.enabled && brief.constructions.count > 0 ? brief.constructions.count : "—"}
 
@@ -2451,6 +2455,10 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       if (wrap) wrap.style.display = e.target.checked ? "block" : "none";
     });
   }
+
+  document.querySelectorAll('input[name="bid_mode"]').forEach(r => {
+    r.addEventListener("change", renderProgress);
+  });
 
   const formatsAuto = el("formats-auto");
   if (formatsAuto) {
