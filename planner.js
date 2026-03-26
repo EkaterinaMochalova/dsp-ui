@@ -2162,8 +2162,10 @@ async function onCalcClick() {
     let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
     totalPlaysEffectiveAll += totalPlaysEffective;
 
-    // Реальный расход = фактические выходы × ставка (не выделенный бюджет)
-    const actualBudget = Math.ceil(totalPlaysEffective * effectiveBid);
+    // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу)
+    const avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
+    const effectiveChosenBid = brief.bidMode === "min" ? avgChosenBid : avgChosenBid * BID_MULTIPLIER;
+    const actualBudget = Math.ceil(totalPlaysEffective * effectiveChosenBid);
     totalBudgetFinal += actualBudget;
 
     if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
