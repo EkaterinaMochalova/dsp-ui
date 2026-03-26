@@ -2364,6 +2364,52 @@ function renderBudgetHints() {
   hint.style.display = (mode === "recommendation") ? "block" : "none";
 }
 
+// ===== POOL PREVIEW =====
+function computePoolPreview() {
+  if (!state.screens || !state.screens.length) return null;
+  const brief = buildBrief();
+  const regions = brief.regions || [];
+  if (!regions.length) return null;
+
+  // 1. По регионам
+  let pool = state.screens.filter(s => regions.includes(s.region));
+
+  // 2. По форматам (если ручной выбор)
+  const manualFormats = brief.formats?.manual || [];
+  if (!brief.formats?.auto && manualFormats.length > 0) {
+    pool = pool.filter(s => manualFormats.includes(s.format));
+  }
+  const countBase = pool.length;
+
+  // 3. После GRP-фильтра
+  let poolAfterGrp = pool;
+  let countAfterGrp = null;
+  if (brief.grp?.enabled) {
+    poolAfterGrp = pool.filter(s => {
+      if (!Number.isFinite(s.grp) || s.grp <= 0) return false;
+      return s.grp >= (brief.grp.min ?? 0) && s.grp <= (brief.grp.max ?? 9.98);
+    });
+    countAfterGrp = poolAfterGrp.length;
+  }
+
+  // 4. После фильтра по операторам
+  const selectedOwners = state.selectedOwners ? [...state.selectedOwners] : [];
+  let countAfterOwners = null;
+  if (selectedOwners.length > 0) {
+    countAfterOwners = poolAfterGrp.filter(s => selectedOwners.includes(s.owner)).length;
+  }
+
+  const countFinal = countAfterOwners !== null
+    ? countAfterOwners
+    : (countAfterGrp !== null ? countAfterGrp : countBase);
+
+  return { countBase, countAfterGrp, countAfterOwners, countFinal,
+           hasGrpFilter: !!brief.grp?.enabled, hasOwnerFilter: selectedOwners.length > 0 };
+}
+
+window.PLANNER = window.PLANNER || {};
+window.PLANNER.computePoolPreview = computePoolPreview;
+
 // ===== BIND UI =====
 function bindPlannerUI() {
   document.querySelectorAll(".preset").forEach(b => {

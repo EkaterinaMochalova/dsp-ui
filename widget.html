@@ -174,9 +174,9 @@
       <!-- STEP 4 -->
 <div class="wiz-step" id="wiz-step-4">
 
+  <!-- Форматы -->
   <div class="planner-block">
     <div class="planner-label">Форматы</div>
-
     <div class="fmt-toolbar" id="formats-presets">
       <button type="button" class="fmt-pill" data-preset="all">Все</button>
       <button type="button" class="fmt-pill" data-preset="max_reach">Макс. охват</button>
@@ -184,9 +184,7 @@
       <button type="button" class="fmt-pill" data-preset="indoor">Indoor</button>
       <button type="button" class="fmt-pill" data-preset="clear">Очистить</button>
     </div>
-
     <div class="fmt-grid" id="formats-wrap"></div>
-
     <div style="margin-top:10px;">
       <button type="button" id="formats-toggle" class="fmt-toggle" style="display:none;">
         Показать все форматы
@@ -194,101 +192,36 @@
     </div>
   </div>
 
-  <div class="planner-block">
-    <div class="planner-label">Операторы</div>
-
-    <!-- Toolbar (если нужен) -->
-<div style="display:flex; gap:14px; align-items:center; margin-bottom:10px;">
-  <button type="button" id="owner-all" class="wiz-btn ghost">Все</button>
-  <button type="button" id="owner-clear" class="wiz-btn ghost">Очистить</button>
-  <div style="margin-left:auto; font-size:12px; color:#667085;">
-    Выбрано: <span id="owners-count">—</span>
-  </div>
-</div>
-
-<!-- ВАЖНО: именно owner-wrap -->
-<div id="owner-wrap" class="owner-wrap owner-collapsed"></div>
-
-<button type="button" id="owner-toggle" class="fmt-toggle">
-  Показать всех операторов
-</button>
-
-    <div class="planner-note" style="margin-top:6px;">
-      Можно выбрать конкретных операторов или оставить всех доступных.
-    </div>
-  </div>
-
+  <!-- Стратегия подбора -->
   <div class="planner-block reach-mode-block">
     <div class="planner-label">Стратегия подбора</div>
-
     <div class="radio-row" style="gap:14px;">
-      <label class="ux-radio">
-        <input type="radio" name="reach_mode" value="max_reach" checked>
-        <span>Макс. охват</span>
-      </label>
-
-      <label class="ux-radio">
-        <input type="radio" name="reach_mode" value="balanced">
-        <span>Баланс</span>
-      </label>
-
-      <label class="ux-radio">
-        <input type="radio" name="reach_mode" value="max_freq">
-        <span>Макс. частота</span>
-      </label>
+      <label class="ux-radio"><input type="radio" name="reach_mode" value="max_reach" checked><span>Макс. охват</span></label>
+      <label class="ux-radio"><input type="radio" name="reach_mode" value="balanced"><span>Баланс</span></label>
+      <label class="ux-radio"><input type="radio" name="reach_mode" value="max_freq"><span>Макс. частота</span></label>
     </div>
   </div>
 
-  <!-- ===== BID MODE ===== -->
+  <!-- Режим ставки -->
   <div class="planner-block">
     <div class="planner-label">Режим ставки</div>
-
     <div class="radio-row" style="gap:14px;">
-      <label class="ux-radio">
-        <input type="radio" name="bid_mode" id="bid-mode-recommended" value="recommended" checked>
-        <span>Рекомендованная</span>
-      </label>
-      <label class="ux-radio">
-        <input type="radio" name="bid_mode" id="bid-mode-min" value="min">
-        <span>Минимальная</span>
-      </label>
+      <label class="ux-radio"><input type="radio" name="bid_mode" id="bid-mode-recommended" value="recommended" checked><span>Рекомендованная</span></label>
+      <label class="ux-radio"><input type="radio" name="bid_mode" id="bid-mode-min" value="min"><span>Минимальная</span></label>
     </div>
-
-    <div class="planner-note" style="margin-top:8px;" id="bid-mode-hint-recommended">
-      Оптимальная ставка для стабильного открута — предсказуемый результат.
-    </div>
-    <div class="planner-note" style="margin-top:8px; display:none;" id="bid-mode-hint-min">
-      Минимальная цена из инвентаря. Больше выходов, но без гарантии полного открута.
-    </div>
+    <div class="planner-note" style="margin-top:8px;" id="bid-mode-hint-recommended">Оптимальная ставка для стабильного открута — предсказуемый результат.</div>
+    <div class="planner-note" style="margin-top:8px; display:none;" id="bid-mode-hint-min">Минимальная цена из инвентаря. Больше выходов, но без гарантии полного открута.</div>
   </div>
 
+  <!-- Кол-во конструкций -->
   <div class="planner-block" style="margin-top:4px;">
-    <label class="check-row">
-      <input type="checkbox" id="constructions-enabled"> Задать кол-во конструкций
-    </label>
+    <label class="check-row"><input type="checkbox" id="constructions-enabled"> Задать кол-во конструкций</label>
     <div id="constructions-count-wrap" style="display:none; margin-top:8px;">
       <input type="number" id="constructions-count" min="1" step="1" placeholder="Количество" class="ux-input">
     </div>
   </div>
 
-  <div class="planner-block">
-    <div class="planner-label">GRP</div>
-    <label class="check-row">
-      <input id="grp-enabled" type="checkbox" />
-      Фильтровать по GRP (0–9.98)
-    </label>
-
-    <div id="grp-wrap" style="display:none; margin-top:10px;">
-      <div class="row-2">
-        <input id="grp-min" type="number" step="0.01" min="0" max="9.98" value="0" class="ux-input" />
-        <input id="grp-max" type="number" step="0.01" min="0" max="9.98" value="9.98" class="ux-input" />
-      </div>
-      <div class="planner-note" style="margin-top:6px;">
-        ⚠️ Не все экраны передают GRP. При включении фильтра будут предложены только экраны с заполненным GRP.
-      </div>
-    </div>
-  </div>
-
+  <!-- Как собираем программу -->
   <div class="planner-block">
     <div class="planner-label">Как собираем программу</div>
     <select id="selection-mode" class="ux-input">
@@ -298,6 +231,45 @@
       <option value="route">Вдоль маршрута</option>
     </select>
     <div id="selection-extra" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- ===== ПРЕВЬЮ ПУЛА ===== -->
+  <div class="planner-block pool-preview-block" id="pool-preview-block">
+    <div class="planner-label">Доступный инвентарь</div>
+    <div id="pool-preview-content" class="planner-note" style="color:#667085;">
+      Укажите регионы, чтобы увидеть объём доступного инвентаря.
+    </div>
+  </div>
+
+  <!-- Разделитель -->
+  <div class="additional-filters-divider">
+    <span>Дополнительные ограничения</span>
+  </div>
+
+  <!-- Операторы -->
+  <div class="planner-block">
+    <div class="planner-label">Операторы</div>
+    <div style="display:flex; gap:14px; align-items:center; margin-bottom:10px;">
+      <button type="button" id="owner-all" class="wiz-btn ghost">Все</button>
+      <button type="button" id="owner-clear" class="wiz-btn ghost">Очистить</button>
+      <div style="margin-left:auto; font-size:12px; color:#667085;">Выбрано: <span id="owners-count">—</span></div>
+    </div>
+    <div id="owner-wrap" class="owner-wrap owner-collapsed"></div>
+    <button type="button" id="owner-toggle" class="fmt-toggle">Показать всех операторов</button>
+    <div class="planner-note" style="margin-top:6px;">Можно выбрать конкретных операторов или оставить всех доступных.</div>
+  </div>
+
+  <!-- GRP -->
+  <div class="planner-block">
+    <div class="planner-label">GRP</div>
+    <label class="check-row"><input id="grp-enabled" type="checkbox" /> Фильтровать по GRP (0–9.98)</label>
+    <div id="grp-wrap" style="display:none; margin-top:10px;">
+      <div class="row-2">
+        <input id="grp-min" type="number" step="0.01" min="0" max="9.98" value="0" class="ux-input" />
+        <input id="grp-max" type="number" step="0.01" min="0" max="9.98" value="9.98" class="ux-input" />
+      </div>
+      <div class="planner-note" style="margin-top:6px;">⚠️ Не все экраны передают GRP. При включении фильтра будут предложены только экраны с заполненным GRP.</div>
+    </div>
   </div>
 
   <button id="calc-btn" class="ux-primary" disabled>Рассчитать</button>
@@ -424,6 +396,29 @@
   #planner-widget .planner-block{ margin-bottom:12px; }
   #planner-widget .planner-label{ font-weight:600; margin-bottom:8px; }
   #planner-widget .planner-note{ font-size:12px; color:rgba(11,18,32,.62); margin-top:8px; }
+
+  /* Разделитель "Дополнительные ограничения" */
+  #planner-widget .additional-filters-divider{
+    display:flex; align-items:center; gap:8px;
+    margin:18px 0 10px;
+    font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+    color:rgba(11,18,32,.4);
+  }
+  #planner-widget .additional-filters-divider::before,
+  #planner-widget .additional-filters-divider::after{
+    content:''; flex:1; height:1px; background:rgba(11,18,32,.1);
+  }
+
+  /* Превью пула */
+  #planner-widget .pool-preview-block{ background:#f8f9fb; border-radius:12px; padding:12px 14px; }
+  #planner-widget .pool-preview-row{
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; font-size:13px;
+  }
+  #planner-widget .pool-preview-base{ font-weight:600; color:#0b1220; }
+  #planner-widget .pool-preview-arrow{ color:rgba(11,18,32,.35); font-size:11px; }
+  #planner-widget .pool-preview-filter{ color:#667085; }
+  #planner-widget .pool-preview-filter b{ color:#0b1220; }
+  #planner-widget .pool-preview-pct{ font-size:11px; color:#e04444; margin-left:2px; }
 
   #planner-widget .ux-input{ width:100%; box-sizing:border-box; }
   #planner-widget .row-2{ display:flex; gap:10px; }
@@ -1890,6 +1885,82 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
       if(h2) h2.style.display = isMin ? "block" : "none";
     });
   });
+})();
+</script>
+
+<!-- ===================== POOL PREVIEW ===================== -->
+<script>
+(function(){
+  function fmtN(n){ return Math.round(n).toLocaleString("ru-RU"); }
+
+  function renderPoolPreview(){
+    const box = document.getElementById("pool-preview-content");
+    if(!box) return;
+    const preview = window.PLANNER?.computePoolPreview?.();
+
+    if(!preview){
+      box.innerHTML = '<span style="color:#667085">Укажите регионы, чтобы увидеть объём доступного инвентаря.</span>';
+      return;
+    }
+
+    const { countBase, countAfterGrp, countAfterOwners, countFinal, hasGrpFilter, hasOwnerFilter } = preview;
+
+    let html = `<div class="pool-preview-row">`;
+    html += `<span class="pool-preview-base">Базовый пул: ${fmtN(countBase)} экр.</span>`;
+
+    if(hasGrpFilter && countAfterGrp !== null){
+      const drop = countBase - countAfterGrp;
+      const pct = countBase > 0 ? Math.round(countAfterGrp / countBase * 100) : 0;
+      html += `<span class="pool-preview-arrow">→</span>`;
+      html += `<span class="pool-preview-filter">GRP: <b>${fmtN(countAfterGrp)}</b><span class="pool-preview-pct"> −${fmtN(drop)} (${pct}%)</span></span>`;
+    }
+
+    if(hasOwnerFilter && countAfterOwners !== null){
+      const base2 = hasGrpFilter && countAfterGrp !== null ? countAfterGrp : countBase;
+      const drop = base2 - countAfterOwners;
+      const pct = base2 > 0 ? Math.round(countAfterOwners / base2 * 100) : 0;
+      html += `<span class="pool-preview-arrow">→</span>`;
+      html += `<span class="pool-preview-filter">Операторы: <b>${fmtN(countAfterOwners)}</b><span class="pool-preview-pct"> −${fmtN(drop)} (${pct}%)</span></span>`;
+    }
+
+    if(hasGrpFilter || hasOwnerFilter){
+      html += `<span class="pool-preview-arrow">→</span>`;
+      html += `<span class="pool-preview-base">Итого: ${fmtN(countFinal)} экр.</span>`;
+    }
+
+    html += `</div>`;
+    box.innerHTML = html;
+  }
+
+  // Обновлять при любом изменении фильтров
+  window.addEventListener("planner:screens-ready", renderPoolPreview);
+  window.addEventListener("planner:pool-updated", renderPoolPreview);
+
+  // Делегируем на изменения фильтров через MutationObserver + события
+  document.addEventListener("change", (e) => {
+    const t = e.target;
+    if(!t) return;
+    const id = t.id || "";
+    const name = t.name || "";
+    // GRP, форматы, операторы
+    if(id === "grp-enabled" || id === "grp-min" || id === "grp-max" ||
+       name === "reach_mode" || name === "bid_mode" ||
+       t.closest?.("#owner-wrap") || t.closest?.("#formats-wrap")){
+      setTimeout(renderPoolPreview, 50);
+    }
+  });
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    if(!t) return;
+    // Кнопки операторов Все/Очистить, форматы-пресеты
+    if(t.id === "owner-all" || t.id === "owner-clear" ||
+       t.closest?.("#formats-presets") || t.closest?.("#owner-wrap")){
+      setTimeout(renderPoolPreview, 100);
+    }
+  });
+
+  // Первый рендер при готовности
+  if(window.PLANNER?.ready) renderPoolPreview();
 })();
 </script>
 
