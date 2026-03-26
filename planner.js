@@ -2247,10 +2247,6 @@ async function onCalcClick() {
     }
   };
 
-  window.dispatchEvent(new CustomEvent("planner:calc-done", {
-    detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount }
-  }));
-
   const nf = (n) => Math.floor(n).toLocaleString("ru-RU");
   const of = (n) => Math.round(n).toLocaleString("ru-RU");
 
@@ -2297,8 +2293,14 @@ async function onCalcClick() {
 ${perRegionText}`
     + (warnings.length ? `\n\n${warnings.slice(0, 6).join("\n")}${warnings.length > 6 ? "\n…" : ""}` : "");
 
+  // ВАЖНО: записываем summary ДО dispatchEvent — иначе render-функции (daysFromRaw, hoursPerDayFromRaw)
+  // читают el("summary").textContent и получают пустую строку
   if (el("summary")) el("summary").textContent = summaryText;
   if (el("download-csv")) el("download-csv").disabled = chosenAll.length === 0;
+
+  window.dispatchEvent(new CustomEvent("planner:calc-done", {
+    detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount }
+  }));
 
   setStatus("");
 }
