@@ -2203,6 +2203,20 @@ async function onCalcClick() {
     return;
   }
 
+  // Предупреждение если реальный расход значительно меньше заданного бюджета
+  if (brief.budget.mode === "fixed" && brief.budget.amount > 0) {
+    const inputBudget = Number(brief.budget.amount);
+    if (Number.isFinite(totalBudgetFinal) && totalBudgetFinal < inputBudget * 0.9) {
+      const gap = inputBudget - totalBudgetFinal;
+      warnings.unshift(
+        `⚠️ Инвентарь не позволяет освоить весь бюджет. ` +
+        `Реальный расход: ${Math.floor(totalBudgetFinal).toLocaleString("ru-RU")} ₽ ` +
+        `из ${inputBudget.toLocaleString("ru-RU")} ₽ ` +
+        `(не освоено: ${Math.floor(gap).toLocaleString("ru-RU")} ₽).`
+      );
+    }
+  }
+
   state.lastChosen = chosenAll;
 
   window.PLANNER = window.PLANNER || {};
@@ -2221,7 +2235,7 @@ async function onCalcClick() {
   };
 
   window.dispatchEvent(new CustomEvent("planner:calc-done", {
-    detail: { chosen: chosenAll, perRegion: perRegionRows }
+    detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount }
   }));
 
   const nf = (n) => Math.floor(n).toLocaleString("ru-RU");
