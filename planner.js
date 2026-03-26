@@ -2143,10 +2143,14 @@ async function onCalcClick() {
       screensNeeded = Math.max(screensNeededByCapacity, byStrategy, byHardCap);
     }
 
-    const constructionsLimit = (brief.constructions?.enabled && brief.constructions.count > 0)
+    // Если пользователь задал кол-во конструкций — это цель, а не верхний предел.
+    // Алгоритм выбирает ровно столько экранов (или меньше, если пул меньше).
+    const constructionsTarget = (brief.constructions?.enabled && brief.constructions.count > 0)
       ? brief.constructions.count
-      : Infinity;
-    const screensChosenCount = Math.min(pool.length, screensNeeded, constructionsLimit);
+      : null;
+    const screensChosenCount = constructionsTarget !== null
+      ? Math.min(pool.length, constructionsTarget)
+      : Math.min(pool.length, screensNeeded);
 
     const stepKm = gridStepKmForCount(screensChosenCount);
     const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
