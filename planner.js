@@ -589,6 +589,7 @@ function renderSelectedRegions() {
 
       renderSelectedRegions();
       renderProgress();
+      window.dispatchEvent(new CustomEvent("planner:pool-updated"));
     });
 
     chip.appendChild(label);
@@ -624,6 +625,7 @@ function renderRegionSuggestions(q) {
 
       renderSelectedRegions();
       renderProgress();
+      window.dispatchEvent(new CustomEvent("planner:pool-updated"));
     });
 
     sug.appendChild(b);
@@ -2385,10 +2387,12 @@ function computePoolPreview() {
   // 1. По регионам
   let pool = state.screens.filter(s => regions.includes(s.region));
 
-  // 2. По форматам (если ручной выбор)
-  const manualFormats = brief.formats?.manual || [];
-  if (!brief.formats?.auto && manualFormats.length > 0) {
-    pool = pool.filter(s => manualFormats.includes(s.format));
+  // 2. По форматам (если ручной выбор) — используем те же поля, что и onCalcClick
+  const formatsMode = brief.formats?.mode || "auto";
+  const manualFormats = Array.isArray(brief.formats?.selected) ? brief.formats.selected : [];
+  if (formatsMode === "manual" && manualFormats.length > 0) {
+    const fset = new Set(manualFormats);
+    pool = pool.filter(s => fset.has(s.format));
   }
   const countBase = pool.length;
 
@@ -2609,6 +2613,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       state.selectedRegion = null;
       renderSelectedRegions();
       renderProgress();
+      window.dispatchEvent(new CustomEvent("planner:pool-updated"));
     });
   }
 

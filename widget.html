@@ -1940,6 +1940,16 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
     }
 
     html += `</div>`;
+
+    // Предупреждение: заданное кол-во конструкций больше доступного пула
+    const constrEnabled = document.getElementById("constructions-enabled")?.checked;
+    const constrCount = parseInt(document.getElementById("constructions-count")?.value || "0", 10);
+    if(constrEnabled && constrCount > 0 && countFinal < constrCount){
+      html += `<div style="margin-top:8px;padding:7px 10px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;font-size:12px;color:#856404;">
+        ⚠️ Доступно только <b>${fmtN(countFinal)}</b> экранов с текущими фильтрами — лимит <b>${fmtN(constrCount)}</b> будет снижен автоматически.
+      </div>`;
+    }
+
     box.innerHTML = html;
   }
 
@@ -1953,8 +1963,9 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
     if(!t) return;
     const id = t.id || "";
     const name = t.name || "";
-    // GRP, форматы, операторы
+    // GRP, форматы, операторы, конструкции
     if(id === "grp-enabled" || id === "grp-min" || id === "grp-max" ||
+       id === "constructions-enabled" || id === "constructions-count" ||
        name === "reach_mode" || name === "bid_mode" ||
        t.closest?.("#owner-wrap") || t.closest?.("#formats-wrap")){
       setTimeout(renderPoolPreview, 50);
