@@ -2477,11 +2477,21 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   }
 
   const constructionsEnabled = el("constructions-enabled");
+  function applyConstructionsState(checked) {
+    const wrap = el("constructions-count-wrap");
+    if (wrap) wrap.style.display = checked ? "block" : "none";
+    document.querySelectorAll('input[name="reach_mode"]').forEach(r => {
+      r.disabled = checked;
+    });
+    const reachBlock = document.querySelector(".reach-mode-block");
+    if (reachBlock) reachBlock.style.opacity = checked ? "0.4" : "";
+  }
   if (constructionsEnabled) {
     constructionsEnabled.addEventListener("change", (e) => {
-      const wrap = el("constructions-count-wrap");
-      if (wrap) wrap.style.display = e.target.checked ? "block" : "none";
+      applyConstructionsState(e.target.checked);
     });
+    // apply initial state on load
+    applyConstructionsState(constructionsEnabled.checked);
   }
 
   document.querySelectorAll('input[name="bid_mode"]').forEach(r => {
