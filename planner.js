@@ -855,6 +855,10 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
       min: toNumber(el("grp-min")?.value ?? 0),
       max: toNumber(el("grp-max")?.value ?? 9.98)
     },
+    constructions: {
+      enabled: !!el("constructions-enabled")?.checked,
+      count:   toNumber(el("constructions-count")?.value ?? 0),
+    },
     reachMode: getReachModeFromUI(),
     goal: {
       ots: (() => {
@@ -2109,7 +2113,10 @@ async function onCalcClick() {
       screensNeeded = Math.max(screensNeededByCapacity, byStrategy, byHardCap);
     }
 
-    const screensChosenCount = Math.min(pool.length, screensNeeded);
+    const constructionsLimit = (brief.constructions?.enabled && brief.constructions.count > 0)
+      ? brief.constructions.count
+      : Infinity;
+    const screensChosenCount = Math.min(pool.length, screensNeeded, constructionsLimit);
 
     const stepKm = gridStepKmForCount(screensChosenCount);
     const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
@@ -2213,6 +2220,7 @@ async function onCalcClick() {
 — Форматы: ${selectedFormatsText}
 — Подбор: ${brief.selection.mode}
 — GRP: ${brief.grp.enabled ? `${brief.grp.min.toFixed(2)}–${brief.grp.max.toFixed(2)}` : "не учитываем"}
+— Конструкций (лимит): ${brief.constructions?.enabled && brief.constructions.count > 0 ? brief.constructions.count : "—"}
 
 Итог (по всем регионам):
 — Выходов всего: ${nf(totalPlaysEffectiveAll)}
@@ -2433,6 +2441,14 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       const wrap = el("grp-wrap");
       if (wrap) wrap.style.display = e.target.checked ? "block" : "none";
       renderProgress();
+    });
+  }
+
+  const constructionsEnabled = el("constructions-enabled");
+  if (constructionsEnabled) {
+    constructionsEnabled.addEventListener("change", (e) => {
+      const wrap = el("constructions-count-wrap");
+      if (wrap) wrap.style.display = e.target.checked ? "block" : "none";
     });
   }
 
