@@ -1,2 +1,2 @@
 #!/bin/sh
-exec python3 -m http.server "${PORT:-8080}"
+npx --yes serve -s . -l "${PORT:-8080}"
