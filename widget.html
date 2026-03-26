@@ -217,7 +217,16 @@
   <div class="planner-block" style="margin-top:4px;">
     <label class="check-row"><input type="checkbox" id="constructions-enabled"> Задать кол-во конструкций</label>
     <div id="constructions-count-wrap" style="display:none; margin-top:8px;">
-      <input type="number" id="constructions-count" min="1" step="1" placeholder="Количество" class="ux-input">
+      <input type="number" id="constructions-count" min="1" step="1" placeholder="Количество конструкций" class="ux-input">
+      <div style="margin-top:12px;">
+        <div style="font-size:12px; font-weight:600; margin-bottom:6px; color:#0b1220;">
+          Выходов в минуту на экран: <span id="constructions-ppm-val" style="color:#5b3ef5;">4</span>
+        </div>
+        <input type="range" id="constructions-ppm" min="1" max="50" value="4" style="width:100%; accent-color:#5b3ef5;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
+          <span>1 / мин</span><span>50 / мин</span>
+        </div>
+      </div>
     </div>
   </div>
 

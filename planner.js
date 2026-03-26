@@ -882,8 +882,9 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
       max: toNumber(el("grp-max")?.value ?? 9.98)
     },
     constructions: {
-      enabled: !!el("constructions-enabled")?.checked,
-      count:   toNumber(el("constructions-count")?.value ?? 0),
+      enabled:     !!el("constructions-enabled")?.checked,
+      count:       toNumber(el("constructions-count")?.value ?? 0),
+      playsPerMin: toNumber(el("constructions-ppm")?.value ?? 0) || 0,
     },
     bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
     reachMode: getReachModeFromUI(),
@@ -2162,7 +2163,15 @@ async function onCalcClick() {
       perCellMax
     );
 
-    const capPlaysByChosen = Math.floor(SC_MAX * chosen.length * days * hpd);
+    // Если задан ppm — он полностью определяет частоту (переопределяет SC_MAX и budget-based теорию)
+    const ppmOverride = (constructionsTarget !== null && (brief.constructions?.playsPerMin ?? 0) > 0)
+      ? brief.constructions.playsPerMin * 60   // выходов/час на экран
+      : null;
+    const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
+    if (ppmOverride !== null) {
+      totalPlaysTheory = Math.floor(effectivePPH * chosen.length * days * hpd);
+    }
+    const capPlaysByChosen = Math.floor(effectivePPH * chosen.length * days * hpd);
     let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
     totalPlaysEffectiveAll += totalPlaysEffective;
 
@@ -2566,6 +2575,15 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   document.querySelectorAll('input[name="bid_mode"]').forEach(r => {
     r.addEventListener("change", renderProgress);
   });
+
+  // ppm range slider label sync
+  const ppmRange = el("constructions-ppm");
+  if (ppmRange) {
+    ppmRange.addEventListener("input", (e) => {
+      const lbl = el("constructions-ppm-val");
+      if (lbl) lbl.textContent = e.target.value;
+    });
+  }
 
   const formatsAuto = el("formats-auto");
   if (formatsAuto) {
