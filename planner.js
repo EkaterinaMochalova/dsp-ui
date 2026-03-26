@@ -241,6 +241,15 @@ function avgNumber(arr) {
   return cnt ? (sum / cnt) : null;
 }
 
+// Like avgNumber but treats 0 as missing data (useful for OTS where 0 = no data)
+function avgNumberNonZero(arr) {
+  let sum = 0, cnt = 0;
+  for (const v of arr) {
+    if (Number.isFinite(v) && v > 0) { sum += v; cnt++; }
+  }
+  return cnt ? (sum / cnt) : null;
+}
+
 function areRegionsReady() {
   return Array.isArray(state.regionsAll) && state.regionsAll.length > 0;
 }
@@ -656,6 +665,23 @@ async function loadScreens() {
       lon: toNumber(r.lon ?? r.Lon ?? r.LON ?? r.lng ?? r.Lng ?? r.LNG)
     };
   });
+
+  // Interpolate missing OTS (ots=0 or NaN) using average OTS of screens
+  // with the same format. This prevents zero-OTS screens from dragging
+  // down the pool average when some screens simply lack measurement data.
+  const otsByFormat = {};
+  for (const s of state.screens) {
+    if (Number.isFinite(s.ots) && s.ots > 0 && s.format) {
+      if (!otsByFormat[s.format]) otsByFormat[s.format] = { sum: 0, cnt: 0 };
+      otsByFormat[s.format].sum += s.ots;
+      otsByFormat[s.format].cnt++;
+    }
+  }
+  for (const s of state.screens) {
+    if (!(Number.isFinite(s.ots) && s.ots > 0) && s.format && otsByFormat[s.format]) {
+      s.ots = otsByFormat[s.format].sum / otsByFormat[s.format].cnt;
+    }
+  }
 
   state.citiesAll = [...new Set(state.screens.map(s => s.city).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, "ru"));
@@ -1918,7 +1944,9 @@ async function onCalcClick() {
     }
     const bidPlus20 = avgBid * BID_MULTIPLIER;
 
-    const avgOts = avgNumber(pool.map(s => s.ots));
+    // ots = viewers per single play. Use avgNumberNonZero to exclude
+    // screens with ots=0 (no data) so they don't pull the average down.
+    const avgOts = avgNumberNonZero(pool.map(s => s.ots));
 
     const capPlaysAbs = Math.floor(SC_MAX * pool.length * days * hpd);
     const capBudgetAbs = Math.floor(capPlaysAbs * bidPlus20);
@@ -2146,7 +2174,7 @@ async function onCalcClick() {
       }
     }
 
-    const avgChosenOts = avgNumber(chosen.map(s => s.ots));
+    const avgChosenOts = avgNumberNonZero(chosen.map(s => s.ots));
     const otsTotal = (avgChosenOts == null) ? null : totalPlaysEffective * avgChosenOts;
     if (avgChosenOts == null) hasOts = false;
     if (otsTotal != null) otsTotalAll += otsTotal;
