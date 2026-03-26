@@ -2206,6 +2206,7 @@ async function onCalcClick() {
       tier,
       budget: actualBudget,
       screens: chosen.length,
+      poolSize: pool.length,
       plays: totalPlaysEffective,
       ots: otsTotal,
       note: ""
@@ -2263,8 +2264,10 @@ async function onCalcClick() {
       const p = Number.isFinite(r.plays) ? Math.floor(r.plays).toLocaleString("ru-RU") : "—";
       const o = (r.ots == null || !Number.isFinite(r.ots)) ? "—" : Math.round(r.ots).toLocaleString("ru-RU");
       const sc = Number.isFinite(r.screens) ? Math.floor(r.screens).toLocaleString("ru-RU") : "—";
+      const ps = Number.isFinite(r.poolSize) ? `пул: ${Math.floor(r.poolSize).toLocaleString("ru-RU")}` : null;
       const note = String(r.note || "").trim();
-      return `— ${r.region}: бюджет ${b}, выходов ${p}, OTS ${o}, экранов ${sc}${note ? ` (${note})` : ""}`;
+      const extra = [ps, note].filter(Boolean).join(", ");
+      return `— ${r.region}: бюджет ${b}, выходов ${p}, OTS ${o}, экранов ${sc}${extra ? ` (${extra})` : ""}`;
     })
     .join("\n");
 
