@@ -1792,10 +1792,12 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
       .filter(v => Number.isFinite(v) && v > 0);
     const otsTotal = otsValid.length ? otsValid.reduce((a,b)=>a+b,0) : null;
 
-    // Warnings: prefer direct array from event detail, fallback to parsing #summary text
+    // raw — читаем summary text (теперь он уже записан ДО dispatchEvent)
+    const raw = el("summary")?.textContent || "";
+    // Warnings: prefer direct array from event detail, fallback to parsing raw text
     const warnArr = Array.isArray(detail?.warnings) && detail.warnings.length
       ? detail.warnings
-      : (el("summary")?.textContent || "").split("\n").filter(l => l.trim().startsWith("⚠️")).map(l => l.replace(/^⚠️\s*/, ""));
+      : raw.split("\n").filter(l => l.trim().startsWith("⚠️")).map(l => l.replace(/^⚠️\s*/, ""));
 
     const warnsHtml = warnArr.length
       ? `<div class="ps-warn"><b>Предупреждения:</b><br>${warnArr.map(x => x.replace(/^⚠️\s*/, "")).join("<br>")}</div>`
