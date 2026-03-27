@@ -886,7 +886,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
     constructions: {
       enabled:     !!el("constructions-enabled")?.checked,
       count:       toNumber(el("constructions-count")?.value ?? 0),
-      playsPerMin: toNumber(el("constructions-ppm")?.value ?? 0) || 0,
+      playsPerHour: toNumber(el("constructions-ppm")?.value ?? 0) || 0,
     },
     bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
     reachMode: getReachModeFromUI(),
@@ -2165,21 +2165,31 @@ async function onCalcClick() {
       perCellMax
     );
 
-    // Если задан ppm — он полностью определяет частоту (переопределяет SC_MAX и budget-based теорию)
-    const ppmOverride = (constructionsTarget !== null && (brief.constructions?.playsPerMin ?? 0) > 0)
-      ? brief.constructions.playsPerMin * 60   // выходов/час на экран
+    // Если задан pph — он полностью определяет частоту (выходов/час на экран, 1–60)
+    const ppmOverride = (constructionsTarget !== null && (brief.constructions?.playsPerHour ?? 0) > 0)
+      ? brief.constructions.playsPerHour   // уже выходов/час
       : null;
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
-    if (ppmOverride !== null) {
-      totalPlaysTheory = Math.floor(effectivePPH * chosen.length * days * hpd);
-    }
-    const capPlaysByChosen = Math.floor(effectivePPH * chosen.length * days * hpd);
-    let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
-    totalPlaysEffectiveAll += totalPlaysEffective;
 
     // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу)
     const avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
     const effectiveChosenBid = brief.bidMode === "min" ? avgChosenBid : avgChosenBid * BID_MULTIPLIER;
+
+    const capPlaysByChosen = Math.floor(effectivePPH * chosen.length * days * hpd);
+    // Если ppmOverride — теоретический максимум определяется частотой, а не бюджетом.
+    // Но всё равно кэпим по бюджету, чтобы не выходить за введённую сумму.
+    if (ppmOverride !== null) {
+      totalPlaysTheory = capPlaysByChosen;
+    }
+    let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
+
+    // Кэп по бюджету: сколько выходов можно купить на указанный бюджет
+    if (Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0 && Number.isFinite(budget) && budget > 0) {
+      const budgetMaxPlays = Math.floor(budget / effectiveChosenBid);
+      totalPlaysEffective = Math.min(totalPlaysEffective, budgetMaxPlays);
+    }
+    totalPlaysEffectiveAll += totalPlaysEffective;
+
     const actualBudget = Math.ceil(totalPlaysEffective * effectiveChosenBid);
     totalBudgetFinal += actualBudget;
 
