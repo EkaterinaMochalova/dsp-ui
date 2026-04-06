@@ -445,6 +445,7 @@ function renderSelectionExtra() {
         Геокодим адрес и выбираем экраны в радиусе.
       </div>
     `;
+    attachAddressSuggest(el("planner-addr"));
     return;
   }
 
@@ -480,6 +481,8 @@ function renderSelectionExtra() {
         MVP: маршрут сохраняем в бриф (без построения).
       </div>
     `;
+    attachAddressSuggest(el("route-from"));
+    attachAddressSuggest(el("route-to"));
     return;
   }
 }
@@ -1163,32 +1166,116 @@ function downloadXLSX(rows) {
   XLSX.writeFile(wb, "screens_selected.xlsx");
 }
 
-// ===== Nominatim (geocoding) =====
-const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+// ===== Yandex Geocoding + Suggest =====
+// Ключ задаётся в HTML-блоке Tilda: <script>window.YANDEX_MAPS_KEY = "ваш_ключ";</script>
 
-async function geocodeAddressNominatim(query, regionHint) {
+async function geocodeAddressYandex(query, regionHint) {
+  const key = window.YANDEX_MAPS_KEY || "";
   const q0 = String(query || "").trim();
   if (!q0) return null;
 
-  const q = regionHint ? `${q0}, ${String(regionHint).trim()}` : q0;
+  // Геокодер Яндекса лучше работает с городом в начале запроса
+  const q = regionHint ? `${String(regionHint).trim()}, ${q0}` : q0;
 
   const url =
-    `${NOMINATIM_URL}?format=jsonv2&limit=1&addressdetails=0&accept-language=ru&q=` +
-    encodeURIComponent(q);
+    `https://geocode-maps.yandex.ru/1.x/?apikey=${encodeURIComponent(key)}` +
+    `&geocode=${encodeURIComponent(q)}&format=json&results=1&lang=ru_RU`;
 
-  const res = await fetch(url, { method: "GET" });
-  const txt = await res.text();
-  if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}: ${txt.slice(0, 200)}`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Yandex Geocoder HTTP ${res.status}`);
 
-  const json = JSON.parse(txt);
-  const hit = Array.isArray(json) && json.length ? json[0] : null;
-  if (!hit) return null;
+  const json = await res.json();
+  const members = json?.response?.GeoObjectCollection?.featureMember;
+  if (!Array.isArray(members) || !members.length) return null;
 
-  const lat = Number(hit.lat);
-  const lon = Number(hit.lon);
+  const pos = members[0]?.GeoObject?.Point?.pos; // "lon lat" — внимание: lon первый!
+  if (!pos) return null;
+
+  const [lonStr, latStr] = String(pos).split(" ");
+  const lon = Number(lonStr), lat = Number(latStr);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
   return { lat, lon };
+}
+
+// Алиас для обратной совместимости
+const geocodeAddressNominatim = geocodeAddressYandex;
+
+// Suggest: возвращает [{title, subtitle}] для выпадающего списка
+async function suggestYandex(text) {
+  const key = window.YANDEX_MAPS_KEY || "";
+  if (!key || !String(text || "").trim()) return [];
+  try {
+    const url =
+      `https://suggest-maps.yandex.ru/suggest-geo?v=9&lang=ru_RU&search_type=all` +
+      `&results=7&highlight=0&text=${encodeURIComponent(text)}&apikey=${encodeURIComponent(key)}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const json = await res.json();
+    return (json?.results || []).map(r => ({
+      title:    r.title?.text    || "",
+      subtitle: r.subtitle?.text || "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// Привязывает suggest-дропдаун к инпуту
+function attachAddressSuggest(inputEl) {
+  if (!inputEl || inputEl._suggestAttached) return;
+  inputEl._suggestAttached = true;
+
+  let timer = null;
+  let dropdown = null;
+
+  function closeDropdown() {
+    dropdown?.remove();
+    dropdown = null;
+  }
+
+  function openDropdown(items) {
+    closeDropdown();
+    if (!items.length) return;
+
+    dropdown = document.createElement("div");
+    dropdown.style.cssText =
+      "position:absolute;z-index:9999;background:#fff;border:1px solid #ddd;" +
+      "border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);width:100%;max-height:220px;" +
+      "overflow-y:auto;margin-top:2px;";
+
+    items.forEach(item => {
+      const row = document.createElement("div");
+      row.style.cssText = "padding:8px 12px;cursor:pointer;font-size:13px;line-height:1.4;";
+      row.innerHTML =
+        `<div style="font-weight:500;">${escapeHtml(item.title)}</div>` +
+        (item.subtitle ? `<div style="color:#888;font-size:11px;">${escapeHtml(item.subtitle)}</div>` : "");
+      row.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        inputEl.value = item.title + (item.subtitle ? `, ${item.subtitle}` : "");
+        closeDropdown();
+      });
+      dropdown.appendChild(row);
+    });
+
+    // позиционируем относительно враппера
+    const wrap = inputEl.parentElement;
+    if (wrap && getComputedStyle(wrap).position === "static") wrap.style.position = "relative";
+    inputEl.insertAdjacentElement("afterend", dropdown);
+  }
+
+  inputEl.addEventListener("input", () => {
+    clearTimeout(timer);
+    const val = inputEl.value.trim();
+    if (!val) { closeDropdown(); return; }
+    timer = setTimeout(async () => {
+      const items = await suggestYandex(val);
+      openDropdown(items);
+    }, 300);
+  });
+
+  inputEl.addEventListener("blur", () => setTimeout(closeDropdown, 150));
+  inputEl.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDropdown(); });
 }
 
 function pickScreensNearPoint(screens, center, radiusMeters) {
