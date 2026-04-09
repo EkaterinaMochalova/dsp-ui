@@ -2271,6 +2271,14 @@ async function onCalcClick() {
     const avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
     const effectiveChosenBid = brief.bidMode === "min" ? avgChosenBid : avgChosenBid * BID_MULTIPLIER;
 
+    // Пересчитываем теоретический максимум выходов по фактическим ставкам выбранных экранов.
+    // Ставки пула (effectiveBid) могут быть выше ставок отобранных экранов — тогда
+    // бюджет не осваивается полностью. Берём лучшую из двух оценок.
+    if (Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0) {
+      const totalPlaysTheoryByChosen = Math.floor(budget / effectiveChosenBid);
+      totalPlaysTheory = Math.max(totalPlaysTheory, totalPlaysTheoryByChosen);
+    }
+
     const capPlaysByChosen = Math.floor(effectivePPH * chosen.length * days * hpd);
     // Если ppmOverride — теоретический максимум определяется частотой, а не бюджетом.
     // Но всё равно кэпим по бюджету, чтобы не выходить за введённую сумму.
