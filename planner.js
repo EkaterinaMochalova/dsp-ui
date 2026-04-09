@@ -2880,17 +2880,45 @@ function showLoginOverlay() {
 }
 
 // Загрузка всех доступных городов из DSP
-async function dspFetchCities() {
+// Загружает ВСЕ инвентари постранично, пропуская страницы с ошибками 5xx
+async function dspFetchAllInventories() {
   const token = getDspToken();
   if (!token) throw new Error("SESSION_EXPIRED");
-  const res = await fetch(`${DSP_API}/api/v1.0/clients/cities`, {
-    headers: { "Authorization": "Bearer " + token }
-  });
-  if (res.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
-  if (!res.ok) throw new Error(`API cities error ${res.status}`);
-  const json = await res.json();
-  // API может вернуть массив или {content:[...]}
-  return Array.isArray(json) ? json : (json.content || json.cities || Object.values(json));
+  const headers = { "Authorization": "Bearer " + token };
+  let page = 0, size = 500, all = [], totalPages = null, errCount = 0;
+
+  while (true) {
+    const url = `${DSP_API}/api/v1.0/clients/inventories?page=${page}&size=${size}&enabled=true`;
+    let res;
+    try {
+      res = await fetch(url, { headers });
+    } catch (e) {
+      console.warn(`[DSP] fetch failed page=${page}:`, e.message);
+      errCount++;
+      page++;
+      if (errCount >= 5 || (totalPages !== null && page >= totalPages)) break;
+      continue;
+    }
+    if (res.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
+    if (!res.ok) {
+      console.warn(`[DSP] ${res.status} on page ${page}, skipping`);
+      errCount++;
+      page++;
+      if (errCount >= 10 || (totalPages !== null && page >= totalPages)) break;
+      continue;
+    }
+    errCount = 0;
+    const json = await res.json();
+    const items = json.content || [];
+    all.push(...items);
+    if (totalPages === null) {
+      totalPages = json.totalPages || Math.ceil((json.totalElements || items.length) / size);
+    }
+    setStatus(`Загружаю экраны… ${all.length}${json.totalElements ? " из " + json.totalElements : ""}`);
+    if (items.length < size || page >= totalPages - 1) break;
+    page++;
+  }
+  return all;
 }
 
 // Загрузка инвентаря по конкретным cityId (ленивая, по запросу)
@@ -2979,58 +3007,44 @@ function dspApplyInventories(raw) {
   renderOwners();
 }
 
-// Загрузка городов → список регионов в UI. Инвентарь грузится позже, по городу.
+// Загружает весь инвентарь, строит список городов и кэш по городу (cityName → [inventories])
 async function loadScreensFromDSP() {
-  setStatus("Загружаю список городов…");
-  const cities = await dspFetchCities();
-  console.log(`[DSP] cities:`, cities.slice(0, 3));
+  setStatus("Загружаю инвентарь…");
+  const raw = await dspFetchAllInventories();
+  console.log(`[DSP] total inventories loaded: ${raw.length}`);
 
-  // Строим регионы прямо из городов DSP (id + name)
-  state.dspCities = cities;           // [{id, name, ...}]
-  state.dspInventoryCache = {};       // cityId → [inventories]
+  // Группируем по названию города
+  state.dspInventoryCache = {};   // cityName → [raw inventories]
+  for (const inv of raw) {
+    const cityName = inv.inventoryTypeAndCity?.cityName || inv.location?.city || "";
+    if (!cityName) continue;
+    if (!state.dspInventoryCache[cityName]) state.dspInventoryCache[cityName] = [];
+    state.dspInventoryCache[cityName].push(inv);
+  }
 
-  // citiesAll и regionsAll из городов API
-  state.citiesAll = cities.map(c => c.name || c.title || String(c.id)).filter(Boolean)
+  const cityNames = Object.keys(state.dspInventoryCache)
     .sort((a, b) => a.localeCompare(b, "ru"));
-  state.regionsAll   = [...state.citiesAll];
+  console.log(`[DSP] unique cities: ${cityNames.length}`, cityNames.slice(0, 5));
+
+  state.dspCities = cityNames;    // просто массив строк
+  state.citiesAll = cityNames;
+  state.regionsAll = [...cityNames];
   state.regionsByCity = {};
-  for (const c of state.citiesAll) state.regionsByCity[c] = c;
+  for (const c of cityNames) state.regionsByCity[c] = c;
 
-  // Экраны пустые пока пользователь не запустит расчёт
   state.screens = [];
-
   setRegionsUIReady(true);
   setStatus("");
-  console.log(`[DSP] cities loaded: ${cities.length}, regions ready`);
 }
 
-// Загружает инвентарь для нужных городов перед расчётом (вызывается из onCalcClick)
+// Применяет кэшированный инвентарь для выбранных регионов (вызывается из onCalcClick)
 async function dspEnsureInventoryForRegions(regions) {
-  if (!window.DSP_AUTH_ENABLED || !state.dspCities) return;
+  if (!window.DSP_AUTH_ENABLED || !state.dspInventoryCache) return;
 
-  const cityObjs = state.dspCities.filter(c => {
-    const name = c.name || c.title || String(c.id);
-    return regions.includes(name);
-  });
-
-  const toLoad = cityObjs.filter(c => !state.dspInventoryCache[c.id]);
-  if (!toLoad.length) {
-    // Всё уже в кеше — просто применяем
-    const all = cityObjs.flatMap(c => state.dspInventoryCache[c.id] || []);
-    dspApplyInventories(all);
-    return;
-  }
-
-  setStatus(`Загружаю инвентарь для ${toLoad.length} город(ов)…`);
-  for (const city of toLoad) {
-    const inv = await dspFetchInventoriesByCityId(city.id);
-    state.dspInventoryCache[city.id] = inv;
-    setStatus(`Загружено: ${city.name || city.id} (${inv.length} экранов)`);
-  }
-
-  const all = cityObjs.flatMap(c => state.dspInventoryCache[c.id] || []);
+  // Кэш уже заполнен при старте — просто фильтруем нужные города
+  const all = regions.flatMap(r => state.dspInventoryCache[r] || []);
   dspApplyInventories(all);
-  console.log(`[DSP] inventory ready: ${all.length} screens for regions:`, regions);
+  console.log(`[DSP] inventory applied: ${all.length} screens for regions:`, regions);
 }
 
 // ===== START =====
