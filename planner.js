@@ -2954,7 +2954,7 @@ function mapDspInventory(inv) {
   const meta = inv.metadata   || {};
   return {
     screen_id: inv.gid || String(inv.id),
-    city:      inv.inventoryTypeAndCity?.cityName || loc.city || "",
+    city:      inv.inventoryTypeAndCity?.cityName || inv.city?.name || (typeof loc.city === "string" ? loc.city : loc.city?.name) || "",
     format:    meta.format || inv.type || "",
     address:   loc.address  || inv.name || "",
     lat:       loc.latitude  ?? NaN,
@@ -3016,7 +3016,9 @@ async function loadScreensFromDSP() {
   // Группируем по названию города
   state.dspInventoryCache = {};   // cityName → [raw inventories]
   for (const inv of raw) {
-    const cityName = inv.inventoryTypeAndCity?.cityName || inv.location?.city || "";
+    const loc = inv.location || {};
+    const cityName = inv.inventoryTypeAndCity?.cityName || inv.city?.name
+      || (typeof loc.city === "string" ? loc.city : loc.city?.name) || "";
     if (!cityName) continue;
     if (!state.dspInventoryCache[cityName]) state.dspInventoryCache[cityName] = [];
     state.dspInventoryCache[cityName].push(inv);
