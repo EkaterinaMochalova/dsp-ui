@@ -2960,6 +2960,7 @@ async function loadScreensFromDSP() {
     s.region = state.regionsByCity[s.city] || s.city || "Не назначено";
   }
 
+  setRegionsUIReady(true);
   window.dispatchEvent(new CustomEvent("planner:screens-ready", { detail: { count: state.screens.length } }));
   renderFormats();
   renderSelectedRegions();
