@@ -20,17 +20,14 @@ window.PLANNER = window.PLANNER || {};
 
 const REF = "planner";
 const SCREENS_CSV_URL =
-  "https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@8ee9a99e0c35ce605d736b69e049edd975e1528f/inventories_sync.csv?v=" +
-  Date.now();
+  "https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@8ee9a99e0c35ce605d736b69e049edd975e1528f/inventories_sync.csv";
 
 const TIERS_JSON_URL =
-  "https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@8684fb51e3081987ae494eaaf5bacbd7b5e47160/tiers_v1.json?v=" +
-  Date.now();
+  "https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@8684fb51e3081987ae494eaaf5bacbd7b5e47160/tiers_v1.json";
 
 // ===== CITY -> REGION =====
 const CITY_REGIONS_URL =
-  "https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@f6f96a16980cda4d7165e692526ef08f2cd0c22e/city_regions.json?v=" +
-  Date.now();
+  "https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@f6f96a16980cda4d7165e692526ef08f2cd0c22e/city_regions.json";
 
 // ===== Labels =====
 const FORMAT_LABELS = {
@@ -162,7 +159,12 @@ const state = {
 
   // Owners (optional)
   ownersAll: [],          // ✅ список операторов
-  selectedOwners: new Set()
+  selectedOwners: new Set(),
+
+  // DSP warmup
+  dspInventoryCache: null,
+  dspInventoryWarmupPromise: null,
+  dspInventoryWarmupDone: false
 };
 
 window.PLANNER.state = state;
@@ -490,7 +492,7 @@ function renderSelectionExtra() {
 // ===== City -> Region loader =====
 async function loadCityRegions() {
   try {
-    const res = await fetch(CITY_REGIONS_URL, { cache: "no-store" });
+    const res = await fetch(CITY_REGIONS_URL, { cache: "force-cache" });
     if (!res.ok) throw new Error("city_regions http " + res.status);
 
     const json = await res.json();
@@ -640,7 +642,7 @@ async function loadScreens() {
   setStatus("Загружаю список экранов…");
   console.log("[screens] url:", SCREENS_CSV_URL);
 
-  const res = await fetch(SCREENS_CSV_URL, { cache: "no-store" });
+  const res = await fetch(SCREENS_CSV_URL, { cache: "force-cache" });
   console.log("[screens] status:", res.status, res.statusText);
   if (!res.ok) throw new Error("Не удалось загрузить CSV: " + res.status);
 
@@ -948,7 +950,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
 // ===== Tiers =====
 async function loadTiers() {
   try {
-    const res = await fetch(TIERS_JSON_URL, { cache: "no-store" });
+    const res = await fetch(TIERS_JSON_URL, { cache: "force-cache" });
     if (!res.ok) throw new Error("tiers json http " + res.status);
     const json = await res.json();
 
@@ -1083,6 +1085,21 @@ function gridStepKmForCount(n) {
   if (n <= 25) return 4;
   if (n <= 60) return 2.5;
   return 2;
+}
+
+function computeScreensNeededForPlays(totalPlaysTheory, days, hpd, pphTarget, budgetMode) {
+  const maxPlaysPerScreenForPeriod = Math.floor(SC_MAX * days * hpd);
+  let screensNeeded = Math.ceil(totalPlaysTheory / Math.max(1, maxPlaysPerScreenForPeriod));
+  screensNeeded = Math.max(1, screensNeeded);
+
+  if (budgetMode !== "goal_ots") {
+    const playsPerHourTotalTheory = totalPlaysTheory / days / hpd;
+    const byStrategy = Math.max(1, Math.ceil(playsPerHourTotalTheory / Math.max(1, pphTarget)));
+    const byHardCap = Math.max(1, Math.ceil(playsPerHourTotalTheory / Math.max(1, SC_MAX)));
+    screensNeeded = Math.max(screensNeeded, byStrategy, byHardCap);
+  }
+
+  return screensNeeded;
 }
 
 function groupByGrid(screens, stepKm = 2) {
@@ -2229,37 +2246,66 @@ async function onCalcClick() {
       continue;
     }
 
-    const maxPlaysPerScreenForPeriod = Math.floor(SC_MAX * days * hpd);
-    let screensNeededByCapacity = Math.ceil(totalPlaysTheory / Math.max(1, maxPlaysPerScreenForPeriod));
-    screensNeededByCapacity = Math.max(1, screensNeededByCapacity);
-
-    let screensNeeded = screensNeededByCapacity;
-
-    if (brief.budget.mode !== "goal_ots") {
-      const playsPerHourTotalTheory = totalPlaysTheory / days / hpd;
-      const byStrategy = Math.max(1, Math.ceil(playsPerHourTotalTheory / Math.max(1, pphTarget)));
-      const byHardCap = Math.max(1, Math.ceil(playsPerHourTotalTheory / Math.max(1, SC_MAX)));
-      screensNeeded = Math.max(screensNeededByCapacity, byStrategy, byHardCap);
-    }
+    let screensNeeded = computeScreensNeededForPlays(
+      totalPlaysTheory,
+      days,
+      hpd,
+      pphTarget,
+      brief.budget.mode
+    );
 
     // Если пользователь задал кол-во конструкций — это цель, а не верхний предел.
     // Алгоритм выбирает ровно столько экранов (или меньше, если пул меньше).
     const constructionsTarget = (brief.constructions?.enabled && brief.constructions.count > 0)
       ? brief.constructions.count
       : null;
-    const screensChosenCount = constructionsTarget !== null
+    let screensChosenCount = constructionsTarget !== null
       ? Math.min(pool.length, constructionsTarget)
       : Math.min(pool.length, screensNeeded);
 
-    const stepKm = gridStepKmForCount(screensChosenCount);
-    const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
+    let chosen = [];
+    let avgChosenBid = pr.avgBid;
+    let effectiveChosenBid = effectiveBid;
 
-    const chosen = pickScreensUniformByGrid(
-      pool,
-      screensChosenCount,
-      stepKm,
-      perCellMax
-    );
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const stepKm = gridStepKmForCount(screensChosenCount);
+      const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
+
+      chosen = pickScreensUniformByGrid(
+        pool,
+        screensChosenCount,
+        stepKm,
+        perCellMax
+      );
+
+      avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
+      effectiveChosenBid = brief.bidMode === "min" ? avgChosenBid : avgChosenBid * BID_MULTIPLIER;
+
+      if (constructionsTarget !== null || !(Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0)) {
+        break;
+      }
+
+      const totalPlaysTheoryByChosen = Math.floor(budget / effectiveChosenBid);
+      const adjustedTotalPlaysTheory = Math.max(totalPlaysTheory, totalPlaysTheoryByChosen);
+      const adjustedScreensNeeded = Math.min(
+        pool.length,
+        computeScreensNeededForPlays(
+          adjustedTotalPlaysTheory,
+          days,
+          hpd,
+          pphTarget,
+          brief.budget.mode
+        )
+      );
+
+      if (adjustedScreensNeeded <= screensChosenCount) {
+        totalPlaysTheory = adjustedTotalPlaysTheory;
+        break;
+      }
+
+      screensChosenCount = adjustedScreensNeeded;
+      totalPlaysTheory = adjustedTotalPlaysTheory;
+    }
 
     // Если задан pph — он полностью определяет частоту (выходов/час на экран, 1–60)
     const ppmOverride = (constructionsTarget !== null && (brief.constructions?.playsPerHour ?? 0) > 0)
@@ -2268,9 +2314,6 @@ async function onCalcClick() {
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
     // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу)
-    const avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
-    const effectiveChosenBid = brief.bidMode === "min" ? avgChosenBid : avgChosenBid * BID_MULTIPLIER;
-
     // Пересчитываем теоретический максимум выходов по фактическим ставкам выбранных экранов.
     // Ставки пула (effectiveBid) могут быть выше ставок отобранных экранов — тогда
     // бюджет не осваивается полностью. Берём лучшую из двух оценок.
@@ -2804,6 +2847,8 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
 // Включается через: window.DSP_AUTH_ENABLED = true; в HTML Tilda перед виджетом
 
 const DSP_API = "https://proddsp.omniboard360.io";
+const DSP_PAGE_SIZE = 5000;
+const DSP_PAGE_BATCH = 12;
 
 function getDspToken() { return sessionStorage.getItem("dsp_token") || ""; }
 function setDspToken(t) { t ? sessionStorage.setItem("dsp_token", t) : sessionStorage.removeItem("dsp_token"); }
@@ -2887,58 +2932,128 @@ function showLoginOverlay() {
   });
 }
 
-// Загрузка всех доступных городов из DSP
-// Загружает ВСЕ инвентари параллельными батчами, пропуская страницы с ошибками 5xx
-async function dspFetchAllInventories() {
+async function dspFetchInventoriesPage(page, size = DSP_PAGE_SIZE) {
   const token = getDspToken();
   if (!token) throw new Error("SESSION_EXPIRED");
   const headers = { "Authorization": "Bearer " + token };
-  const size = 500;
 
-  // Вспомогательная функция: загрузить одну страницу с ретраем, вернуть {items, totalElements}
-  async function fetchPage(p) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const r = await fetch(
-          `${DSP_API}/api/v1.0/clients/inventories?page=${p}&size=${size}&enabled=true`,
-          { headers }
-        );
-        if (r.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
-        if (!r.ok) { console.warn(`[DSP] ${r.status} on page ${p}`); return { items: [] }; }
-        const j = await r.json();
-        return { items: j.content || [], totalElements: j.totalElements || 0, totalPages: j.totalPages || 0 };
-      } catch (e) {
-        if (e.message === "SESSION_EXPIRED") throw e;
-        console.warn(`[DSP] page ${p} attempt ${attempt + 1} failed:`, e.message);
-        if (attempt < 2) await new Promise(res => setTimeout(res, 1000 * (attempt + 1)));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch(
+        `${DSP_API}/api/v1.0/clients/inventories?page=${page}&size=${size}&enabled=true`,
+        { headers }
+      );
+      if (r.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
+      if (!r.ok) {
+        console.warn(`[DSP] ${r.status} on page ${page}`);
+        return { items: [], totalElements: 0, totalPages: 0 };
       }
+      const j = await r.json();
+      return {
+        items: j.content || [],
+        totalElements: j.totalElements || 0,
+        totalPages: j.totalPages || 0
+      };
+    } catch (e) {
+      if (e.message === "SESSION_EXPIRED") throw e;
+      console.warn(`[DSP] page ${page} attempt ${attempt + 1} failed:`, e.message);
+      if (attempt < 2) await new Promise(res => setTimeout(res, 1000 * (attempt + 1)));
     }
-    return { items: [] };
   }
 
-  // Шаг 1: загрузить первую страницу с size=500, чтобы получить корректный totalPages
-  const first = await fetchPage(0);
-  const totalElements = first.totalElements || 0;
-  // totalPages из API уже рассчитан под size=500 — используем его напрямую
-  const totalPages = first.totalPages || Math.ceil(totalElements / size) || 1;
-  const all = [...first.items];
-  setStatus(`Загружаю экраны… ${all.length} из ${totalElements || "?"}`);
+  return { items: [], totalElements: 0, totalPages: 0 };
+}
 
-  // Шаг 2: остальные страницы параллельными батчами по 5
-  const BATCH = 5;
-  for (let start = 1; start < totalPages; start += BATCH) {
+function dspBuildCityCache(raw, baseCache = null) {
+  const cityCache = baseCache || {};
+  for (const inv of raw || []) {
+    const s = mapDspInventory(inv);
+    if (!s.city) continue;
+    if (!cityCache[s.city]) cityCache[s.city] = [];
+    cityCache[s.city].push(s);
+  }
+  return cityCache;
+}
+
+function dspHydrateCityState(cityCache) {
+  state.dspInventoryCache = cityCache;
+
+  const cityNames = Object.keys(cityCache).sort((a, b) => a.localeCompare(b, "ru"));
+  console.log(`[DSP] unique cities: ${cityNames.length}`, cityNames.slice(0, 5));
+
+  state.dspCities = cityNames;
+  state.citiesAll = cityNames;
+  state.regionsAll = [...cityNames];
+  state.regionsByCity = {};
+  for (const c of cityNames) state.regionsByCity[c] = c;
+
+  setRegionsUIReady(true);
+  renderSelectedRegions();
+}
+
+async function dspWarmupInventoryInBackground(cityCacheSeed, totalLoadedSoFar, totalElements, totalPages) {
+  const cityCache = cityCacheSeed || {};
+
+  for (let start = 1; start < totalPages; start += DSP_PAGE_BATCH) {
     const pages = [];
-    for (let p = start; p < Math.min(start + BATCH, totalPages); p++) pages.push(p);
+    for (let p = start; p < Math.min(start + DSP_PAGE_BATCH, totalPages); p++) pages.push(p);
 
-    const results = await Promise.allSettled(pages.map(p => fetchPage(p)));
+    const results = await Promise.allSettled(pages.map(p => dspFetchInventoriesPage(p)));
 
     for (const r of results) {
-      if (r.status === "fulfilled") all.push(...(r.value.items || []));
+      if (r.status === "fulfilled") {
+        totalLoadedSoFar += (r.value.items || []).length;
+        dspBuildCityCache(r.value.items || [], cityCache);
+      }
       if (r.status === "rejected" && r.reason?.message === "SESSION_EXPIRED") throw r.reason;
     }
-    setStatus(`Загружаю экраны… ${all.length} из ${totalElements}`);
+
+    dspHydrateCityState(cityCache);
+    setStatus(`Загружаю экраны… ${totalLoadedSoFar} из ${totalElements || "?"}`);
   }
-  return all;
+
+  dspSaveInventoryToStorage(cityCache);
+  state.dspInventoryWarmupDone = true;
+  return cityCache;
+}
+
+// Загрузка всех доступных городов из DSP
+// Показывает интерфейс после первой страницы и догружает хвост в фоне
+async function dspFetchAllInventories() {
+  const first = await dspFetchInventoriesPage(0);
+  const totalElements = first.totalElements || 0;
+  const totalPages = first.totalPages || Math.ceil(totalElements / DSP_PAGE_SIZE) || 1;
+  const cityCache = dspBuildCityCache(first.items || [], {});
+
+  setStatus(`Загружаю экраны… ${first.items?.length || 0} из ${totalElements || "?"}`);
+  dspHydrateCityState(cityCache);
+
+  if (totalPages <= 1) {
+    dspSaveInventoryToStorage(cityCache);
+    state.dspInventoryWarmupDone = true;
+    return cityCache;
+  }
+
+  state.dspInventoryWarmupDone = false;
+  state.dspInventoryWarmupPromise = dspWarmupInventoryInBackground(
+    cityCache,
+    (first.items || []).length,
+    totalElements,
+    totalPages
+  ).then(finalCache => {
+    state.dspInventoryCache = finalCache;
+    state.dspInventoryWarmupPromise = null;
+    setStatus("");
+    return finalCache;
+  }).catch(err => {
+    state.dspInventoryWarmupDone = false;
+    state.dspInventoryWarmupPromise = null;
+    console.warn("[DSP] background warmup failed:", err);
+    setStatus("");
+    return state.dspInventoryCache || cityCache;
+  });
+
+  return cityCache;
 }
 
 // Загрузка инвентаря по конкретным cityId (ленивая, по запросу)
@@ -2946,7 +3061,7 @@ async function dspFetchInventoriesByCityId(cityId) {
   const token = getDspToken();
   if (!token) throw new Error("SESSION_EXPIRED");
   const headers = { "Authorization": "Bearer " + token };
-  let page = 0, size = 500, all = [];
+  let page = 0, size = DSP_PAGE_SIZE, all = [];
 
   while (true) {
     const url = `${DSP_API}/api/v1.0/clients/inventories?page=${page}&size=${size}&enabled=true&cityId=${cityId}`;
@@ -3094,44 +3209,29 @@ async function loadScreensFromDSP() {
   if (cityCache) {
     const total = Object.values(cityCache).reduce((s, a) => s + a.length, 0);
     console.log(`[DSP] loaded from localStorage: ${total} screens, ${Object.keys(cityCache).length} cities`);
+    state.dspInventoryWarmupPromise = null;
+    state.dspInventoryWarmupDone = true;
   } else {
-    const raw = await dspFetchAllInventories();
-    console.log(`[DSP] total inventories loaded: ${raw.length}`);
-
-    // Маппим и группируем по городу
-    cityCache = {};
-    for (const inv of raw) {
-      const s = mapDspInventory(inv);
-      if (!s.city) continue;
-      if (!cityCache[s.city]) cityCache[s.city] = [];
-      cityCache[s.city].push(s);   // храним уже смапленные экраны
-    }
-
-    dspSaveInventoryToStorage(cityCache);
+    cityCache = await dspFetchAllInventories();
   }
 
-  state.dspInventoryCache = cityCache;   // cityName → [mapped screens]
-
-  const cityNames = Object.keys(cityCache).sort((a, b) => a.localeCompare(b, "ru"));
-  console.log(`[DSP] unique cities: ${cityNames.length}`, cityNames.slice(0, 5));
-
-  state.dspCities = cityNames;
-  state.citiesAll = cityNames;
-  state.regionsAll = [...cityNames];
-  state.regionsByCity = {};
-  for (const c of cityNames) state.regionsByCity[c] = c;
-
+  dspHydrateCityState(cityCache);
   state.screens = [];
-  setRegionsUIReady(true);
-  setStatus("");
+  if (state.dspInventoryWarmupDone) setStatus("");
 }
 
 // Применяет кэшированный инвентарь для выбранных регионов (вызывается из onCalcClick)
 async function dspEnsureInventoryForRegions(regions) {
   if (!window.DSP_AUTH_ENABLED || !state.dspInventoryCache) return;
+  const missing = (regions || []).filter(r => !state.dspInventoryCache[r]);
+  if (missing.length && state.dspInventoryWarmupPromise) {
+    setStatus(`Догружаю инвентарь для: ${missing.join(", ")}…`);
+    await state.dspInventoryWarmupPromise;
+  }
   const screens = regions.flatMap(r => state.dspInventoryCache[r] || []);
   dspApplyMappedScreens(screens);
   console.log(`[DSP] inventory applied: ${screens.length} screens for regions:`, regions);
+  setStatus("");
 }
 
 // ===== START =====
