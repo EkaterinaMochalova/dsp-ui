@@ -2954,7 +2954,10 @@ function mapDspInventory(inv) {
   const meta = inv.metadata   || {};
   return {
     screen_id: inv.gid || String(inv.id),
-    city:      inv.inventoryTypeAndCity?.cityName || inv.city?.name || (typeof loc.city === "string" ? loc.city : loc.city?.name) || "",
+    city:      inv.inventoryTypeAndCity?.cityName || inv.city?.name
+             || (typeof loc.city === "string" ? loc.city : loc.city?.name)
+             || (loc.address ? loc.address.split(",")[0].trim() : "")
+             || "",
     format:    meta.format || inv.type || "",
     address:   loc.address  || inv.name || "",
     lat:       loc.latitude  ?? NaN,
@@ -3018,7 +3021,9 @@ async function loadScreensFromDSP() {
   for (const inv of raw) {
     const loc = inv.location || {};
     const cityName = inv.inventoryTypeAndCity?.cityName || inv.city?.name
-      || (typeof loc.city === "string" ? loc.city : loc.city?.name) || "";
+      || (typeof loc.city === "string" ? loc.city : loc.city?.name)
+      || (loc.address ? loc.address.split(",")[0].trim() : "")
+      || "";
     if (!cityName) continue;
     if (!state.dspInventoryCache[cityName]) state.dspInventoryCache[cityName] = [];
     state.dspInventoryCache[cityName].push(inv);
