@@ -1790,7 +1790,7 @@ async function onCalcClick() {
   // DSP mode: подгружаем инвентарь для выбранных регионов перед расчётом
   if (window.DSP_AUTH_ENABLED && state.dspCities) {
     const brief0 = buildBrief();
-    const regions0 = brief0.regions || [];
+    const regions0 = Array.isArray(brief0?.geo?.regions) ? brief0.geo.regions : [];
     if (regions0.length) {
       await dspEnsureInventoryForRegions(regions0);
     }
@@ -2542,7 +2542,7 @@ function renderBudgetHints() {
 function computePoolPreview() {
   if (!state.screens || !state.screens.length) return null;
   const brief = buildBrief();
-  const regions = brief.regions || [];
+  const regions = Array.isArray(brief?.geo?.regions) ? brief.geo.regions : [];
   if (!regions.length) return null;
 
   // 1. По регионам
