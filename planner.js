@@ -2895,7 +2895,7 @@ async function dspFetchAllInventories() {
   const headers = { "Authorization": "Bearer " + token };
   const size = 500;
 
-  // Вспомогательная функция: загрузить одну страницу с ретраем
+  // Вспомогательная функция: загрузить одну страницу с ретраем, вернуть {items, totalElements}
   async function fetchPage(p) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -2904,33 +2904,25 @@ async function dspFetchAllInventories() {
           { headers }
         );
         if (r.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
-        if (!r.ok) { console.warn(`[DSP] ${r.status} on page ${p}`); return []; }
+        if (!r.ok) { console.warn(`[DSP] ${r.status} on page ${p}`); return { items: [] }; }
         const j = await r.json();
-        return j.content || [];
+        return { items: j.content || [], totalElements: j.totalElements || 0, totalPages: j.totalPages || 0 };
       } catch (e) {
         if (e.message === "SESSION_EXPIRED") throw e;
         console.warn(`[DSP] page ${p} attempt ${attempt + 1} failed:`, e.message);
         if (attempt < 2) await new Promise(res => setTimeout(res, 1000 * (attempt + 1)));
       }
     }
-    return [];
+    return { items: [] };
   }
 
-  // Шаг 1: загрузить первую страницу, узнать totalPages
-  const firstItems = await fetchPage(0);
-  // Повторно запросить с метаданными для получения totalPages
-  let totalPages = 1, totalElements = "?";
-  try {
-    const meta = await fetch(
-      `${DSP_API}/api/v1.0/clients/inventories?page=0&size=1&enabled=true`, { headers }
-    );
-    const metaJson = await meta.json();
-    totalPages = metaJson.totalPages || Math.ceil((metaJson.totalElements || 0) / size) || 1;
-    totalElements = metaJson.totalElements || "?";
-  } catch (e) { /* ignore, use page count from first response */ }
-
-  const all = [...firstItems];
-  setStatus(`Загружаю экраны… ${all.length} из ${totalElements}`);
+  // Шаг 1: загрузить первую страницу с size=500, чтобы получить корректный totalPages
+  const first = await fetchPage(0);
+  const totalElements = first.totalElements || 0;
+  // totalPages из API уже рассчитан под size=500 — используем его напрямую
+  const totalPages = first.totalPages || Math.ceil(totalElements / size) || 1;
+  const all = [...first.items];
+  setStatus(`Загружаю экраны… ${all.length} из ${totalElements || "?"}`);
 
   // Шаг 2: остальные страницы параллельными батчами по 5
   const BATCH = 5;
@@ -2941,8 +2933,7 @@ async function dspFetchAllInventories() {
     const results = await Promise.allSettled(pages.map(p => fetchPage(p)));
 
     for (const r of results) {
-      if (r.status === "fulfilled") all.push(...r.value);
-      // SESSION_EXPIRED в rejected пробросим наружу
+      if (r.status === "fulfilled") all.push(...(r.value.items || []));
       if (r.status === "rejected" && r.reason?.message === "SESSION_EXPIRED") throw r.reason;
     }
     setStatus(`Загружаю экраны… ${all.length} из ${totalElements}`);
