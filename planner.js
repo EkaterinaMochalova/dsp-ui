@@ -1769,6 +1769,15 @@ function computeGoalOtsPlan(prepared, totalOtsGoal, opts = {}) {
 
 // ===== MAIN =====
 async function onCalcClick() {
+  // DSP mode: подгружаем инвентарь для выбранных регионов перед расчётом
+  if (window.DSP_AUTH_ENABLED && state.dspCities) {
+    const brief0 = buildBrief();
+    const regions0 = brief0.regions || [];
+    if (regions0.length) {
+      await dspEnsureInventoryForRegions(regions0);
+    }
+  }
+
   const brief = buildBrief();
   const pphTarget = targetPlaysPerHourPerScreen(brief.reachMode);
 
@@ -2870,26 +2879,42 @@ function showLoginOverlay() {
   });
 }
 
-async function dspFetchAllInventories() {
+// Загрузка всех доступных городов из DSP
+async function dspFetchCities() {
   const token = getDspToken();
   if (!token) throw new Error("SESSION_EXPIRED");
+  const res = await fetch(`${DSP_API}/api/v1.0/clients/cities`, {
+    headers: { "Authorization": "Bearer " + token }
+  });
+  if (res.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
+  if (!res.ok) throw new Error(`API cities error ${res.status}`);
+  const json = await res.json();
+  // API может вернуть массив или {content:[...]}
+  return Array.isArray(json) ? json : (json.content || json.cities || Object.values(json));
+}
 
+// Загрузка инвентаря по конкретным cityId (ленивая, по запросу)
+async function dspFetchInventoriesByCityId(cityId) {
+  const token = getDspToken();
+  if (!token) throw new Error("SESSION_EXPIRED");
   const headers = { "Authorization": "Bearer " + token };
   let page = 0, size = 500, all = [];
 
   while (true) {
-    const res = await fetch(
-      `${DSP_API}/api/v1.0/clients/inventories?page=${page}&size=${size}&enabled=true`,
-      { headers }
-    );
+    const url = `${DSP_API}/api/v1.0/clients/inventories?page=${page}&size=${size}&enabled=true&cityId=${cityId}`;
+    let res;
+    try {
+      res = await fetch(url, { headers });
+    } catch (e) {
+      console.warn(`[DSP] fetch failed for cityId=${cityId} page=${page}:`, e.message);
+      break;
+    }
     if (res.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
-    if (!res.ok) throw new Error(`API error ${res.status}`);
+    if (!res.ok) { console.warn(`[DSP] ${res.status} for cityId=${cityId} page=${page}, stopping`); break; }
 
     const json = await res.json();
     const items = json.content || [];
     all.push(...items);
-    setStatus(`Загружаю инвентарь: ${all.length}${json.totalElements ? " из " + json.totalElements : ""}…`);
-
     if (items.length < size || page >= (json.totalPages || 1) - 1) break;
     page++;
   }
@@ -2915,9 +2940,8 @@ function mapDspInventory(inv) {
   };
 }
 
-async function loadScreensFromDSP() {
-  const raw = await dspFetchAllInventories();
-
+// Нормализует массив сырых инвентарей в state.screens
+function dspApplyInventories(raw) {
   state.screens = raw.map(inv => {
     const s = mapDspInventory(inv);
     s.minBid = Number.isFinite(Number(s.minBid)) ? Number(s.minBid) : NaN;
@@ -2943,30 +2967,70 @@ async function loadScreensFromDSP() {
     }
   }
 
-  state.citiesAll = [...new Set(state.screens.map(s => s.city).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "ru"));
   state.formatsAll = [...new Set(state.screens.map(s => s.format).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
-
-  state.regionsByCity = {};
-  state.regionsAll = [];
-  for (const c of state.citiesAll) {
-    // city_regions.json имеет приоритет; если не найден — город сам является регионом
-    const reg = getRegionForCity(c) || c;
-    state.regionsByCity[c] = reg;
-    if (!state.regionsAll.includes(reg)) state.regionsAll.push(reg);
-  }
   for (const s of state.screens) {
-    s.region = state.regionsByCity[s.city] || s.city || "Не назначено";
+    s.region = s.city || "Не назначено";
   }
 
-  setRegionsUIReady(true);
   window.dispatchEvent(new CustomEvent("planner:screens-ready", { detail: { count: state.screens.length } }));
   renderFormats();
   renderSelectedRegions();
   renderOwners();
+}
+
+// Загрузка городов → список регионов в UI. Инвентарь грузится позже, по городу.
+async function loadScreensFromDSP() {
+  setStatus("Загружаю список городов…");
+  const cities = await dspFetchCities();
+  console.log(`[DSP] cities:`, cities.slice(0, 3));
+
+  // Строим регионы прямо из городов DSP (id + name)
+  state.dspCities = cities;           // [{id, name, ...}]
+  state.dspInventoryCache = {};       // cityId → [inventories]
+
+  // citiesAll и regionsAll из городов API
+  state.citiesAll = cities.map(c => c.name || c.title || String(c.id)).filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "ru"));
+  state.regionsAll   = [...state.citiesAll];
+  state.regionsByCity = {};
+  for (const c of state.citiesAll) state.regionsByCity[c] = c;
+
+  // Экраны пустые пока пользователь не запустит расчёт
+  state.screens = [];
+
+  setRegionsUIReady(true);
   setStatus("");
-  console.log(`[DSP] loaded ${state.screens.length} inventories`);
+  console.log(`[DSP] cities loaded: ${cities.length}, regions ready`);
+}
+
+// Загружает инвентарь для нужных городов перед расчётом (вызывается из onCalcClick)
+async function dspEnsureInventoryForRegions(regions) {
+  if (!window.DSP_AUTH_ENABLED || !state.dspCities) return;
+
+  const cityObjs = state.dspCities.filter(c => {
+    const name = c.name || c.title || String(c.id);
+    return regions.includes(name);
+  });
+
+  const toLoad = cityObjs.filter(c => !state.dspInventoryCache[c.id]);
+  if (!toLoad.length) {
+    // Всё уже в кеше — просто применяем
+    const all = cityObjs.flatMap(c => state.dspInventoryCache[c.id] || []);
+    dspApplyInventories(all);
+    return;
+  }
+
+  setStatus(`Загружаю инвентарь для ${toLoad.length} город(ов)…`);
+  for (const city of toLoad) {
+    const inv = await dspFetchInventoriesByCityId(city.id);
+    state.dspInventoryCache[city.id] = inv;
+    setStatus(`Загружено: ${city.name || city.id} (${inv.length} экранов)`);
+  }
+
+  const all = cityObjs.flatMap(c => state.dspInventoryCache[c.id] || []);
+  dspApplyInventories(all);
+  console.log(`[DSP] inventory ready: ${all.length} screens for regions:`, regions);
 }
 
 // ===== START =====
