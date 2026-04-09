@@ -165,7 +165,8 @@ const state = {
   // DSP warmup
   dspInventoryCache: null,
   dspInventoryWarmupPromise: null,
-  dspInventoryWarmupDone: false
+  dspInventoryWarmupDone: false,
+  dspRegionToCities: {}
 };
 
 window.PLANNER.state = state;
@@ -544,6 +545,26 @@ function getRegionForCity(city) {
   const key = normalizeKey(city);
   const r = window.PLANNER?.cityRegions?.[key];
   return (typeof r === "string" && r.trim()) ? r.trim() : "Не назначено";
+}
+
+function isLikelyAddressLikeName(value) {
+  const s = normalizeKey(value);
+  if (!s) return false;
+  if (/\d/.test(s)) return true;
+  if (/[«»"']/u.test(String(value || ""))) return true;
+  if (/\s-\s/.test(String(value || ""))) return true;
+  return /(ул|улица|проспект|пр-т|шоссе|проезд|пер|переулок|наб|набережная|бульвар|пл|площадь|ост\.|остановк|дом|д\.)/.test(s);
+}
+
+function getRegionForDspCity(city) {
+  const raw = String(city || "").trim();
+  if (!raw) return "Не назначено";
+
+  const mapped = getRegionForCity(raw);
+  if (mapped !== "Не назначено") return mapped;
+
+  if (isLikelyAddressLikeName(raw)) return "Не назначено";
+  return raw;
 }
 
 // ===== Regions UI (мультивыбор) =====
@@ -2987,7 +3008,7 @@ function dspHydrateCityState(cityCache) {
     grp:    Number.isFinite(Number(s.grp))    ? Number(s.grp)    : NaN,
     lat:    Number.isFinite(Number(s.lat))    ? Number(s.lat)    : NaN,
     lon:    Number.isFinite(Number(s.lon))    ? Number(s.lon)    : NaN,
-    region: s.city || "Не назначено",
+    region: getRegionForDspCity(s.city),
   }));
 
   const cityNames = Object.keys(cityCache).sort((a, b) => a.localeCompare(b, "ru"));
@@ -2995,9 +3016,17 @@ function dspHydrateCityState(cityCache) {
 
   state.dspCities = cityNames;
   state.citiesAll = cityNames;
-  state.regionsAll = [...cityNames];
   state.regionsByCity = {};
-  for (const c of cityNames) state.regionsByCity[c] = c;
+  state.dspRegionToCities = {};
+  for (const c of cityNames) {
+    const region = getRegionForDspCity(c);
+    state.regionsByCity[c] = region;
+    if (!state.dspRegionToCities[region]) state.dspRegionToCities[region] = [];
+    state.dspRegionToCities[region].push(c);
+  }
+
+  state.regionsAll = [...new Set(Object.values(state.regionsByCity).filter(r => r && r !== "Не назначено"))]
+    .sort((a, b) => a.localeCompare(b, "ru"));
 
   state.formatsAll = [...new Set(state.screensAll.map(s => s.format).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b));
@@ -3115,7 +3144,6 @@ function mapDspInventory(inv) {
     screen_id: inv.gid || String(inv.id),
     city:      inv.inventoryTypeAndCity?.cityName || inv.city?.name
              || (typeof loc.city === "string" ? loc.city : loc.city?.name)
-             || (loc.address ? loc.address.split(",")[0].trim() : "")
              || "",
     format:    meta.format || inv.type || "",
     address:   loc.address  || inv.name || "",
@@ -3201,7 +3229,7 @@ function dspApplyMappedScreens(screens) {
     grp:    Number.isFinite(Number(s.grp))    ? Number(s.grp)    : NaN,
     lat:    Number.isFinite(Number(s.lat))    ? Number(s.lat)    : NaN,
     lon:    Number.isFinite(Number(s.lon))    ? Number(s.lon)    : NaN,
-    region: s.city || "Не назначено",
+    region: state.regionsByCity?.[s.city] || getRegionForDspCity(s.city),
   }));
   state.screensAll = [...state.screens];
 
@@ -3248,12 +3276,14 @@ async function loadScreensFromDSP() {
 // Применяет кэшированный инвентарь для выбранных регионов (вызывается из onCalcClick)
 async function dspEnsureInventoryForRegions(regions) {
   if (!window.DSP_AUTH_ENABLED || !state.dspInventoryCache) return;
-  const missing = (regions || []).filter(r => !state.dspInventoryCache[r]);
+  const regionToCities = state.dspRegionToCities || {};
+  const regionCities = (regions || []).flatMap(r => regionToCities[r] || []);
+  const missing = regionCities.filter(city => !state.dspInventoryCache[city]);
   if (missing.length && state.dspInventoryWarmupPromise) {
-    setStatus(`Догружаю инвентарь для: ${missing.join(", ")}…`);
+    setStatus(`Догружаю инвентарь для: ${regions.join(", ")}…`);
     await state.dspInventoryWarmupPromise;
   }
-  const screens = regions.flatMap(r => state.dspInventoryCache[r] || []);
+  const screens = regionCities.flatMap(city => state.dspInventoryCache[city] || []);
   dspApplyMappedScreens(screens);
   console.log(`[DSP] inventory applied: ${screens.length} screens for regions:`, regions);
   setStatus("");
