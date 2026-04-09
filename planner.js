@@ -2783,6 +2783,191 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   renderSelectionExtra();
 }
 
+// ===== DSP API AUTH + INVENTORY =====
+// Включается через: window.DSP_AUTH_ENABLED = true; в HTML Tilda перед виджетом
+
+const DSP_API = "https://proddsp.omniboard360.io";
+
+function getDspToken() { return sessionStorage.getItem("dsp_token") || ""; }
+function setDspToken(t) { t ? sessionStorage.setItem("dsp_token", t) : sessionStorage.removeItem("dsp_token"); }
+
+async function dspLogin(email, password) {
+  const res = await fetch(`${DSP_API}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  if (!res.ok) {
+    throw new Error(res.status < 500 ? "Неверный email или пароль" : `Ошибка сервера ${res.status}`);
+  }
+  const json = await res.json();
+  const token = json.accessToken;
+  if (!token) throw new Error("Токен не получен от сервера");
+  setDspToken(token);
+  return json.user || {};
+}
+
+function showLoginOverlay() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.id = "dsp-login-overlay";
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:99999;background:rgba(11,18,32,.75);" +
+      "display:flex;align-items:center;justify-content:center;font-family:inherit;";
+
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:20px;padding:40px 36px;width:340px;max-width:90vw;
+                  box-shadow:0 24px 64px rgba(0,0,0,.22);">
+        <div style="font-size:22px;font-weight:700;margin-bottom:6px;color:#0b1220;">Вход</div>
+        <div style="font-size:13px;color:#667085;margin-bottom:24px;">
+          Введите данные вашего аккаунта DSP
+        </div>
+        <input id="dsp-email" type="email" placeholder="Email"
+               style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #e0e0e0;
+                      border-radius:10px;font-size:14px;margin-bottom:10px;outline:none;">
+        <input id="dsp-password" type="password" placeholder="Пароль"
+               style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #e0e0e0;
+                      border-radius:10px;font-size:14px;margin-bottom:16px;outline:none;">
+        <div id="dsp-err" style="color:#e53e3e;font-size:13px;min-height:18px;margin-bottom:10px;"></div>
+        <button id="dsp-login-btn"
+                style="width:100%;padding:13px;background:#5b3ef5;color:#fff;border:none;
+                       border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;">
+          Войти
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const emailEl = overlay.querySelector("#dsp-email");
+    const passEl  = overlay.querySelector("#dsp-password");
+    const errEl   = overlay.querySelector("#dsp-err");
+    const btnEl   = overlay.querySelector("#dsp-login-btn");
+
+    async function doLogin() {
+      const email = emailEl.value.trim();
+      const pass  = passEl.value;
+      if (!email || !pass) { errEl.textContent = "Заполните все поля"; return; }
+      btnEl.disabled = true;
+      btnEl.textContent = "Вхожу…";
+      errEl.textContent = "";
+      try {
+        const user = await dspLogin(email, pass);
+        overlay.remove();
+        resolve(user);
+      } catch (e) {
+        errEl.textContent = e.message || "Ошибка входа";
+        btnEl.disabled = false;
+        btnEl.textContent = "Войти";
+      }
+    }
+
+    btnEl.addEventListener("click", doLogin);
+    [emailEl, passEl].forEach(inp =>
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); })
+    );
+    setTimeout(() => emailEl.focus(), 50);
+  });
+}
+
+async function dspFetchAllInventories() {
+  const token = getDspToken();
+  if (!token) throw new Error("SESSION_EXPIRED");
+
+  const headers = { "Authorization": "Bearer " + token };
+  let page = 0, size = 500, all = [];
+
+  while (true) {
+    const res = await fetch(
+      `${DSP_API}/api/v1.0/clients/inventories?page=${page}&size=${size}&enabled=true`,
+      { headers }
+    );
+    if (res.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+
+    const json = await res.json();
+    const items = json.content || [];
+    all.push(...items);
+    setStatus(`Загружаю инвентарь: ${all.length}${json.totalElements ? " из " + json.totalElements : ""}…`);
+
+    if (items.length < size || page >= (json.totalPages || 1) - 1) break;
+    page++;
+  }
+  return all;
+}
+
+function mapDspInventory(inv) {
+  const loc  = inv.location   || {};
+  const meta = inv.metadata   || {};
+  return {
+    screen_id: inv.gid || String(inv.id),
+    city:      inv.inventoryTypeAndCity?.cityName || loc.city || "",
+    format:    meta.format || inv.type || "",
+    address:   loc.address  || inv.name || "",
+    lat:       loc.latitude  ?? NaN,
+    lon:       loc.longitude ?? NaN,
+    minBid:    inv.minBidInfo?.minBid ?? NaN,
+    ots:       meta.ots ?? meta.otsInfo?.otsValue ?? NaN,
+    grp:       meta.grp ?? NaN,
+    owner:     inv.displayOwner?.name || "",
+    image_url: inv.images?.[0]?.url   || "",
+    _dspId:    inv.id,
+  };
+}
+
+async function loadScreensFromDSP() {
+  const raw = await dspFetchAllInventories();
+
+  state.screens = raw.map(inv => {
+    const s = mapDspInventory(inv);
+    s.minBid = Number.isFinite(Number(s.minBid)) ? Number(s.minBid) : NaN;
+    s.ots    = Number.isFinite(Number(s.ots))    ? Number(s.ots)    : NaN;
+    s.grp    = Number.isFinite(Number(s.grp))    ? Number(s.grp)    : NaN;
+    s.lat    = Number.isFinite(Number(s.lat))    ? Number(s.lat)    : NaN;
+    s.lon    = Number.isFinite(Number(s.lon))    ? Number(s.lon)    : NaN;
+    return s;
+  });
+
+  // OTS interpolation по формату
+  const otsByFormat = {};
+  for (const s of state.screens) {
+    if (Number.isFinite(s.ots) && s.ots > 0 && s.format) {
+      if (!otsByFormat[s.format]) otsByFormat[s.format] = { sum: 0, cnt: 0 };
+      otsByFormat[s.format].sum += s.ots;
+      otsByFormat[s.format].cnt++;
+    }
+  }
+  for (const s of state.screens) {
+    if (!(Number.isFinite(s.ots) && s.ots > 0) && s.format && otsByFormat[s.format]) {
+      s.ots = otsByFormat[s.format].sum / otsByFormat[s.format].cnt;
+    }
+  }
+
+  state.citiesAll = [...new Set(state.screens.map(s => s.city).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "ru"));
+  state.formatsAll = [...new Set(state.screens.map(s => s.format).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+
+  state.regionsByCity = {};
+  state.regionsAll = [];
+  for (const c of state.citiesAll) {
+    // city_regions.json имеет приоритет; если не найден — город сам является регионом
+    const reg = getRegionForCity(c) || c;
+    state.regionsByCity[c] = reg;
+    if (!state.regionsAll.includes(reg)) state.regionsAll.push(reg);
+  }
+  for (const s of state.screens) {
+    s.region = state.regionsByCity[s.city] || s.city || "Не назначено";
+  }
+
+  window.dispatchEvent(new CustomEvent("planner:screens-ready", { detail: { count: state.screens.length } }));
+  renderFormats();
+  renderSelectedRegions();
+  renderOwners();
+  setStatus("");
+  console.log(`[DSP] loaded ${state.screens.length} inventories`);
+}
+
 // ===== START =====
 async function startPlanner() {
   bindPlannerUI();
@@ -2790,7 +2975,25 @@ async function startPlanner() {
 
   await loadTiers();
   await loadCityRegions();
-  await loadScreens();
+
+  if (window.DSP_AUTH_ENABLED) {
+    // DSP API mode: логин + загрузка инвентаря через API
+    if (!getDspToken()) await showLoginOverlay();
+    try {
+      await loadScreensFromDSP();
+    } catch (e) {
+      if (e.message === "SESSION_EXPIRED") {
+        // Токен протух — показываем логин снова
+        await showLoginOverlay();
+        await loadScreensFromDSP();
+      } else {
+        throw e;
+      }
+    }
+  } else {
+    // Fallback: CSV
+    await loadScreens();
+  }
 }
 
 function bootPlanner() {
