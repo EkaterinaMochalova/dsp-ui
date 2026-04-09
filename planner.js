@@ -3031,30 +3031,92 @@ function dspApplyInventories(raw) {
   renderOwners();
 }
 
-// Загружает весь инвентарь, строит список городов и кэш по городу (cityName → [inventories])
-async function loadScreensFromDSP() {
-  setStatus("Загружаю инвентарь…");
-  const raw = await dspFetchAllInventories();
-  console.log(`[DSP] total inventories loaded: ${raw.length}`);
+// ---- localStorage-кэш инвентаря ----
+const DSP_CACHE_KEY = "dsp_inv_v2";
+const DSP_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 часа
 
-  // Группируем по названию города
-  state.dspInventoryCache = {};   // cityName → [raw inventories]
-  for (const inv of raw) {
-    const loc = inv.location || {};
-    const cityName = inv.inventoryTypeAndCity?.cityName || inv.city?.name
-      || (typeof loc.city === "string" ? loc.city : loc.city?.name)
-      || (loc.address ? loc.address.split(",")[0].trim() : "")
-      || "";
-    if (!cityName) continue;
-    if (!state.dspInventoryCache[cityName]) state.dspInventoryCache[cityName] = [];
-    state.dspInventoryCache[cityName].push(inv);
+function dspSaveInventoryToStorage(cityCache) {
+  try {
+    localStorage.setItem(DSP_CACHE_KEY, JSON.stringify({ ts: Date.now(), d: cityCache }));
+    console.log("[DSP] inventory saved to localStorage");
+  } catch (e) {
+    console.warn("[DSP] cache save failed (quota?):", e.message);
+  }
+}
+
+function dspLoadInventoryFromStorage() {
+  try {
+    const raw = localStorage.getItem(DSP_CACHE_KEY);
+    if (!raw) return null;
+    const { ts, d } = JSON.parse(raw);
+    if (Date.now() - ts > DSP_CACHE_TTL) { localStorage.removeItem(DSP_CACHE_KEY); return null; }
+    return d;
+  } catch { return null; }
+}
+
+// Применяет уже смапленные экраны (из кэша или после расчёта) в state.screens
+function dspApplyMappedScreens(screens) {
+  state.screens = screens.map(s => ({
+    ...s,
+    minBid: Number.isFinite(Number(s.minBid)) ? Number(s.minBid) : NaN,
+    ots:    Number.isFinite(Number(s.ots))    ? Number(s.ots)    : NaN,
+    grp:    Number.isFinite(Number(s.grp))    ? Number(s.grp)    : NaN,
+    lat:    Number.isFinite(Number(s.lat))    ? Number(s.lat)    : NaN,
+    lon:    Number.isFinite(Number(s.lon))    ? Number(s.lon)    : NaN,
+    region: s.city || "Не назначено",
+  }));
+
+  const otsByFormat = {};
+  for (const s of state.screens) {
+    if (Number.isFinite(s.ots) && s.ots > 0 && s.format) {
+      if (!otsByFormat[s.format]) otsByFormat[s.format] = { sum: 0, cnt: 0 };
+      otsByFormat[s.format].sum += s.ots;
+      otsByFormat[s.format].cnt++;
+    }
+  }
+  for (const s of state.screens) {
+    if (!(Number.isFinite(s.ots) && s.ots > 0) && s.format && otsByFormat[s.format])
+      s.ots = otsByFormat[s.format].sum / otsByFormat[s.format].cnt;
   }
 
-  const cityNames = Object.keys(state.dspInventoryCache)
-    .sort((a, b) => a.localeCompare(b, "ru"));
+  state.formatsAll = [...new Set(state.screens.map(s => s.format).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  window.dispatchEvent(new CustomEvent("planner:screens-ready", { detail: { count: state.screens.length } }));
+  renderFormats();
+  renderSelectedRegions();
+  renderOwners();
+}
+
+// Загружает весь инвентарь, строит список городов и кэш по городу (cityName → [mapped screens])
+async function loadScreensFromDSP() {
+  setStatus("Загружаю инвентарь…");
+
+  let cityCache = dspLoadInventoryFromStorage();
+  if (cityCache) {
+    const total = Object.values(cityCache).reduce((s, a) => s + a.length, 0);
+    console.log(`[DSP] loaded from localStorage: ${total} screens, ${Object.keys(cityCache).length} cities`);
+  } else {
+    const raw = await dspFetchAllInventories();
+    console.log(`[DSP] total inventories loaded: ${raw.length}`);
+
+    // Маппим и группируем по городу
+    cityCache = {};
+    for (const inv of raw) {
+      const s = mapDspInventory(inv);
+      if (!s.city) continue;
+      if (!cityCache[s.city]) cityCache[s.city] = [];
+      cityCache[s.city].push(s);   // храним уже смапленные экраны
+    }
+
+    dspSaveInventoryToStorage(cityCache);
+  }
+
+  state.dspInventoryCache = cityCache;   // cityName → [mapped screens]
+
+  const cityNames = Object.keys(cityCache).sort((a, b) => a.localeCompare(b, "ru"));
   console.log(`[DSP] unique cities: ${cityNames.length}`, cityNames.slice(0, 5));
 
-  state.dspCities = cityNames;    // просто массив строк
+  state.dspCities = cityNames;
   state.citiesAll = cityNames;
   state.regionsAll = [...cityNames];
   state.regionsByCity = {};
@@ -3068,11 +3130,9 @@ async function loadScreensFromDSP() {
 // Применяет кэшированный инвентарь для выбранных регионов (вызывается из onCalcClick)
 async function dspEnsureInventoryForRegions(regions) {
   if (!window.DSP_AUTH_ENABLED || !state.dspInventoryCache) return;
-
-  // Кэш уже заполнен при старте — просто фильтруем нужные города
-  const all = regions.flatMap(r => state.dspInventoryCache[r] || []);
-  dspApplyInventories(all);
-  console.log(`[DSP] inventory applied: ${all.length} screens for regions:`, regions);
+  const screens = regions.flatMap(r => state.dspInventoryCache[r] || []);
+  dspApplyMappedScreens(screens);
+  console.log(`[DSP] inventory applied: ${screens.length} screens for regions:`, regions);
 }
 
 // ===== START =====
