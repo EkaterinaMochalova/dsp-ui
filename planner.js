@@ -2880,43 +2880,43 @@ function showLoginOverlay() {
 }
 
 // Загрузка всех доступных городов из DSP
-// Загружает ВСЕ инвентари постранично, пропуская страницы с ошибками 5xx
+// Загружает ВСЕ инвентари параллельными батчами, пропуская страницы с ошибками 5xx
 async function dspFetchAllInventories() {
   const token = getDspToken();
   if (!token) throw new Error("SESSION_EXPIRED");
   const headers = { "Authorization": "Bearer " + token };
-  let page = 0, size = 500, all = [], totalPages = null, errCount = 0;
+  const size = 500;
 
-  while (true) {
-    const url = `${DSP_API}/api/v1.0/clients/inventories?page=${page}&size=${size}&enabled=true`;
-    let res;
-    try {
-      res = await fetch(url, { headers });
-    } catch (e) {
-      console.warn(`[DSP] fetch failed page=${page}:`, e.message);
-      errCount++;
-      page++;
-      if (errCount >= 5 || (totalPages !== null && page >= totalPages)) break;
-      continue;
+  // Шаг 1: загрузить первую страницу, узнать totalPages
+  const first = await fetch(`${DSP_API}/api/v1.0/clients/inventories?page=0&size=${size}&enabled=true`, { headers });
+  if (first.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
+  if (!first.ok) throw new Error(`DSP API error ${first.status}`);
+  const firstJson = await first.json();
+  const totalPages = firstJson.totalPages || Math.ceil((firstJson.totalElements || 0) / size) || 1;
+  const totalElements = firstJson.totalElements || "?";
+  const all = [...(firstJson.content || [])];
+  setStatus(`Загружаю экраны… ${all.length} из ${totalElements}`);
+
+  // Шаг 2: остальные страницы параллельными батчами по 10
+  const BATCH = 10;
+  for (let start = 1; start < totalPages; start += BATCH) {
+    const pages = [];
+    for (let p = start; p < Math.min(start + BATCH, totalPages); p++) pages.push(p);
+
+    const results = await Promise.allSettled(pages.map(p =>
+      fetch(`${DSP_API}/api/v1.0/clients/inventories?page=${p}&size=${size}&enabled=true`, { headers })
+        .then(r => {
+          if (r.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
+          if (!r.ok) { console.warn(`[DSP] ${r.status} on page ${p}, skipping`); return []; }
+          return r.json().then(j => j.content || []);
+        })
+        .catch(e => { console.warn(`[DSP] page ${p} failed:`, e.message); return []; })
+    ));
+
+    for (const r of results) {
+      if (r.status === "fulfilled") all.push(...r.value);
     }
-    if (res.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
-    if (!res.ok) {
-      console.warn(`[DSP] ${res.status} on page ${page}, skipping`);
-      errCount++;
-      page++;
-      if (errCount >= 10 || (totalPages !== null && page >= totalPages)) break;
-      continue;
-    }
-    errCount = 0;
-    const json = await res.json();
-    const items = json.content || [];
-    all.push(...items);
-    if (totalPages === null) {
-      totalPages = json.totalPages || Math.ceil((json.totalElements || items.length) / size);
-    }
-    setStatus(`Загружаю экраны… ${all.length}${json.totalElements ? " из " + json.totalElements : ""}`);
-    if (items.length < size || page >= totalPages - 1) break;
-    page++;
+    setStatus(`Загружаю экраны… ${all.length} из ${totalElements}`);
   }
   return all;
 }
