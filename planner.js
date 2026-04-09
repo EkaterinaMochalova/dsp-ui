@@ -139,6 +139,7 @@ const RECO_HOURS_PER_DAY = 12; // для режима "нужна рекомен
 // ===== State =====
 const state = {
   screens: [],
+  screensAll: [],
   citiesAll: [],
   formatsAll: [],
 
@@ -2978,6 +2979,17 @@ function dspBuildCityCache(raw, baseCache = null) {
 function dspHydrateCityState(cityCache) {
   state.dspInventoryCache = cityCache;
 
+  const allScreens = Object.values(cityCache || {}).flatMap(arr => Array.isArray(arr) ? arr : []);
+  state.screensAll = allScreens.map(s => ({
+    ...s,
+    minBid: Number.isFinite(Number(s.minBid)) ? Number(s.minBid) : NaN,
+    ots:    Number.isFinite(Number(s.ots))    ? Number(s.ots)    : NaN,
+    grp:    Number.isFinite(Number(s.grp))    ? Number(s.grp)    : NaN,
+    lat:    Number.isFinite(Number(s.lat))    ? Number(s.lat)    : NaN,
+    lon:    Number.isFinite(Number(s.lon))    ? Number(s.lon)    : NaN,
+    region: s.city || "Не назначено",
+  }));
+
   const cityNames = Object.keys(cityCache).sort((a, b) => a.localeCompare(b, "ru"));
   console.log(`[DSP] unique cities: ${cityNames.length}`, cityNames.slice(0, 5));
 
@@ -2987,8 +2999,20 @@ function dspHydrateCityState(cityCache) {
   state.regionsByCity = {};
   for (const c of cityNames) state.regionsByCity[c] = c;
 
+  state.formatsAll = [...new Set(state.screensAll.map(s => s.format).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+
+  state.ownersAll = [...new Set(
+    state.screensAll
+      .map(s => String(s.owner ?? s.Owner ?? "").trim())
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, "ru"));
+
   setRegionsUIReady(true);
+  renderFormats();
+  renderOwners();
   renderSelectedRegions();
+  window.dispatchEvent(new CustomEvent("planner:screens-ready", { detail: { count: state.screensAll.length } }));
 }
 
 async function dspWarmupInventoryInBackground(cityCacheSeed, totalLoadedSoFar, totalElements, totalPages) {
@@ -3179,6 +3203,7 @@ function dspApplyMappedScreens(screens) {
     lon:    Number.isFinite(Number(s.lon))    ? Number(s.lon)    : NaN,
     region: s.city || "Не назначено",
   }));
+  state.screensAll = [...state.screens];
 
   const otsByFormat = {};
   for (const s of state.screens) {
