@@ -3010,11 +3010,16 @@ async function dspFetchInventoriesPage(page, size = DSP_PAGE_SIZE) {
   return { items: [], totalElements: 0, totalPages: 0 };
 }
 
+// Субгородские административные единицы, которые не нужны как отдельные «города»
+const DSP_CITY_SKIP_WORDS = ["поселен", "сельское", "сельсовет", "волость"];
+
 function dspBuildCityCache(raw, baseCache = null) {
   const cityCache = baseCache || {};
   for (const inv of raw || []) {
     const s = mapDspInventory(inv);
     if (!s.city) continue;
+    const cl = s.city.toLowerCase();
+    if (DSP_CITY_SKIP_WORDS.some(w => cl.includes(w))) continue;
     if (!cityCache[s.city]) cityCache[s.city] = [];
     cityCache[s.city].push(s);
   }
@@ -3227,10 +3232,13 @@ const DSP_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 часа
 
 function dspSaveInventoryToStorage(cityCache) {
   try {
-    localStorage.setItem(DSP_CACHE_KEY, JSON.stringify({ ts: Date.now(), d: cityCache }));
+    const payload = JSON.stringify({ ts: Date.now(), d: cityCache });
+    // localStorage обычно ограничен ~5MB — пробуем только если данных немного
+    if (payload.length > 4_000_000) { console.log("[DSP] cache too large for localStorage, skipping"); return; }
+    localStorage.setItem(DSP_CACHE_KEY, payload);
     console.log("[DSP] inventory saved to localStorage");
   } catch (e) {
-    console.warn("[DSP] cache save failed (quota?):", e.message);
+    console.log("[DSP] cache save skipped:", e.message);
   }
 }
 
