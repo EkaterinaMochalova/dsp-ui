@@ -162,6 +162,9 @@ const state = {
   ownersAll: [],          // ✅ список операторов
   selectedOwners: new Set(),
 
+  // Polygon zone filter: null | [[lat,lon], ...]
+  polygonFilter: null,
+
   // DSP warmup
   dspInventoryCache: null,
   dspInventoryWarmupPromise: null,
@@ -193,6 +196,32 @@ function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, m => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
   }[m]));
+}
+
+/**
+ * Ray-casting point-in-polygon.
+ * polygon: [[lat, lon], ...]  (closed or open — doesn't matter)
+ */
+function pointInPolygon(lat, lon, polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return false;
+  let inside = false;
+  const n = polygon.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [yi, xi] = polygon[i];
+    const [yj, xj] = polygon[j];
+    const intersect = ((xi > lon) !== (xj > lon)) &&
+      (lat < (yj - yi) * (lon - xi) / (xj - xi) + yi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** Count screensAll inside current polygon filter */
+function countScreensInPolygon(polygon, screens) {
+  if (!polygon || polygon.length < 3) return 0;
+  return (screens || state.screensAll).filter(
+    s => Number.isFinite(s.lat) && Number.isFinite(s.lon) && pointInPolygon(s.lat, s.lon, polygon)
+  ).length;
 }
 
 function normalizeKey(s) {
@@ -2084,6 +2113,12 @@ async function onCalcClick() {
       pool = window.PLANNER.getScreensFilteredByOwner(pool);
     }
 
+    // Фильтр по нарисованному полигону
+    const poly = state.polygonFilter;
+    if (poly && poly.length >= 3) {
+      pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) && pointInPolygon(s.lat, s.lon, poly));
+    }
+
     if (pool.length === 0) {
       perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов" });
       continue;
@@ -3629,4 +3664,6 @@ Object.assign(window.PLANNER, {
   computeScheduleHoursForPeriod,
   getScreensFilteredByOwner,
   renderOwners,
+  pointInPolygon,
+  countScreensInPolygon,
 });

@@ -282,6 +282,24 @@
     </div>
   </div>
 
+  <!-- Зона на карте -->
+  <div class="planner-block">
+    <div class="planner-label">Зона на карте</div>
+    <div id="poly-badge" style="display:none; align-items:center; gap:8px; margin-bottom:8px;
+         padding:8px 12px; background:#EDE9FD; border-radius:8px; font-size:13px; color:#3a2bb5;">
+      <span>📍</span>
+      <span id="poly-badge-text"></span>
+      <button id="poly-clear-btn" type="button" style="margin-left:auto; background:none; border:none;
+              color:#5B3EF5; cursor:pointer; font-size:12px; text-decoration:underline; padding:0;">
+        Очистить зону
+      </button>
+    </div>
+    <button id="poly-draw-btn" type="button" class="wiz-btn ghost">🗺 Нарисовать зону</button>
+    <div class="planner-note" style="margin-top:6px;">
+      Нарисуйте полигон — в расчёт попадут только экраны внутри зоны.
+    </div>
+  </div>
+
   <button id="calc-btn" class="ux-primary" disabled>Рассчитать</button>
   <div id="status" class="planner-status"></div>
 
@@ -320,6 +338,58 @@
   </div>
     </div>
 
+<!-- ===================== POLYGON DRAW MODAL ===================== -->
+<div id="poly-modal" style="
+  display:none; position:fixed; inset:0; z-index:10000;
+  background:rgba(11,18,32,0.72); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center; padding:16px;">
+
+  <div style="
+    background:#fff; border-radius:20px; overflow:hidden;
+    width:100%; max-width:960px; height:90vh;
+    display:flex; flex-direction:column;
+    box-shadow:0 24px 80px rgba(11,18,32,0.35);">
+
+    <!-- Header -->
+    <div style="
+      padding:16px 20px; border-bottom:1px solid #eee;
+      display:flex; align-items:center; gap:12px; flex-shrink:0;">
+      <div style="font-weight:700; font-size:16px; color:#0B1220;">🗺 Нарисовать зону</div>
+      <div id="poly-modal-count" style="
+        font-size:13px; color:#5B3EF5; font-weight:600;
+        background:#EDE9FD; padding:3px 10px; border-radius:20px; display:none;">
+      </div>
+      <div style="margin-left:auto; display:flex; gap:8px;">
+        <button id="poly-modal-reset" type="button" class="wiz-btn ghost" style="display:none;">
+          Перерисовать
+        </button>
+        <button id="poly-modal-cancel" type="button" class="wiz-btn ghost">Отмена</button>
+        <button id="poly-modal-confirm" type="button" class="ux-primary" disabled>Применить</button>
+      </div>
+    </div>
+
+    <!-- Hint bar -->
+    <div id="poly-hint" style="
+      padding:8px 20px; font-size:12px; color:#667085;
+      background:#F9FAFB; border-bottom:1px solid #f0f0f0; flex-shrink:0;">
+      Кликайте на карту, чтобы добавлять точки полигона. Замкните его — кликните на первую точку или нажмите «Завершить».
+    </div>
+
+    <!-- Map -->
+    <div style="flex:1; position:relative; min-height:0;">
+      <div id="poly-map" style="height:100%; width:100%;"></div>
+      <!-- Finish button (floating) -->
+      <button id="poly-finish-btn" type="button" style="
+        display:none; position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+        background:#5B3EF5; color:#fff; border:none; border-radius:999px;
+        padding:10px 24px; font-size:14px; font-weight:600; cursor:pointer;
+        box-shadow:0 4px 20px rgba(91,62,245,0.4); z-index:500;">
+        ✓ Завершить полигон
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== LIBS ===================== -->
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -337,6 +407,8 @@
   crossorigin=""
 ></script>
 
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@3f5d652/geo.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@3f5d652/planner.js"></script>
 
@@ -1566,6 +1638,284 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
 })();
 </script>
 
+
+<!-- ===================== POLYGON ZONE ===================== -->
+<script>
+(function(){
+  const el = id => document.getElementById(id);
+
+  let polyMap    = null;
+  let drawLayer  = null;   // L.FeatureGroup — хранит нарисованный полигон
+  let dotsLayer  = null;   // L.FeatureGroup — точки всех экранов
+  let currentPoly = null;  // L.Polygon | null
+  let drawControl = null;
+
+  // ── helpers ─────────────────────────────────────────────────────────
+  function getPoly()  { return window.PLANNER?.state?.polygonFilter || null; }
+  function setPoly(p) {
+    window.PLANNER = window.PLANNER || {};
+    window.PLANNER.state = window.PLANNER.state || {};
+    window.PLANNER.state.polygonFilter = p;
+  }
+  function getScreensAll() { return window.PLANNER?.state?.screensAll || []; }
+  function countInside(latLngs) {
+    if (!latLngs || latLngs.length < 3) return 0;
+    const poly = latLngs.map(ll => [ll.lat, ll.lng]);
+    const fn = window.PLANNER?.pointInPolygon;
+    if (!fn) return 0;
+    return getScreensAll().filter(
+      s => Number.isFinite(s.lat) && Number.isFinite(s.lon) && fn(s.lat, s.lon, poly)
+    ).length;
+  }
+
+  // ── badge in step 4 ─────────────────────────────────────────────────
+  function updateBadge() {
+    const poly = getPoly();
+    const badge = el("poly-badge");
+    const text  = el("poly-badge-text");
+    const btn   = el("poly-draw-btn");
+    if (!badge || !text) return;
+    if (poly && poly.length >= 3) {
+      const cnt = window.PLANNER?.countScreensInPolygon
+        ? window.PLANNER.countScreensInPolygon(poly)
+        : 0;
+      text.textContent = `Зона активна — ${cnt.toLocaleString("ru-RU")} экранов`;
+      badge.style.display = "flex";
+      if (btn) btn.textContent = "✏️ Изменить зону";
+    } else {
+      badge.style.display = "none";
+      if (btn) btn.textContent = "🗺 Нарисовать зону";
+    }
+  }
+
+  // ── open modal ───────────────────────────────────────────────────────
+  function openModal() {
+    const modal = el("poly-modal");
+    if (!modal) return;
+    modal.style.display = "flex";
+    setTimeout(initPolyMap, 50); // дать время показаться
+  }
+
+  function closeModal() {
+    const modal = el("poly-modal");
+    if (modal) modal.style.display = "none";
+    // stop any active drawing
+    if (drawControl && polyMap) {
+      try { drawControl.disable?.(); } catch(_) {}
+    }
+  }
+
+  // ── init drawing map ─────────────────────────────────────────────────
+  function initPolyMap() {
+    if (!window.L) { alert("Leaflet не загружен"); return; }
+    const box = el("poly-map");
+    if (!box) return;
+
+    // Create map once
+    if (!polyMap) {
+      polyMap = L.map(box, { scrollWheelZoom: true, zoomControl: true });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19, attribution: "© OpenStreetMap"
+      }).addTo(polyMap);
+
+      drawLayer = new L.FeatureGroup().addTo(polyMap);
+      dotsLayer = new L.FeatureGroup().addTo(polyMap);
+    }
+
+    polyMap.invalidateSize();
+
+    // Render existing polygon if any
+    drawLayer.clearLayers();
+    currentPoly = null;
+    const existing = getPoly();
+    if (existing && existing.length >= 3) {
+      const lls = existing.map(([la, lo]) => [la, lo]);
+      currentPoly = L.polygon(lls, { color: "#5B3EF5", fillOpacity: 0.15 }).addTo(drawLayer);
+    }
+
+    // Render all screens as tiny dots (canvas for performance)
+    dotsLayer.clearLayers();
+    const screens = getScreensAll();
+    const renderer = L.canvas({ padding: 0.5 });
+    const bounds = [];
+    screens.forEach(s => {
+      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return;
+      L.circleMarker([s.lat, s.lon], {
+        radius: 3, color: "#5B3EF5", fillColor: "#5B3EF5",
+        fillOpacity: 0.5, weight: 0, renderer
+      }).addTo(dotsLayer);
+      bounds.push([s.lat, s.lon]);
+    });
+
+    // Fit to existing poly or to all screens
+    setTimeout(() => {
+      polyMap.invalidateSize();
+      if (currentPoly) {
+        polyMap.fitBounds(currentPoly.getBounds(), { padding: [40, 40] });
+      } else if (bounds.length) {
+        polyMap.fitBounds(bounds, { padding: [20, 20] });
+      }
+    }, 80);
+
+    setupDrawing();
+    updateModalState();
+  }
+
+  // ── setup click-to-draw polygon ──────────────────────────────────────
+  let vertices = [];
+  let tempPolyline = null;
+  let tempMarkers  = [];
+
+  function setupDrawing() {
+    if (!polyMap) return;
+    // Remove old listeners safely
+    polyMap.off("click", onMapClick);
+
+    // If we already have a confirmed polygon, don't start drawing again
+    if (currentPoly) return;
+
+    vertices = [];
+    tempPolyline = null;
+    tempMarkers  = [];
+    polyMap.on("click", onMapClick);
+  }
+
+  function onMapClick(e) {
+    const latlng = e.latlng;
+    vertices.push(latlng);
+
+    // Draw vertex marker
+    const isFirst = vertices.length === 1;
+    const m = L.circleMarker(latlng, {
+      radius: isFirst ? 7 : 5,
+      color: isFirst ? "#e84444" : "#5B3EF5",
+      fillColor: isFirst ? "#e84444" : "#5B3EF5",
+      fillOpacity: 0.9, weight: 2
+    }).addTo(drawLayer);
+    if (isFirst) {
+      m.bindTooltip("Кликните сюда, чтобы замкнуть", { permanent: false, direction: "top" });
+      m.on("click", (ev) => { L.DomEvent.stopPropagation(ev); finishPolygon(); });
+    }
+    tempMarkers.push(m);
+
+    // Update polyline preview
+    if (tempPolyline) { drawLayer.removeLayer(tempPolyline); tempPolyline = null; }
+    if (vertices.length >= 2) {
+      tempPolyline = L.polyline(vertices, { color: "#5B3EF5", dashArray: "5,6", weight: 2 }).addTo(drawLayer);
+    }
+
+    // Show finish button after 3+ vertices
+    const finBtn = el("poly-finish-btn");
+    if (finBtn) finBtn.style.display = vertices.length >= 3 ? "block" : "none";
+
+    updateModalState();
+  }
+
+  function finishPolygon() {
+    if (vertices.length < 3) return;
+
+    // Clear temp layers
+    drawLayer.clearLayers();
+    if (tempPolyline) tempPolyline = null;
+    tempMarkers = [];
+    polyMap.off("click", onMapClick);
+
+    // Draw final polygon
+    currentPoly = L.polygon(vertices, { color: "#5B3EF5", fillOpacity: 0.15, weight: 2 }).addTo(drawLayer);
+
+    const finBtn = el("poly-finish-btn");
+    if (finBtn) finBtn.style.display = "none";
+
+    vertices = [];
+    updateModalState();
+  }
+
+  function resetDraw() {
+    if (currentPoly) { drawLayer.removeLayer(currentPoly); currentPoly = null; }
+    drawLayer.clearLayers();
+    vertices = [];
+    tempPolyline = null;
+    tempMarkers = [];
+    const finBtn = el("poly-finish-btn");
+    if (finBtn) finBtn.style.display = "none";
+    polyMap.on("click", onMapClick);
+    updateModalState();
+  }
+
+  // ── update modal UI state ────────────────────────────────────────────
+  function updateModalState() {
+    const confirmBtn = el("poly-modal-confirm");
+    const resetBtn   = el("poly-modal-reset");
+    const countBadge = el("poly-modal-count");
+    const hint       = el("poly-hint");
+
+    const hasPoly = !!currentPoly;
+    const hasVerts = vertices.length >= 3;
+
+    if (confirmBtn) confirmBtn.disabled = !hasPoly;
+    if (resetBtn)   resetBtn.style.display = (hasPoly || hasVerts) ? "block" : "none";
+
+    if (hasPoly && countBadge) {
+      const lls = currentPoly.getLatLngs()[0];
+      const cnt = countInside(lls);
+      countBadge.textContent = `${cnt.toLocaleString("ru-RU")} экранов`;
+      countBadge.style.display = "block";
+      if (hint) hint.textContent = cnt > 0
+        ? `В зоне ${cnt.toLocaleString("ru-RU")} экранов. Нажмите «Применить» или «Перерисовать».`
+        : "В зоне нет экранов. Попробуйте нарисовать другой полигон.";
+    } else {
+      if (countBadge) countBadge.style.display = "none";
+      if (hint) hint.textContent = hasVerts
+        ? `Добавлено ${vertices.length} точек. Кликните на первую точку или нажмите «Завершить».`
+        : "Кликайте на карту, чтобы добавлять точки полигона. Замкните его — кликните на первую точку или нажмите «Завершить».";
+    }
+  }
+
+  // ── confirm: save polygon to state ──────────────────────────────────
+  function confirmPolygon() {
+    if (!currentPoly) return;
+    const lls = currentPoly.getLatLngs()[0];
+    setPoly(lls.map(ll => [ll.lat, ll.lng]));
+    closeModal();
+    updateBadge();
+    // Trigger recalc hint
+    window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+  }
+
+  // ── clear polygon ────────────────────────────────────────────────────
+  function clearPolygon() {
+    setPoly(null);
+    currentPoly = null;
+    if (drawLayer) drawLayer.clearLayers();
+    updateBadge();
+    window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+  }
+
+  // ── init event listeners ─────────────────────────────────────────────
+  function init() {
+    el("poly-draw-btn")?.addEventListener("click", openModal);
+    el("poly-modal-cancel")?.addEventListener("click", closeModal);
+    el("poly-modal-confirm")?.addEventListener("click", confirmPolygon);
+    el("poly-modal-reset")?.addEventListener("click", resetDraw);
+    el("poly-clear-btn")?.addEventListener("click", clearPolygon);
+    el("poly-finish-btn")?.addEventListener("click", finishPolygon);
+
+    // Close on backdrop click
+    el("poly-modal")?.addEventListener("click", (e) => {
+      if (e.target === el("poly-modal")) closeModal();
+    });
+
+    // Re-render badge when screens load
+    window.addEventListener("planner:screens-ready", updateBadge);
+    window.addEventListener("planner:filters-changed", updateBadge);
+
+    updateBadge();
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>
 
 <!-- ===================== OWNERS ===================== -->
 
