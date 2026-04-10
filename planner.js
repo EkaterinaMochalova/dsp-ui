@@ -2876,6 +2876,16 @@ function getDspToken() { return sessionStorage.getItem("dsp_token") || ""; }
 function setDspToken(t) { t ? sessionStorage.setItem("dsp_token", t) : sessionStorage.removeItem("dsp_token"); }
 function getDspUserEmail() { return sessionStorage.getItem("dsp_user_email") || ""; }
 function setDspUserEmail(e) { e ? sessionStorage.setItem("dsp_user_email", e) : sessionStorage.removeItem("dsp_user_email"); }
+function getDspAgencyId() { return sessionStorage.getItem("dsp_agency_id") || ""; }
+function setDspAgencyId(id) { id ? sessionStorage.setItem("dsp_agency_id", String(id)) : sessionStorage.removeItem("dsp_agency_id"); }
+// additionalCharge — множитель надбавки агентства (напр. 0.15 = +15%), platformFee — фиксированная надбавка платформы (в той же валюте что и ставка)
+function getDspAgencyMarkup() {
+  try { return JSON.parse(sessionStorage.getItem("dsp_agency_markup") || "null") || {}; } catch { return {}; }
+}
+function setDspAgencyMarkup(obj) {
+  if (obj) sessionStorage.setItem("dsp_agency_markup", JSON.stringify(obj));
+  else sessionStorage.removeItem("dsp_agency_markup");
+}
 
 function renderDspUserBar() {
   const bar = document.getElementById("dsp-user-bar");
@@ -2903,6 +2913,8 @@ function renderDspUserBar() {
 function dspLogout() {
   setDspToken("");
   setDspUserEmail("");
+  setDspAgencyId("");
+  setDspAgencyMarkup(null);
   localStorage.removeItem(DSP_CACHE_KEY);
   window.location.reload();
 }
@@ -2922,7 +2934,33 @@ async function dspLogin(email, password) {
   setDspToken(token);
   const user = json.user || {};
   setDspUserEmail(user.email || user.login || user.username || "");
+  const agencyId = user.agency?.id || user.agencyId || "";
+  setDspAgencyId(agencyId);
+  if (agencyId) {
+    // Фоново подгружаем надбавки агентства; не блокируем интерфейс
+    dspFetchAgencyMarkup(agencyId).catch(() => {});
+  }
   return user;
+}
+
+async function dspFetchAgencyMarkup(agencyId) {
+  const token = getDspToken();
+  if (!token || !agencyId) return;
+  try {
+    const r = await fetch(`${DSP_API}/api/v1.0/clients/agencies/${agencyId}`, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!r.ok) return;
+    const agency = await r.json();
+    const markup = {
+      additionalCharge: agency.additionalCharge ?? 0,  // доп. надбавка агентства (доля, напр. 0.15)
+      platformFee:      agency.platformFee      ?? 0,  // фиксированная надбавка платформы
+    };
+    setDspAgencyMarkup(markup);
+    console.log("[DSP] agency markup loaded:", markup);
+  } catch (e) {
+    console.warn("[DSP] agency markup fetch failed:", e.message);
+  }
 }
 
 function showLoginOverlay() {
@@ -3188,7 +3226,16 @@ function mapDspInventory(inv) {
     address:   loc.address  || inv.name || "",
     lat:       loc.latitude  ?? NaN,
     lon:       loc.longitude ?? NaN,
-    minBid:    inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? NaN,
+    minBid:    (() => {
+      const charged = inv.minBidInfo?.minBidCharged;
+      if (charged != null) return charged;
+      // Если API не вернул minBidCharged — применяем надбавку вручную
+      const raw = inv.minBidInfo?.minBid;
+      if (raw == null) return NaN;
+      const markup = getDspAgencyMarkup();
+      const withCharge = raw * (1 + (markup.additionalCharge || 0));
+      return withCharge + (markup.platformFee || 0);
+    })(),
     ots:       meta.ots ?? meta.otsInfo?.otsValue ?? NaN,
     grp:       meta.grp ?? NaN,
     owner:     inv.displayOwner?.name || "",
@@ -3343,6 +3390,10 @@ async function startPlanner() {
     // DSP API mode: логин + загрузка инвентаря через API
     if (!getDspToken()) await showLoginOverlay();
     renderDspUserBar();
+    // Если надбавки ещё не загружены (напр. после перезагрузки страницы) — подгружаем фоново
+    if (getDspAgencyId() && !getDspAgencyMarkup().additionalCharge) {
+      dspFetchAgencyMarkup(getDspAgencyId()).catch(() => {});
+    }
     try {
       await loadScreensFromDSP();
     } catch (e) {
