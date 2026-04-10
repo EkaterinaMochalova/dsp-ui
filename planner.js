@@ -2943,6 +2943,26 @@ async function dspLogin(email, password) {
   return user;
 }
 
+// Подгружает профиль текущего пользователя, чтобы получить agencyId при перезагрузке страницы
+async function dspFetchCurrentUserAgency() {
+  const token = getDspToken();
+  if (!token) return;
+  try {
+    const r = await fetch(`${DSP_API}/api/v1.0/clients/users/me`, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!r.ok) return;
+    const user = await r.json();
+    const agencyId = user.agency?.id || user.agencyId || "";
+    if (agencyId) {
+      setDspAgencyId(agencyId);
+      await dspFetchAgencyMarkup(agencyId);
+    }
+  } catch (e) {
+    console.warn("[DSP] user profile fetch failed:", e.message);
+  }
+}
+
 async function dspFetchAgencyMarkup(agencyId) {
   const token = getDspToken();
   if (!token || !agencyId) return;
@@ -3390,8 +3410,10 @@ async function startPlanner() {
     // DSP API mode: логин + загрузка инвентаря через API
     if (!getDspToken()) await showLoginOverlay();
     renderDspUserBar();
-    // Если надбавки ещё не загружены (напр. после перезагрузки страницы) — подгружаем фоново
-    if (getDspAgencyId() && !getDspAgencyMarkup().additionalCharge) {
+    // Если agencyId не сохранён (например, токен из предыдущей сессии) — подтягиваем профиль фоново
+    if (!getDspAgencyId()) {
+      dspFetchCurrentUserAgency().catch(() => {});
+    } else if (!getDspAgencyMarkup().additionalCharge) {
       dspFetchAgencyMarkup(getDspAgencyId()).catch(() => {});
     }
     try {
