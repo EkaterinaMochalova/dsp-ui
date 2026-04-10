@@ -763,49 +763,9 @@ async function loadScreens() {
 }
 
 function renderOwners() {
-  const wrap = el("owner-wrap");
-  if (!wrap) return;
-  wrap.innerHTML = "";
-
-  // Пул экранов с учётом выбранных регионов и форматов для подсчёта по оператору
-  const selectedRegions = state.selectedRegions || [];
-  const selectedFormats = state.selectedFormats;
-  const poolForCount = state.screensAll.filter(s => {
-    if (selectedRegions.length > 0 && !selectedRegions.includes(s.region)) return false;
-    if (selectedFormats && selectedFormats.size > 0 && !selectedFormats.has(s.format)) return false;
-    return true;
-  });
-  const countByOwner = {};
-  for (const s of poolForCount) {
-    const o = String(s.owner ?? "").trim();
-    if (o) countByOwner[o] = (countByOwner[o] || 0) + 1;
-  }
-
-  const owners = Array.isArray(state.ownersAll) ? state.ownersAll : [];
-  owners.forEach(owner => {
-    const b = document.createElement("button");
-    cssButtonBase(b);
-    const cnt = countByOwner[owner] || 0;
-    b.innerHTML = `<span style="font-weight:600;">${escapeHtml(owner)}</span>`
-      + (cnt > 0 ? `<br><span style="font-size:11px;color:#999;">${cnt} экр.</span>` : "");
-
-    const sync = () => {
-      b.style.borderColor = state.selectedOwners.has(owner) ? "#111" : "#ddd";
-    };
-    sync();
-
-    b.addEventListener("click", () => {
-      if (state.selectedOwners.has(owner)) state.selectedOwners.delete(owner);
-      else state.selectedOwners.add(owner);
-      sync();
-      renderProgress();
-      // если у тебя UI где-то показывает "Выбрано: N"
-      const cnt = el("owners-count");
-      if (cnt) cnt.textContent = String(state.selectedOwners.size || 0);
-    });
-
-    wrap.appendChild(b);
-  });
+  // Карточки операторов рендерит widget.html (own-card).
+  // Здесь только уведомляем его об изменении данных через событие.
+  window.dispatchEvent(new CustomEvent("planner:filters-changed"));
 }
 
 function getScreensFilteredByOwner(pool) {

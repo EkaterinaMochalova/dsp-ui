@@ -1614,10 +1614,13 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
   function computeOwnersWithCounts(){
     const regions = getSelectedRegions();
     const screens = getScreensAll();
+    const selectedFormats = window.PLANNER?.state?.selectedFormats;
 
-    const pool = regions.length
-      ? screens.filter(s => regions.includes(getRegion(s)))
-      : screens;
+    const pool = screens.filter(s => {
+      if (regions.length && !regions.includes(getRegion(s))) return false;
+      if (selectedFormats && selectedFormats.size > 0 && !selectedFormats.has(s.format)) return false;
+      return true;
+    });
 
     const map = new Map();
     for(const s of pool){
