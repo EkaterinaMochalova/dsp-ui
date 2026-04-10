@@ -2879,11 +2879,11 @@ function setDspUserEmail(e) { e ? sessionStorage.setItem("dsp_user_email", e) : 
 
 function renderDspUserBar() {
   const bar = document.getElementById("dsp-user-bar");
-  if (!bar || !window.DSP_AUTH_ENABLED) return;
+  if (!bar || !window.DSP_AUTH_ENABLED || !getDspToken()) return;
   const email = getDspUserEmail();
-  if (!email) { bar.style.display = "none"; return; }
   bar.style.display = "block";
-  bar.innerHTML = `Вы вошли как <b>${escapeHtml(email)}</b> &nbsp;·&nbsp; <a href="#" id="dsp-logout-btn" style="color:#888;text-decoration:underline;">Выйти</a>`;
+  const label = email ? `Вы вошли как <b>${escapeHtml(email)}</b> &nbsp;·&nbsp; ` : "";
+  bar.innerHTML = `${label}<a href="#" id="dsp-logout-btn" style="color:#888;text-decoration:underline;">Выйти</a>`;
   document.getElementById("dsp-logout-btn")?.addEventListener("click", e => {
     e.preventDefault();
     dspLogout();
