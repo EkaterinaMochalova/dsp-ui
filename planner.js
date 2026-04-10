@@ -2315,9 +2315,9 @@ async function onCalcClick() {
 
     // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу)
     // Пересчитываем теоретический максимум выходов по фактическим ставкам выбранных экранов.
-    // Ставки пула (effectiveBid) могут быть выше ставок отобранных экранов — тогда
-    // бюджет не осваивается полностью. Берём лучшую из двух оценок.
-    if (Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0) {
+    // В режиме goal_ots цель уже зафиксирована через playsPlanned — не поднимаем теорию вверх,
+    // иначе появится ложное предупреждение «не хватает ёмкости».
+    if (brief.budget.mode !== "goal_ots" && Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0) {
       const totalPlaysTheoryByChosen = Math.floor(budget / effectiveChosenBid);
       totalPlaysTheory = Math.max(totalPlaysTheory, totalPlaysTheoryByChosen);
     }
