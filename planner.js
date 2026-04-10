@@ -2943,23 +2943,23 @@ async function dspLogin(email, password) {
   return user;
 }
 
-// Подгружает профиль текущего пользователя, чтобы получить agencyId при перезагрузке страницы
+// Подгружает agencyId через список агентств (/api/v1.0/clients/agencies)
 async function dspFetchCurrentUserAgency() {
   const token = getDspToken();
   if (!token) return;
   try {
-    const r = await fetch(`${DSP_API}/api/v1.0/clients/users/me`, {
+    const r = await fetch(`${DSP_API}/api/v1.0/clients/agencies`, {
       headers: { "Authorization": "Bearer " + token }
     });
     if (!r.ok) return;
-    const user = await r.json();
-    const agencyId = user.agency?.id || user.agencyId || "";
-    if (agencyId) {
-      setDspAgencyId(agencyId);
-      await dspFetchAgencyMarkup(agencyId);
+    const j = await r.json();
+    const agency = (j.content || j)[0];
+    if (agency?.id) {
+      setDspAgencyId(agency.id);
+      console.log("[DSP] agency loaded:", agency.id, agency.name);
     }
   } catch (e) {
-    console.warn("[DSP] user profile fetch failed:", e.message);
+    console.warn("[DSP] agency fetch failed:", e.message);
   }
 }
 
@@ -3246,16 +3246,7 @@ function mapDspInventory(inv) {
     address:   loc.address  || inv.name || "",
     lat:       loc.latitude  ?? NaN,
     lon:       loc.longitude ?? NaN,
-    minBid:    (() => {
-      const charged = inv.minBidInfo?.minBidCharged;
-      if (charged != null) return charged;
-      // Если API не вернул minBidCharged — применяем надбавку вручную
-      const raw = inv.minBidInfo?.minBid;
-      if (raw == null) return NaN;
-      const markup = getDspAgencyMarkup();
-      const withCharge = raw * (1 + (markup.additionalCharge || 0));
-      return withCharge + (markup.platformFee || 0);
-    })(),
+    minBid:    inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? NaN,
     ots:       meta.ots ?? meta.otsInfo?.otsValue ?? NaN,
     grp:       meta.grp ?? NaN,
     owner:     inv.displayOwner?.name || "",
