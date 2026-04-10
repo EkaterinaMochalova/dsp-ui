@@ -2882,8 +2882,18 @@ function renderDspUserBar() {
   if (!bar || !window.DSP_AUTH_ENABLED || !getDspToken()) return;
   const email = getDspUserEmail();
   bar.style.display = "block";
-  const label = email ? `Вы вошли как <b>${escapeHtml(email)}</b> &nbsp;·&nbsp; ` : "";
-  bar.innerHTML = `${label}<a href="#" id="dsp-logout-btn" style="color:#888;text-decoration:underline;">Выйти</a>`;
+  const emailHtml = email
+    ? `<span style="color:#555;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(email)}</span>`
+    : `<span style="color:#888;">DSP</span>`;
+  bar.innerHTML = `
+    <span style="display:inline-flex;align-items:center;gap:6px;background:#f0f2f5;border-radius:20px;padding:4px 6px 4px 8px;font-size:12px;line-height:1;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      ${emailHtml}
+      <a href="#" id="dsp-logout-btn" style="display:inline-flex;align-items:center;gap:3px;margin-left:2px;padding:2px 8px;background:#fff;border:1px solid #ddd;border-radius:12px;color:#666;text-decoration:none;font-size:11px;white-space:nowrap;">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Выйти
+      </a>
+    </span>`;
   document.getElementById("dsp-logout-btn")?.addEventListener("click", e => {
     e.preventDefault();
     dspLogout();
