@@ -2854,7 +2854,8 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
 
 const DSP_API = "https://proddsp.omniboard360.io";
 const DSP_PAGE_SIZE = 500;
-const DSP_PAGE_BATCH = 5;
+const DSP_PAGE_BATCH = 2; // параллельных запросов за раз (меньше = меньше 500-ок от сервера)
+const DSP_BATCH_DELAY_MS = 300; // пауза между батчами
 
 function getDspToken() { return sessionStorage.getItem("dsp_token") || ""; }
 function setDspToken(t) { t ? sessionStorage.setItem("dsp_token", t) : sessionStorage.removeItem("dsp_token"); }
@@ -3144,6 +3145,7 @@ async function dspWarmupInventoryInBackground(cityCacheSeed, totalLoadedSoFar, t
 
     dspHydrateCityState(cityCache);
     setStatus(`Загружаю экраны… ${totalLoadedSoFar} из ${totalElements || "?"}`);
+    await new Promise(res => setTimeout(res, DSP_BATCH_DELAY_MS));
   }
 
   dspSaveInventoryToStorage(cityCache);
