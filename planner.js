@@ -1193,6 +1193,179 @@ function downloadXLSX(rows) {
   XLSX.writeFile(wb, "screens_selected.xlsx");
 }
 
+// ===== Медиаплан (красивый XLSX через ExcelJS) =====
+async function downloadMediaPlan() {
+  const calc = window.PLANNER?.lastCalc;
+  if (!calc) return alert("Сначала нажмите «Рассчитать».");
+
+  const ExcelJS = window.ExcelJS;
+  if (!ExcelJS) return alert("ExcelJS не загружен — обновите страницу.");
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "DSP Planner";
+
+  const brief   = calc.brief   || {};
+  const meta    = calc.meta    || {};
+  const perReg  = calc.perRegion || [];
+  const screens = calc.chosen  || [];
+
+  const fmt = n => Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "—";
+  const fmtR = n => Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—";
+  const dateStr = s => s ? String(s).split("-").reverse().join(".") : "—";
+
+  const PURPLE = "5B3EF5";
+  const LIGHT  = "EDE9FD";
+  const GREY   = "F5F5F7";
+  const WHITE  = "FFFFFF";
+  const DARK   = "0B1220";
+
+  function hdr(ws, row, col, value, opts = {}) {
+    const cell = ws.getCell(row, col);
+    cell.value = value;
+    cell.font  = { bold: true, color: { argb: opts.light ? WHITE : DARK }, size: opts.size || 10 };
+    cell.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: opts.bg || GREY } };
+    cell.alignment = { vertical: "middle", horizontal: opts.center ? "center" : "left", wrapText: true };
+    if (opts.border) {
+      const b = { style: "thin", color: { argb: "CCCCCC" } };
+      cell.border = { top: b, left: b, bottom: b, right: b };
+    }
+    return cell;
+  }
+
+  function val(ws, row, col, value, opts = {}) {
+    const cell = ws.getCell(row, col);
+    cell.value = value;
+    cell.font  = { color: { argb: opts.muted ? "888888" : DARK }, size: opts.size || 10 };
+    cell.alignment = { vertical: "middle", horizontal: opts.right ? "right" : "left", wrapText: true };
+    if (opts.fill) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill } };
+    if (opts.border) {
+      const b = { style: "thin", color: { argb: "CCCCCC" } };
+      cell.border = { top: b, left: b, bottom: b, right: b };
+    }
+    return cell;
+  }
+
+  // ── Лист 1: Сводка ──────────────────────────────────────────────
+  const ws1 = wb.addWorksheet("Сводка");
+  ws1.columns = [
+    { width: 24 }, { width: 30 }, { width: 24 }, { width: 30 }
+  ];
+
+  // Заголовок
+  ws1.mergeCells("A1:D1");
+  const title = ws1.getCell("A1");
+  title.value = "Медиаплан размещения";
+  title.font  = { bold: true, size: 16, color: { argb: WHITE } };
+  title.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: PURPLE } };
+  title.alignment = { vertical: "middle", horizontal: "left" };
+  ws1.getRow(1).height = 36;
+
+  // Параметры кампании
+  let r = 3;
+  const params = [
+    ["Регион(ы)",    (brief.selectedRegions || []).join(", ") || "—",  "Форматы",  (brief.selectedFormats?.size ? [...brief.selectedFormats].join(", ") : "Все")],
+    ["Период",       `${dateStr(brief.dates?.start)} — ${dateStr(brief.dates?.end)}`,  "Дней",  meta.days ?? "—"],
+    ["Расписание",   brief.scheduleLabel || "—",  "Часов/день",  Number.isFinite(meta.hpd) ? meta.hpd.toFixed(1) : "—"],
+    ["Режим ставки", brief.bidMode === "min" ? "Минимальная" : "Рекомендованная",  "Стратегия",  brief.reachMode || "—"],
+  ];
+  for (const [k1, v1, k2, v2] of params) {
+    hdr(ws1, r, 1, k1, { bg: GREY, border: true });
+    val(ws1, r, 2, v1, { border: true });
+    hdr(ws1, r, 3, k2, { bg: GREY, border: true });
+    val(ws1, r, 4, v2, { border: true });
+    ws1.getRow(r).height = 20;
+    r++;
+  }
+
+  r++;
+  // Итоги
+  ws1.mergeCells(r, 1, r, 4);
+  hdr(ws1, r, 1, "Итоги кампании", { bg: PURPLE, light: true, size: 12 });
+  ws1.getRow(r).height = 26;
+  r++;
+
+  const totals = [
+    ["Бюджет",       fmtR(meta.totalBudget),   "Экраны",       fmt(screens.length)],
+    ["Выходов всего",fmt(meta.totalPlays),       "Выходов/день", fmt(meta.totalPlays / Math.max(1, meta.days || 1))],
+    ["OTS всего",    fmt(meta.totalOts),         "OTS/день",     fmt(meta.totalOts / Math.max(1, meta.days || 1))],
+  ];
+  for (const [k1, v1, k2, v2] of totals) {
+    hdr(ws1, r, 1, k1, { bg: LIGHT, border: true });
+    val(ws1, r, 2, v1, { border: true });
+    hdr(ws1, r, 3, k2, { bg: LIGHT, border: true });
+    val(ws1, r, 4, v2, { border: true });
+    ws1.getRow(r).height = 20;
+    r++;
+  }
+
+  // ── Лист 2: По регионам ─────────────────────────────────────────
+  const ws2 = wb.addWorksheet("По регионам");
+  ws2.columns = [
+    { width: 28 }, { width: 12 }, { width: 14 }, { width: 18 },
+    { width: 18 }, { width: 18 }
+  ];
+  const regHdrs = ["Регион", "Экраны", "Выходов/день", "Бюджет, ₽", "OTS всего", "Тип"];
+  regHdrs.forEach((h, i) => {
+    hdr(ws2, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
+  });
+  ws2.getRow(1).height = 22;
+
+  perReg.forEach((row, i) => {
+    const fill = i % 2 === 0 ? WHITE : GREY;
+    const playsPerDay = Number.isFinite(row.plays) && Number.isFinite(meta.days) && meta.days > 0
+      ? Math.round(row.plays / meta.days) : null;
+    const cells = [
+      row.region || "—",
+      row.screens ?? "—",
+      playsPerDay != null ? fmt(playsPerDay) : "—",
+      Number.isFinite(row.budget) ? Math.round(row.budget).toLocaleString("ru-RU") : "—",
+      Number.isFinite(row.ots) ? fmt(row.ots) : "—",
+      row.tier || "—"
+    ];
+    cells.forEach((c, ci) => {
+      val(ws2, i + 2, ci + 1, c, { fill, border: true, right: ci >= 1 });
+    });
+    ws2.getRow(i + 2).height = 18;
+  });
+
+  // ── Лист 3: Экраны ──────────────────────────────────────────────
+  const ws3 = wb.addWorksheet("Экраны");
+  ws3.columns = [
+    { width: 18 }, { width: 16 }, { width: 18 }, { width: 40 },
+    { width: 20 }, { width: 10 }, { width: 10 }, { width: 12 }
+  ];
+  const scrHdrs = ["GID", "Формат", "Город", "Адрес", "Оператор", "Широта", "Долгота", "minBid, ₽"];
+  scrHdrs.forEach((h, i) => {
+    hdr(ws3, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
+  });
+  ws3.getRow(1).height = 22;
+
+  screens.forEach((s, i) => {
+    const fill = i % 2 === 0 ? WHITE : GREY;
+    const cells = [
+      s.screen_id ?? "", s.format ?? "", s.city ?? "", s.address ?? "",
+      s.owner ?? "",
+      Number.isFinite(s.lat) ? +s.lat.toFixed(6) : "",
+      Number.isFinite(s.lon) ? +s.lon.toFixed(6) : "",
+      Number.isFinite(s.minBid) ? +s.minBid.toFixed(2) : ""
+    ];
+    cells.forEach((c, ci) => {
+      val(ws3, i + 2, ci + 1, c, { fill, border: true });
+    });
+    ws3.getRow(i + 2).height = 16;
+  });
+
+  // Сохранение
+  const buf  = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `mediaplan_${(brief.selectedRegions || []).join("-") || "plan"}_${dateStr(brief.dates?.start)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ===== Yandex Geocoding + Suggest =====
 // Ключ задаётся в HTML-блоке Tilda: <script>window.YANDEX_MAPS_KEY = "ваш_ключ";</script>
 
@@ -2465,6 +2638,7 @@ ${perRegionText}`
   // читают el("summary").textContent и получают пустую строку
   if (el("summary")) el("summary").textContent = summaryText;
   if (el("download-csv")) el("download-csv").disabled = chosenAll.length === 0;
+  if (el("download-plan-xlsx")) el("download-plan-xlsx").disabled = chosenAll.length === 0;
 
   window.dispatchEvent(new CustomEvent("planner:calc-done", {
     detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount }
@@ -2839,6 +3013,12 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   const downloadBtn = el("download-csv");
   if (downloadBtn) downloadBtn.addEventListener("click", () => downloadXLSX(state.lastChosen));
 
+  const planBtn = el("download-plan-xlsx");
+  if (planBtn) {
+    planBtn.disabled = true;
+    planBtn.addEventListener("click", () => downloadMediaPlan());
+  }
+
   // ===== Calc =====
   const calcBtn = el("calc-btn");
   if (calcBtn) calcBtn.addEventListener("click", () => onCalcClick());
@@ -2900,7 +3080,9 @@ function dspLogout() {
   setDspUserEmail("");
   setDspAgencyId("");
   setDspAgencyMarkup(null);
-  localStorage.removeItem(DSP_CACHE_KEY);
+  localStorage.removeItem(getDspCacheKey());
+  // Очищаем старые ключи предыдущих версий кэша
+  localStorage.removeItem("dsp_inv_v2");
   window.location.reload();
 }
 
@@ -3281,16 +3463,21 @@ function dspApplyInventories(raw) {
 }
 
 // ---- localStorage-кэш инвентаря ----
-const DSP_CACHE_KEY = "dsp_inv_v2";
-const DSP_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 часа
+const DSP_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 часа (1 раз в день)
+
+/** Ключ кэша привязан к агентству, чтобы разные пользователи не делили данные */
+function getDspCacheKey() {
+  const agencyId = getDspAgencyId() || "default";
+  return `dsp_inv_v3_${agencyId}`;
+}
 
 function dspSaveInventoryToStorage(cityCache) {
   try {
     const payload = JSON.stringify({ ts: Date.now(), d: cityCache });
     // localStorage обычно ограничен ~5MB — пробуем только если данных немного
     if (payload.length > 4_000_000) { console.log("[DSP] cache too large for localStorage, skipping"); return; }
-    localStorage.setItem(DSP_CACHE_KEY, payload);
-    console.log("[DSP] inventory saved to localStorage");
+    localStorage.setItem(getDspCacheKey(), payload);
+    console.log("[DSP] inventory saved to localStorage, ttl=24h");
   } catch (e) {
     console.log("[DSP] cache save skipped:", e.message);
   }
@@ -3298,10 +3485,14 @@ function dspSaveInventoryToStorage(cityCache) {
 
 function dspLoadInventoryFromStorage() {
   try {
-    const raw = localStorage.getItem(DSP_CACHE_KEY);
+    const key = getDspCacheKey();
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const { ts, d } = JSON.parse(raw);
-    if (Date.now() - ts > DSP_CACHE_TTL) { localStorage.removeItem(DSP_CACHE_KEY); return null; }
+    if (Date.now() - ts > DSP_CACHE_TTL) { localStorage.removeItem(key); return null; }
+    const total = Object.values(d).reduce((s, a) => s + a.length, 0);
+    const ageMin = Math.round((Date.now() - ts) / 60000);
+    console.log(`[DSP] cache hit: ${total} screens, age=${ageMin}min, ttl=24h`);
     return d;
   } catch { return null; }
 }
