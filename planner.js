@@ -767,11 +767,27 @@ function renderOwners() {
   if (!wrap) return;
   wrap.innerHTML = "";
 
+  // Пул экранов с учётом выбранных регионов и форматов для подсчёта по оператору
+  const selectedRegions = state.selectedRegions || [];
+  const selectedFormats = state.selectedFormats;
+  const poolForCount = state.screensAll.filter(s => {
+    if (selectedRegions.length > 0 && !selectedRegions.includes(s.region)) return false;
+    if (selectedFormats && selectedFormats.size > 0 && !selectedFormats.has(s.format)) return false;
+    return true;
+  });
+  const countByOwner = {};
+  for (const s of poolForCount) {
+    const o = String(s.owner ?? "").trim();
+    if (o) countByOwner[o] = (countByOwner[o] || 0) + 1;
+  }
+
   const owners = Array.isArray(state.ownersAll) ? state.ownersAll : [];
   owners.forEach(owner => {
     const b = document.createElement("button");
     cssButtonBase(b);
-    b.textContent = owner;
+    const cnt = countByOwner[owner] || 0;
+    b.innerHTML = `<span style="font-weight:600;">${escapeHtml(owner)}</span>`
+      + (cnt > 0 ? `<br><span style="font-size:11px;color:#999;">${cnt} экр.</span>` : "");
 
     const sync = () => {
       b.style.borderColor = state.selectedOwners.has(owner) ? "#111" : "#ddd";
@@ -813,10 +829,12 @@ function renderFormats() {
     b.style.textAlign = "left";
     b.style.maxWidth = "240px";
 
+    const fmtCount = state.screensAll.filter(s => s.format === fmt).length;
+    const fmtCountTxt = fmtCount > 0 ? `${fmtCount} экр.` : "";
     b.innerHTML = `
       <div style="font-weight:700;">${escapeHtml(meta.label)}</div>
       <div style="font-size:12px; color:#666;">${escapeHtml(meta.desc)}</div>
-      <div style="font-size:11px; color:#999; margin-top:4px;">Код: ${escapeHtml(fmt)}</div>
+      ${fmtCountTxt ? `<div style="font-size:11px; color:#999; margin-top:4px;">${fmtCountTxt}</div>` : ""}
     `;
 
     const sync = () => { b.style.borderColor = state.selectedFormats.has(fmt) ? "#111" : "#ddd"; };
@@ -3432,11 +3450,8 @@ function bootPlanner() {
   });
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bootPlanner);
-} else {
-  bootPlanner();
-}
+// Автозапуск намеренно отключён: bootPlanner() вызывается внешним kick() из HTML-страницы.
+// Это предотвращает двойной вызов (и двойной запрос логина).
 
 // ===== EXPORTS =====
 Object.assign(window.PLANNER, {
