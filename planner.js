@@ -2340,11 +2340,7 @@ async function onCalcClick() {
     const actualBudget = Math.ceil(totalPlaysEffective * effectiveChosenBid);
     totalBudgetFinal += actualBudget;
 
-    if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
-      if (totalPlaysEffective < totalPlaysTheory) {
-        warnings.push(`⚠️ Регион «${region}»: не хватает ёмкости даже при ${chosen.length} экранах (SC_MAX).`);
-      }
-    } else {
+    if (brief.budget.mode !== "goal_ots") {
       const playsPerHourPerScreen = (totalPlaysTheory / days / hpd) / Math.max(1, chosen.length);
       if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
         warnings.push(`⚠️ Регион «${region}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);

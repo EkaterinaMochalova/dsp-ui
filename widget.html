@@ -2221,8 +2221,8 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
     { key: 0, label: "Вс" },
   ];
 
-  const BAR_FROM = "07:00";
-  const BAR_TO   = "22:00";
+  const BAR_FROM = "00:00";
+  const BAR_TO   = "23:59";
 
   function ensureState(){
     window.PLANNER = window.PLANNER || {};
@@ -2346,6 +2346,7 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
           <div class="wd-sub">${buildDaySubtitle(enabled, intervals)}</div>
         </div>
         <div class="wd-actions">
+          <button type="button" class="wd-btn wd-copy-all" ${enabled ? "" : "disabled"} title="Скопировать интервалы на все активные дни">На все дни</button>
           <button type="button" class="wd-btn wd-add" ${enabled ? "" : "disabled"}>+ Интервал</button>
         </div>
       `;
@@ -2419,6 +2420,18 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
 
         head.querySelector(".wd-add").disabled = !on;
         rerenderRows();
+        if(typeof window.renderProgress === "function") window.renderProgress();
+      });
+
+      head.querySelector(".wd-copy-all").addEventListener("click", () => {
+        if(!st.weeklySchedule.enabledDays[d.key]) return;
+        const srcIntervals = JSON.parse(JSON.stringify(st.weeklySchedule.intervals[d.key] || []));
+        DAYS.forEach(other => {
+          if(other.key === d.key) return;
+          if(!st.weeklySchedule.enabledDays[other.key]) return;
+          st.weeklySchedule.intervals[other.key] = JSON.parse(JSON.stringify(srcIntervals));
+        });
+        renderWeeklyUI();
         if(typeof window.renderProgress === "function") window.renderProgress();
       });
 
