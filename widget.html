@@ -2211,14 +2211,15 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
 (function(){
   const el = (id) => document.getElementById(id);
 
+  // Дни недели со строковыми ключами (совпадают с planner.js)
   const DAYS = [
-    { key: 1, label: "Пн" },
-    { key: 2, label: "Вт" },
-    { key: 3, label: "Ср" },
-    { key: 4, label: "Чт" },
-    { key: 5, label: "Пт" },
-    { key: 6, label: "Сб" },
-    { key: 0, label: "Вс" },
+    { key: "mon", label: "Пн" },
+    { key: "tue", label: "Вт" },
+    { key: "wed", label: "Ср" },
+    { key: "thu", label: "Чт" },
+    { key: "fri", label: "Пт" },
+    { key: "sat", label: "Сб" },
+    { key: "sun", label: "Вс" },
   ];
 
   const BAR_FROM = "00:00";
@@ -2229,19 +2230,11 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
     window.PLANNER.state = window.PLANNER.state || {};
     const st = window.PLANNER.state;
 
-    if(!st.weeklySchedule){
-      st.weeklySchedule = {
-        enabledDays: {0:false,1:true,2:true,3:true,4:true,5:true,6:false},
-        intervals: {
-          0:[{from:"12:00",to:"18:00"}],
-          1:[{from:"07:00",to:"22:00"}],
-          2:[{from:"07:00",to:"22:00"}],
-          3:[{from:"07:00",to:"22:00"}],
-          4:[{from:"07:00",to:"22:00"}],
-          5:[{from:"07:00",to:"22:00"}],
-          6:[{from:"12:00",to:"18:00"}],
-        }
-      };
+    // Новая модель: массив интервалов, каждый с выбором дней
+    if(!st.weeklyIntervals){
+      st.weeklyIntervals = [
+        { from:"07:00", to:"22:00", days:{mon:true,tue:true,wed:true,thu:true,fri:true,sat:false,sun:false} }
+      ];
     }
     return st;
   }
@@ -2322,140 +2315,104 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
     const st = ensureState();
     const wrap = el("weekly-days");
     if(!wrap) return;
-
     wrap.innerHTML = "";
 
-    DAYS.forEach(d => {
-      const enabled = !!st.weeklySchedule.enabledDays[d.key];
-      const intervalsRaw = st.weeklySchedule.intervals[d.key] || [];
-      const intervals = normalizeIntervals(intervalsRaw);
-      st.weeklySchedule.intervals[d.key] = intervals;
+    // Кнопка добавить интервал
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "wd-btn";
+    addBtn.style.cssText = "margin-bottom:14px;font-size:13px;padding:6px 14px;";
+    addBtn.textContent = "+ Добавить интервал";
+    addBtn.addEventListener("click", () => {
+      const last = st.weeklyIntervals[st.weeklyIntervals.length - 1];
+      const prevDays = last ? JSON.parse(JSON.stringify(last.days)) : {mon:true,tue:true,wed:true,thu:true,fri:true,sat:false,sun:false};
+      let nextFrom = "07:00", nextTo = "22:00";
+      if(last){
+        const start = clamp(timeToMin(last.to), timeToMin(BAR_FROM), timeToMin(BAR_TO)-15);
+        nextFrom = minToTime(start);
+        nextTo = minToTime(clamp(start+60, start+15, timeToMin(BAR_TO)));
+      }
+      st.weeklyIntervals.push({ from:nextFrom, to:nextTo, days:prevDays });
+      renderWeeklyUI();
+      if(typeof window.renderProgress === "function") window.renderProgress();
+    });
+    wrap.appendChild(addBtn);
 
+    st.weeklyIntervals.forEach((intv, idx) => {
       const card = document.createElement("div");
       card.className = "wd-card";
-      card.dataset.wd = String(d.key);
+      card.style.marginBottom = "12px";
 
-      const head = document.createElement("div");
-      head.className = "wd-head";
-      head.innerHTML = `
-        <div class="wd-left">
-          <label class="check-row" style="margin:0;">
-            <input type="checkbox" class="wd-on" ${enabled ? "checked":""} />
-            <span class="wd-title">${d.label}</span>
-          </label>
-          <div class="wd-sub">${buildDaySubtitle(enabled, intervals)}</div>
-        </div>
-        <div class="wd-actions">
-          <button type="button" class="wd-btn wd-copy-all" ${enabled ? "" : "disabled"} title="Скопировать интервалы на все активные дни">На все дни</button>
-          <button type="button" class="wd-btn wd-add" ${enabled ? "" : "disabled"}>+ Интервал</button>
-        </div>
+      // Строка с временем
+      const timeRow = document.createElement("div");
+      timeRow.className = "wd-row";
+      timeRow.style.cssText = "align-items:center;margin-bottom:10px;gap:6px;";
+      timeRow.innerHTML = `
+        <input type="time" class="ux-input wd-from" value="${intv.from}" style="width:110px;" />
+        <span style="color:#888;">—</span>
+        <input type="time" class="ux-input wd-to" value="${intv.to}" style="width:110px;" />
+        <button type="button" class="wd-remove" style="margin-left:auto;">Удалить</button>
       `;
-      card.appendChild(head);
-
-      const rows = document.createElement("div");
-      rows.className = "wd-rows";
-      card.appendChild(rows);
-
-      const bars = document.createElement("div");
-      bars.className = "wd-bars";
-      card.appendChild(bars);
-
-      function rerenderRows(){
-        rows.innerHTML = "";
-
-        const enabledNow = !!st.weeklySchedule.enabledDays[d.key];
-        const intsNow = normalizeIntervals(st.weeklySchedule.intervals[d.key] || []);
-        st.weeklySchedule.intervals[d.key] = intsNow;
-
-        head.querySelector(".wd-sub").textContent = buildDaySubtitle(enabledNow, intsNow);
-
-        intsNow.forEach((it, idx) => {
-          const row = document.createElement("div");
-          row.className = "wd-row";
-          row.innerHTML = `
-            <input type="time" class="ux-input wd-from" value="${it.from}" />
-            <input type="time" class="ux-input wd-to" value="${it.to}" />
-            <button type="button" class="wd-remove">Удалить</button>
-          `;
-
-          const from = row.querySelector(".wd-from");
-          const to = row.querySelector(".wd-to");
-          const del = row.querySelector(".wd-remove");
-
-          from.disabled = !enabledNow;
-          to.disabled = !enabledNow;
-          del.disabled = !enabledNow;
-
-          from.addEventListener("change", () => {
-            st.weeklySchedule.intervals[d.key][idx].from = from.value;
-            rerenderRows();
-            if(typeof window.renderProgress === "function") window.renderProgress();
-          });
-
-          to.addEventListener("change", () => {
-            st.weeklySchedule.intervals[d.key][idx].to = to.value;
-            rerenderRows();
-            if(typeof window.renderProgress === "function") window.renderProgress();
-          });
-
-          del.addEventListener("click", () => {
-            st.weeklySchedule.intervals[d.key].splice(idx, 1);
-            rerenderRows();
-            if(typeof window.renderProgress === "function") window.renderProgress();
-          });
-
-          rows.appendChild(row);
-        });
-
-        renderBars(bars, enabledNow, intsNow);
-      }
-
-      head.querySelector(".wd-on").addEventListener("change", (e) => {
-        const on = !!e.target.checked;
-        st.weeklySchedule.enabledDays[d.key] = on;
-
-        if(on && (!st.weeklySchedule.intervals[d.key] || st.weeklySchedule.intervals[d.key].length === 0)){
-          st.weeklySchedule.intervals[d.key] = [{ from:"07:00", to:"22:00" }];
-        }
-
-        head.querySelector(".wd-add").disabled = !on;
-        rerenderRows();
+      const fromEl = timeRow.querySelector(".wd-from");
+      const toEl   = timeRow.querySelector(".wd-to");
+      fromEl.addEventListener("change", () => {
+        st.weeklyIntervals[idx].from = fromEl.value;
+        refreshBar(idx, card);
         if(typeof window.renderProgress === "function") window.renderProgress();
       });
-
-      head.querySelector(".wd-copy-all").addEventListener("click", () => {
-        if(!st.weeklySchedule.enabledDays[d.key]) return;
-        const srcIntervals = JSON.parse(JSON.stringify(st.weeklySchedule.intervals[d.key] || []));
-        DAYS.forEach(other => {
-          if(other.key === d.key) return;
-          if(!st.weeklySchedule.enabledDays[other.key]) return;
-          st.weeklySchedule.intervals[other.key] = JSON.parse(JSON.stringify(srcIntervals));
-        });
+      toEl.addEventListener("change", () => {
+        st.weeklyIntervals[idx].to = toEl.value;
+        refreshBar(idx, card);
+        if(typeof window.renderProgress === "function") window.renderProgress();
+      });
+      timeRow.querySelector(".wd-remove").addEventListener("click", () => {
+        st.weeklyIntervals.splice(idx, 1);
         renderWeeklyUI();
         if(typeof window.renderProgress === "function") window.renderProgress();
       });
+      card.appendChild(timeRow);
 
-      head.querySelector(".wd-add").addEventListener("click", () => {
-        if(!st.weeklySchedule.enabledDays[d.key]) return;
-
-        const ints = st.weeklySchedule.intervals[d.key] || [];
-        let nextFrom = "07:00", nextTo = "22:00";
-        if(ints.length){
-          const last = ints[ints.length-1];
-          const start = clamp(timeToMin(last.to), timeToMin(BAR_FROM), timeToMin(BAR_TO)-15);
-          nextFrom = minToTime(start);
-          nextTo = minToTime(clamp(start + 60, start+15, timeToMin(BAR_TO)));
-        }
-        ints.push({ from: nextFrom, to: nextTo });
-        st.weeklySchedule.intervals[d.key] = ints;
-
-        rerenderRows();
-        if(typeof window.renderProgress === "function") window.renderProgress();
+      // Галочки дней недели
+      const daysRow = document.createElement("div");
+      daysRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;";
+      DAYS.forEach(d => {
+        const lbl = document.createElement("label");
+        const checked = !!intv.days[d.key];
+        lbl.style.cssText = `display:inline-flex;align-items:center;gap:3px;cursor:pointer;
+          font-size:13px;padding:4px 10px;border-radius:8px;border:1.5px solid ${checked?"#5b3ef5":"#ddd"};
+          background:${checked?"#f4f1ff":"#fff"};user-select:none;`;
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = checked;
+        cb.style.display = "none";
+        cb.addEventListener("change", () => {
+          st.weeklyIntervals[idx].days[d.key] = cb.checked;
+          lbl.style.borderColor = cb.checked ? "#5b3ef5" : "#ddd";
+          lbl.style.background   = cb.checked ? "#f4f1ff" : "#fff";
+          if(typeof window.renderProgress === "function") window.renderProgress();
+        });
+        lbl.addEventListener("click", () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); });
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(d.label));
+        daysRow.appendChild(lbl);
       });
+      card.appendChild(daysRow);
 
-      rerenderRows();
+      // Бар визуализации
+      const bars = document.createElement("div");
+      bars.className = "wd-bars";
+      bars.dataset.intvIdx = idx;
+      renderBars(bars, true, [intv]);
+      card.appendChild(bars);
+
       wrap.appendChild(card);
     });
+  }
+
+  function refreshBar(idx, card){
+    const st = ensureState();
+    const barsEl = card.querySelector(".wd-bars");
+    if(barsEl) renderBars(barsEl, true, [st.weeklyIntervals[idx]]);
   }
 
   window.PLANNER_UI = window.PLANNER_UI || {};
@@ -2472,18 +2429,13 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
   window.PLANNER_UI.validateStep2Schedule = function(){
     const t = document.querySelector('input[name="schedule"]:checked')?.value || "all_day";
     if(t !== "weekly") return true;
-
     const st = ensureState();
-    const anyEnabled = DAYS.some(d => !!st.weeklySchedule.enabledDays[d.key]);
-    if(!anyEnabled) return false;
-
-    for(const d of DAYS){
-      if(!st.weeklySchedule.enabledDays[d.key]) continue;
-      const ints = normalizeIntervals(st.weeklySchedule.intervals[d.key] || []);
-      if(!ints.length) return false;
-      for(const it of ints){
-        if(timeToMin(it.to) <= timeToMin(it.from)) return false;
-      }
+    const ints = st.weeklyIntervals || [];
+    if(!ints.length) return false;
+    for(const intv of ints){
+      if(!intv.from || !intv.to) return false;
+      if(timeToMin(intv.to) <= timeToMin(intv.from)) return false;
+      if(!DAYS.some(d => intv.days?.[d.key])) return false; // хотя бы один день
     }
     return true;
   };

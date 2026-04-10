@@ -382,16 +382,26 @@ window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
   const keys = ["mon","tue","wed","thu","fri","sat","sun"];
   const out = { mon:[], tue:[], wed:[], thu:[], fri:[], sat:[], sun:[] };
 
+  // Новая модель: массив интервалов с выбором дней
+  const intervals = window.PLANNER?.state?.weeklyIntervals;
+  if (Array.isArray(intervals)) {
+    for (const intv of intervals) {
+      if (!intv.from || !intv.to) continue;
+      for (const k of keys) {
+        if (intv.days?.[k]) out[k].push({ from: intv.from, to: intv.to });
+      }
+    }
+    return out;
+  }
+
+  // Fallback: старая модель через DOM (на случай если state не инициализирован)
   for (const k of keys) {
     const wrap = document.getElementById(`${k}-rows`);
     if (!wrap) continue;
-
-    const rows = [...wrap.querySelectorAll(".row")];
-    for (const row of rows) {
+    for (const row of wrap.querySelectorAll(".row")) {
       const from = String(row.querySelector(".w-from")?.value || "").trim();
       const to   = String(row.querySelector(".w-to")?.value || "").trim();
-      if (!from || !to) continue;
-      out[k].push({ from, to });
+      if (from && to) out[k].push({ from, to });
     }
   }
   return out;
