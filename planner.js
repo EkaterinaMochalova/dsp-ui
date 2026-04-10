@@ -2874,6 +2874,28 @@ const DSP_PAGE_BATCH = 12;
 
 function getDspToken() { return sessionStorage.getItem("dsp_token") || ""; }
 function setDspToken(t) { t ? sessionStorage.setItem("dsp_token", t) : sessionStorage.removeItem("dsp_token"); }
+function getDspUserEmail() { return sessionStorage.getItem("dsp_user_email") || ""; }
+function setDspUserEmail(e) { e ? sessionStorage.setItem("dsp_user_email", e) : sessionStorage.removeItem("dsp_user_email"); }
+
+function renderDspUserBar() {
+  const bar = document.getElementById("dsp-user-bar");
+  if (!bar || !window.DSP_AUTH_ENABLED) return;
+  const email = getDspUserEmail();
+  if (!email) { bar.style.display = "none"; return; }
+  bar.style.display = "block";
+  bar.innerHTML = `Вы вошли как <b>${escapeHtml(email)}</b> &nbsp;·&nbsp; <a href="#" id="dsp-logout-btn" style="color:#888;text-decoration:underline;">Выйти</a>`;
+  document.getElementById("dsp-logout-btn")?.addEventListener("click", e => {
+    e.preventDefault();
+    dspLogout();
+  });
+}
+
+function dspLogout() {
+  setDspToken("");
+  setDspUserEmail("");
+  localStorage.removeItem(DSP_CACHE_KEY);
+  window.location.reload();
+}
 
 async function dspLogin(email, password) {
   const res = await fetch(`${DSP_API}/api/login`, {
@@ -2888,7 +2910,9 @@ async function dspLogin(email, password) {
   const token = json.accessToken;
   if (!token) throw new Error("Токен не получен от сервера");
   setDspToken(token);
-  return json.user || {};
+  const user = json.user || {};
+  setDspUserEmail(user.email || user.login || user.username || "");
+  return user;
 }
 
 function showLoginOverlay() {
@@ -3300,12 +3324,14 @@ async function startPlanner() {
   if (window.DSP_AUTH_ENABLED) {
     // DSP API mode: логин + загрузка инвентаря через API
     if (!getDspToken()) await showLoginOverlay();
+    renderDspUserBar();
     try {
       await loadScreensFromDSP();
     } catch (e) {
       if (e.message === "SESSION_EXPIRED") {
         // Токен протух — показываем логин снова
         await showLoginOverlay();
+        renderDspUserBar();
         await loadScreensFromDSP();
       } else {
         throw e;
