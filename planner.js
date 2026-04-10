@@ -2869,8 +2869,8 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
 // Включается через: window.DSP_AUTH_ENABLED = true; в HTML Tilda перед виджетом
 
 const DSP_API = "https://proddsp.omniboard360.io";
-const DSP_PAGE_SIZE = 5000;
-const DSP_PAGE_BATCH = 12;
+const DSP_PAGE_SIZE = 500;
+const DSP_PAGE_BATCH = 5;
 
 function getDspToken() { return sessionStorage.getItem("dsp_token") || ""; }
 function setDspToken(t) { t ? sessionStorage.setItem("dsp_token", t) : sessionStorage.removeItem("dsp_token"); }
@@ -3188,7 +3188,7 @@ function mapDspInventory(inv) {
     address:   loc.address  || inv.name || "",
     lat:       loc.latitude  ?? NaN,
     lon:       loc.longitude ?? NaN,
-    minBid:    inv.minBidInfo?.minBid ?? NaN,
+    minBid:    inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? NaN,
     ots:       meta.ots ?? meta.otsInfo?.otsValue ?? NaN,
     grp:       meta.grp ?? NaN,
     owner:     inv.displayOwner?.name || "",
