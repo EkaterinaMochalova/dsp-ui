@@ -1469,8 +1469,40 @@ async function geocodeAddressYandex(query, regionHint) {
   return { lat, lon };
 }
 
-// Алиас для обратной совместимости
-const geocodeAddressNominatim = geocodeAddressYandex;
+/**
+ * Геокодинг через Nominatim (OpenStreetMap) — бесплатно, без ключа.
+ * Если не находит — пробует Yandex (если задан YANDEX_MAPS_KEY).
+ */
+async function geocodeAddressNominatim(query, regionHint) {
+  const q0 = String(query || "").trim();
+  if (!q0) return null;
+
+  const q = regionHint ? `${String(regionHint).trim()}, ${q0}` : q0;
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?` +
+      `q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=0`;
+    const res = await fetch(url, {
+      headers: { "Accept-Language": "ru", "User-Agent": "DSP-Planner/1.0" }
+    });
+    if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`);
+    const json = await res.json();
+    if (Array.isArray(json) && json.length) {
+      const lat = Number(json[0].lat);
+      const lon = Number(json[0].lon);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+    }
+  } catch (e) {
+    console.warn("[geo] Nominatim failed:", e.message);
+  }
+
+  // Fallback: Yandex если ключ задан
+  if (window.YANDEX_MAPS_KEY) {
+    return geocodeAddressYandex(query, regionHint);
+  }
+
+  return null;
+}
 
 // Suggest: возвращает [{title, subtitle}] для выпадающего списка
 async function suggestYandex(text) {
