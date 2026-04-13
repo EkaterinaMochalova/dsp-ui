@@ -1003,6 +1003,12 @@ function buildBrief() {
   const budgetVal = Number(el("budget-input")?.value || 0);
   const goalOtsVal = Number(el("goal-ots")?.value || 0);
 
+  const commEnabled = !!el("commission-enabled")?.checked;
+  const commRate    = commEnabled ? Math.max(0, Number(el("commission-rate")?.value || 0)) : 0;
+  const budgetNet   = (budgetMode === "fixed" && commRate > 0)
+    ? budgetVal / (1 + commRate / 100)
+    : budgetVal;
+
   const budgetOk =
     (budgetMode === "recommendation") ||
     (budgetMode === "fixed" && budgetVal > 0) ||
@@ -1034,7 +1040,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
   const brief = {
     budget: {
       mode: budgetMode,
-      amount: budgetMode === "fixed" ? Number(budgetVal || 0) : null,
+      amount: budgetMode === "fixed" ? Number(budgetNet || 0) : null,
       currency: "RUB"
     },
     dates: {
