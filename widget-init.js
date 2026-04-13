@@ -464,6 +464,174 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   #planner-widget .date-error{ margin-top:8px; font-size:13px; font-weight:600; color:#DC2626; display:none; }
   #planner-widget .ux-input.is-invalid{ border-color:#DC2626 !important; box-shadow:0 0 0 3px rgba(220,38,38,.12); }
+
+  /* ===== PANELS ===== */
+  #planner-widget .ux-panel{
+    background: rgba(255,255,255,.72);
+    border: 1px solid rgba(15,23,42,.10);
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 10px 30px rgba(15,23,42,.06);
+    min-width: 0;
+  }
+
+  /* ===== WIZARD CHIPS (step tabs) ===== */
+  #planner-widget .wiz-steps{
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  #planner-widget .wiz-chip{
+    padding: 6px 14px;
+    border: 1px solid rgba(15,23,42,.14);
+    border-radius: 999px;
+    background: rgba(255,255,255,.85);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: rgba(11,18,32,.70);
+    transition: background .12s ease, border-color .12s ease, color .12s ease;
+  }
+  #planner-widget .wiz-chip:hover{
+    background: #fff;
+    border-color: rgba(15,23,42,.22);
+  }
+  #planner-widget .wiz-chip.active{
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+
+  /* ===== PROGRESS BAR ROW ===== */
+  #planner-widget .wiz-progress{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  #planner-widget .wiz-progress .bar{ flex: 1; }
+  #planner-widget .wiz-progress .meta{
+    font-size: 12px;
+    color: rgba(11,18,32,.55);
+    white-space: nowrap;
+    min-width: 32px;
+    text-align: right;
+  }
+
+  /* ===== LIVE SUMMARY STRIP ===== */
+  #planner-widget .wiz-summary{
+    background: rgba(255,255,255,.55);
+    border: 1px solid rgba(15,23,42,.09);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: rgba(11,18,32,.58);
+    margin-bottom: 16px;
+    min-height: 36px;
+  }
+
+  /* ===== NAV ROW ===== */
+  #planner-widget .wiz-nav{
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  /* ===== BUTTONS ===== */
+  #planner-widget .wiz-btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 22px;
+    border-radius: 12px;
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .14s ease, box-shadow .14s ease, transform .12s ease;
+    white-space: nowrap;
+    user-select: none;
+  }
+  #planner-widget .wiz-btn:hover{
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    box-shadow: 0 6px 18px rgba(37,99,235,.25);
+  }
+  #planner-widget .wiz-btn:active{ transform: translateY(1px); }
+  #planner-widget .wiz-btn.ghost{
+    background: rgba(255,255,255,.92);
+    border-color: rgba(15,23,42,.14);
+    color: rgba(11,18,32,.80);
+  }
+  #planner-widget .wiz-btn.ghost:hover{
+    background: #fff;
+    border-color: rgba(15,23,42,.28);
+    box-shadow: 0 4px 12px rgba(15,23,42,.08);
+  }
+  #planner-widget .wiz-btn:disabled{
+    opacity: .45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* ===== RADIO LABELS ===== */
+  #planner-widget .ux-radio{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+  #planner-widget .ux-radio input[type="radio"]{ flex-shrink: 0; }
+
+  /* ===== BUDGET EXTRAS (НДС / commission) ===== */
+  #planner-widget .budget-extra-row{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  #planner-widget .budget-extra-row label{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  #planner-widget .budget-extra-rate{
+    display: none;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+  }
+  #planner-widget .budget-extra-rate input{
+    width: 64px;
+    padding: 4px 8px;
+    border: 1px solid rgba(15,23,42,.14);
+    border-radius: 8px;
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+  #planner-widget .budget-extra-hint{
+    display: none;
+    margin-top: 4px;
+    font-size: 12px;
+    color: #667085;
+    padding: 6px 10px;
+    background: rgba(37,99,235,.05);
+    border: 1px solid rgba(37,99,235,.12);
+    border-radius: 8px;
+  }
 `;
   document.head.appendChild(style);
 
@@ -604,6 +772,34 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <div id="budget-reco-hint" style="margin-top:6px; color:#667085;">
   Планировщик соберёт адреску для адекватного охвата региона.
 </div>
+
+<!-- НДС + Комиссия -->
+<div id="budget-extras-wrap" style="margin-top:14px;">
+  <div class="budget-extra-row">
+    <label>
+      <input type="checkbox" id="vat-enabled">
+      С НДС
+    </label>
+    <div class="budget-extra-rate" id="vat-rate-wrap">
+      <input type="number" id="vat-rate" value="22" min="0" max="100" step="0.1">
+      <span>%</span>
+    </div>
+  </div>
+  <div class="budget-extra-hint" id="vat-display"></div>
+
+  <div class="budget-extra-row">
+    <label>
+      <input type="checkbox" id="commission-enabled">
+      Включая комиссию системы
+    </label>
+    <div class="budget-extra-rate" id="commission-rate-wrap">
+      <input type="number" id="commission-rate" min="0" max="100" step="0.1" placeholder="0">
+      <span>%</span>
+    </div>
+  </div>
+  <div class="budget-extra-hint" id="commission-display"></div>
+</div>
+
         </div>
         <div class="wiz-nav">
           <button type="button" class="wiz-btn ghost" id="wiz-back-3">Назад</button>
@@ -3102,6 +3298,79 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   syncMin();
   window.addEventListener("pageshow", syncMin);
+})();
+`);
+
+  // Script block 21 — НДС + комиссия
+  runScript(`
+(function(){
+  function el(id){ return document.getElementById(id); }
+
+  function fmtMoney(v){
+    return Math.round(v).toLocaleString("ru-RU") + "\u202f₽";
+  }
+
+  function getActiveBudget(){
+    const mode = document.querySelector('input[name="budget_mode"]:checked')?.value || "fixed";
+    if(mode === "fixed")    return Number(el("budget-input")?.value  || 0);
+    if(mode === "goal_ots") return Number(el("goal-ots")?.value      || 0);
+    return 0;
+  }
+
+  function update(){
+    const budget = getActiveBudget();
+
+    // --- НДС ---
+    const vatOn   = !!el("vat-enabled")?.checked;
+    const vatWrap = el("vat-rate-wrap");
+    const vatDisp = el("vat-display");
+    if(vatWrap) vatWrap.style.display = vatOn ? "flex" : "none";
+    if(vatDisp){
+      if(vatOn && budget > 0){
+        const rate   = Math.max(0, Number(el("vat-rate")?.value ?? 22));
+        const withVat = budget * (1 + rate / 100);
+        vatDisp.style.display = "block";
+        vatDisp.textContent   = "С НДС " + rate + "%: " + fmtMoney(withVat);
+      } else {
+        vatDisp.style.display = "none";
+      }
+    }
+
+    // --- Комиссия ---
+    const commOn   = !!el("commission-enabled")?.checked;
+    const commWrap = el("commission-rate-wrap");
+    const commDisp = el("commission-display");
+    if(commWrap) commWrap.style.display = commOn ? "flex" : "none";
+    if(commDisp){
+      if(commOn && budget > 0){
+        const rate = Math.max(0, Number(el("commission-rate")?.value || 0));
+        if(rate > 0){
+          const commission = budget * rate / 100;
+          const placement  = budget - commission;
+          commDisp.style.display = "block";
+          commDisp.innerHTML =
+            "Стоимость размещения: <b>" + fmtMoney(placement) + "</b>" +
+            " &nbsp;/&nbsp; Комиссия системы: <b>" + fmtMoney(commission) + "</b>";
+        } else {
+          commDisp.style.display = "none";
+        }
+      } else {
+        commDisp.style.display = "none";
+      }
+    }
+  }
+
+  ["vat-enabled","vat-rate","commission-enabled","commission-rate"].forEach(id => {
+    el(id)?.addEventListener("change", update);
+    el(id)?.addEventListener("input",  update);
+  });
+
+  el("budget-input")?.addEventListener("input", update);
+  el("goal-ots")?.addEventListener("input", update);
+
+  document.querySelectorAll('input[name="budget_mode"]').forEach(r =>
+    r.addEventListener("change", update)
+  );
 })();
 `);
 
