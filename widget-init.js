@@ -641,8 +641,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js");
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@ae7ae6c/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@ae7ae6c/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a1295f4/geo.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a1295f4/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -3373,13 +3373,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if(commOn && budget > 0){
         const rate = Math.max(0, Number(el("commission-rate")?.value || 0));
         if(rate > 0){
-          const commission = budget * rate / 100;
-          const total      = budget + commission;
+          const placement  = budget / (1 + rate / 100);
+          const commission = budget - placement;
           commDisp.style.display = "block";
           commDisp.innerHTML =
-            "Стоимость размещения: <b>" + fmtMoney(budget) + "</b>" +
-            " &nbsp;+&nbsp; Комиссия: <b>" + fmtMoney(commission) + "</b>" +
-            " &nbsp;=&nbsp; Итого: <b>" + fmtMoney(total) + "</b>";
+            "Стоимость размещения: <b>" + fmtMoney(placement) + "</b>" +
+            " &nbsp;/&nbsp; Комиссия: <b>" + fmtMoney(commission) + "</b>";
         } else {
           commDisp.style.display = "none";
         }

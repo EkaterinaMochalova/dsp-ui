@@ -3039,13 +3039,12 @@
       if(commOn && budget > 0){
         const rate = Math.max(0, Number(el("commission-rate")?.value || 0));
         if(rate > 0){
-          const commission = budget * rate / 100;
-          const total      = budget + commission;
+          const placement  = budget / (1 + rate / 100);
+          const commission = budget - placement;
           commDisp.style.display = "block";
           commDisp.innerHTML =
-            "Стоимость размещения: <b>" + fmtMoney(budget) + "</b>" +
-            " &nbsp;+&nbsp; Комиссия: <b>" + fmtMoney(commission) + "</b>" +
-            " &nbsp;=&nbsp; Итого: <b>" + fmtMoney(total) + "</b>";
+            "Стоимость размещения: <b>" + fmtMoney(placement) + "</b>" +
+            " &nbsp;/&nbsp; Комиссия: <b>" + fmtMoney(commission) + "</b>";
         } else {
           commDisp.style.display = "none";
         }
