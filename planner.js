@@ -2851,19 +2851,34 @@ async function onCalcClick() {
   state.lastChosen = chosenAll;
 
   // Per-format breakdown
+  // playsPerScreen: равномерное распределение выходов по экранам
+  const playsPerScreen = chosenAll.length > 0 ? totalPlaysEffectiveAll / chosenAll.length : 0;
+
   const formatStats = {};
   for (const s of chosenAll) {
     const fmt = s.format || "—";
-    if (!formatStats[fmt]) formatStats[fmt] = { screens: 0, otsSum: 0, otsCnt: 0, bidSum: 0, bidCnt: 0 };
+    if (!formatStats[fmt]) {
+      formatStats[fmt] = {
+        screens: 0,
+        otsTotal: 0,   // суммарный OTS кампании по формату (s.ots × hpd × days)
+        playsEst: 0,   // оценка выходов по формату (равномерно)
+      };
+    }
     formatStats[fmt].screens++;
+    formatStats[fmt].playsEst += playsPerScreen;
     if (Number.isFinite(s.ots) && s.ots > 0) {
-      formatStats[fmt].otsSum += s.ots;
-      formatStats[fmt].otsCnt++;
+      formatStats[fmt].otsTotal += s.ots * hpd * days;
     }
-    if (Number.isFinite(s.minBid) && s.minBid > 0) {
-      formatStats[fmt].bidSum += s.minBid;
-      formatStats[fmt].bidCnt++;
-    }
+  }
+
+  // otsPerPlay = otsTotal / playsEst — считается здесь же, чтобы не тащить hpd/days в рендер
+  for (const fd of Object.values(formatStats)) {
+    fd.otsPerPlay = (fd.playsEst > 0 && fd.otsTotal > 0)
+      ? Math.round(fd.otsTotal / fd.playsEst)
+      : null;
+    fd.costPerPlay = (fd.playsEst > 0 && totalBudgetFinal > 0)
+      ? Math.round(totalBudgetFinal / totalPlaysEffectiveAll)  // тот же budget/plays что в сводке
+      : null;
   }
 
   window.PLANNER = window.PLANNER || {};

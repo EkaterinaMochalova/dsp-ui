@@ -2655,22 +2655,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     // Per-format breakdown
     const fs = detail?.formatStats || {};
-    const metaD = detail?.meta || {};
-    const hpdD  = metaD.hpd  || hpd  || 1;
-    const daysD = metaD.days || days || 1;
-    const avgPlaysPerHour = (totalPlays > 0 && totalScreens > 0)
-      ? totalPlays / (totalScreens * daysD * hpdD)
-      : null;
-
-    const costPerPlay = (totalBudget > 0 && totalPlays > 0)
-      ? Math.round(totalBudget / totalPlays).toLocaleString("ru-RU") + "\u202f₽" : "—";
 
     const formatRows = Object.entries(fs)
       .sort((a,b) => b[1].screens - a[1].screens)
       .map(([fmtName, fd]) => {
-        const avgOtsHr = fd.otsCnt > 0 ? fd.otsSum / fd.otsCnt : null;
-        const otsPerPlay = (avgOtsHr != null && avgPlaysPerHour)
-          ? fmtInt(avgOtsHr / avgPlaysPerHour) : "—";
+        const otsPerPlay  = fd.otsPerPlay  != null
+          ? fmtInt(fd.otsPerPlay)  + "\u202fOTS" : "—";
+        const costPerPlay = fd.costPerPlay != null
+          ? fmtInt(fd.costPerPlay) + "\u202f₽"   : "—";
         const esc = s => String(s||"").replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
         return \`<div class="ps-metric">
           <div class="k">\${esc(fmtName)}</div>
