@@ -2662,21 +2662,22 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       ? totalPlays / (totalScreens * daysD * hpdD)
       : null;
 
+    const costPerPlay = (totalBudget > 0 && totalPlays > 0)
+      ? Math.round(totalBudget / totalPlays).toLocaleString("ru-RU") + "\u202f₽" : "—";
+
     const formatRows = Object.entries(fs)
       .sort((a,b) => b[1].screens - a[1].screens)
       .map(([fmtName, fd]) => {
         const avgOtsHr = fd.otsCnt > 0 ? fd.otsSum / fd.otsCnt : null;
         const otsPerPlay = (avgOtsHr != null && avgPlaysPerHour)
           ? fmtInt(avgOtsHr / avgPlaysPerHour) : "—";
-        const avgBid = fd.bidCnt > 0
-          ? Math.round(fd.bidSum / fd.bidCnt).toLocaleString("ru-RU") + "\u202f₽" : "—";
         const esc = s => String(s||"").replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
         return \`<div class="ps-metric">
           <div class="k">\${esc(fmtName)}</div>
           <div class="v" style="font-size:15px;">\${fmtInt(fd.screens)}\u202f<span style="font-size:12px;font-weight:500;color:#667085;">экр.</span></div>
           <div style="margin-top:6px;font-size:12px;color:#667085;line-height:1.5;">
             OTS/выход:&nbsp;<b style="color:#0b1220;">\${otsPerPlay}</b><br>
-            Мин. ставка/выход:&nbsp;<b style="color:#0b1220;">\${avgBid}</b>
+            Стоимость выхода:&nbsp;<b style="color:#0b1220;">\${costPerPlay}</b>
           </div>
         </div>\`;
       }).join("");
