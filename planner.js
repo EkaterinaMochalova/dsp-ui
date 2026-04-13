@@ -485,13 +485,52 @@ function renderSelectionExtra() {
   if (mode === "near_address") {
     extra.innerHTML = `
       <div id="addr-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
-      <button type="button" id="addr-add-btn" style="
-        width:100%; padding:8px; border:1.5px dashed #c4b5fd; border-radius:10px;
-        background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer;">
-        + Добавить адрес
-      </button>
+
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+        <button type="button" id="addr-add-btn" style="
+          flex:1; min-width:120px; padding:8px; border:1.5px dashed #c4b5fd; border-radius:10px;
+          background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer;">
+          + Добавить адрес
+        </button>
+        <button type="button" id="addr-import-btn" style="
+          flex:1; min-width:120px; padding:8px; border:1.5px dashed #c4b5fd; border-radius:10px;
+          background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer;">
+          ↓ Импортировать список
+        </button>
+      </div>
+
+      <!-- Панель импорта (скрыта по умолчанию) -->
+      <div id="addr-import-panel" style="display:none; background:#f8f7ff; border:1px solid #c4b5fd;
+           border-radius:12px; padding:12px; margin-bottom:8px;">
+        <div style="font-size:12px; font-weight:600; color:#5B3EF5; margin-bottom:8px;">
+          Вставьте адреса (по одному на строку) или загрузите файл (.xlsx, .csv, .txt):
+        </div>
+        <textarea id="addr-paste-area" rows="6" placeholder="ул. Ленина 1, Москва&#10;пр. Мира 10, Москва&#10;…"
+          style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ddd;
+                 border-radius:8px; font-size:13px; resize:vertical; font-family:inherit;"></textarea>
+        <div style="display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap;">
+          <label style="display:inline-flex; align-items:center; gap:6px; padding:8px 14px;
+                 border:1px solid #c4b5fd; border-radius:8px; background:#fff;
+                 color:#5B3EF5; font-size:13px; cursor:pointer;">
+            📂 Загрузить файл
+            <input type="file" id="addr-file-input" accept=".xlsx,.csv,.txt" style="display:none;">
+          </label>
+          <button type="button" id="addr-import-apply" style="
+            padding:8px 18px; background:#5B3EF5; color:#fff; border:none;
+            border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;">
+            Добавить адреса
+          </button>
+          <button type="button" id="addr-import-cancel" style="
+            padding:8px 14px; background:#fff; color:#888; border:1px solid #ddd;
+            border-radius:8px; font-size:13px; cursor:pointer;">
+            Отмена
+          </button>
+          <span id="addr-import-status" style="font-size:12px; color:#667085;"></span>
+        </div>
+      </div>
+
       <input id="planner-radius" type="number" min="50" value="500" placeholder="Радиус, м"
-             style="width:100%; padding:10px; border:1px solid #ddd; border-radius:10px; margin-top:8px;">
+             style="width:100%; padding:10px; border:1px solid #ddd; border-radius:10px; margin-top:4px;">
       <div style="font-size:12px; color:#666; margin-top:6px;">
         Геокодируем каждый адрес и берём экраны в радиусе от любого из них.
       </div>
@@ -517,11 +556,82 @@ function renderSelectionExtra() {
       return inp;
     }
 
+    function bulkAddAddresses(lines) {
+      const clean = lines.map(l => String(l || "").trim()).filter(Boolean);
+      if (!clean.length) return 0;
+      // Clear empty rows first
+      document.querySelectorAll(".planner-addr-input").forEach(i => {
+        if (!i.value.trim()) i.closest("div")?.remove();
+      });
+      clean.forEach(addr => addAddressRow(addr));
+      return clean.length;
+    }
+
     addAddressRow(); // первый адрес
+
     el("addr-add-btn")?.addEventListener("click", () => {
       const inp = addAddressRow();
       inp?.focus();
     });
+
+    // Кнопка открытия панели импорта
+    el("addr-import-btn")?.addEventListener("click", () => {
+      const panel = el("addr-import-panel");
+      if (panel) panel.style.display = panel.style.display === "none" ? "block" : "none";
+    });
+
+    el("addr-import-cancel")?.addEventListener("click", () => {
+      const panel = el("addr-import-panel");
+      if (panel) panel.style.display = "none";
+    });
+
+    // Загрузка файла
+    el("addr-file-input")?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const status = el("addr-import-status");
+      if (status) status.textContent = "Читаю файл…";
+      const name = file.name.toLowerCase();
+      try {
+        let lines = [];
+        if (name.endsWith(".txt")) {
+          const text = await file.text();
+          lines = text.split(/\r?\n/);
+        } else if (name.endsWith(".csv")) {
+          const text = await file.text();
+          const result = window.Papa?.parse(text, { skipEmptyLines: true });
+          lines = (result?.data || []).map(row => row[0] || "");
+        } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+          const buf = await file.arrayBuffer();
+          const wb  = window.XLSX?.read(buf, { type: "array" });
+          const ws  = wb?.Sheets?.[wb.SheetNames[0]];
+          const rows = window.XLSX?.utils?.sheet_to_json(ws, { header: 1 }) || [];
+          lines = rows.map(row => String(row[0] || "").trim());
+        }
+        const textarea = el("addr-paste-area");
+        if (textarea) textarea.value = lines.filter(Boolean).join("\n");
+        if (status) status.textContent = `Загружено ${lines.filter(Boolean).length} строк`;
+      } catch(err) {
+        if (status) status.textContent = "Ошибка чтения файла";
+        console.error("[addr-import]", err);
+      }
+      e.target.value = "";
+    });
+
+    // Применить импорт
+    el("addr-import-apply")?.addEventListener("click", () => {
+      const text = el("addr-paste-area")?.value || "";
+      const lines = text.split(/\r?\n/);
+      const added = bulkAddAddresses(lines);
+      const status = el("addr-import-status");
+      if (status) status.textContent = added ? `Добавлено: ${added}` : "Нет адресов";
+      if (added) {
+        const panel = el("addr-import-panel");
+        if (panel) panel.style.display = "none";
+        if (el("addr-paste-area")) el("addr-paste-area").value = "";
+      }
+    });
+
     return;
   }
 
