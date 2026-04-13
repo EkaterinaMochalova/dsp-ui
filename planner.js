@@ -1403,9 +1403,14 @@ async function downloadMediaPlan() {
   const ws3 = wb.addWorksheet("Экраны");
   ws3.columns = [
     { width: 18 }, { width: 16 }, { width: 18 }, { width: 40 },
-    { width: 20 }, { width: 10 }, { width: 10 }, { width: 12 }
+    { width: 20 }, { width: 10 }, { width: 10 }, { width: 12 },
+    { width: 14 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 48 }
   ];
-  const scrHdrs = ["GID", "Формат", "Город", "Адрес", "Оператор", "Широта", "Долгота", "minBid, ₽"];
+  const scrHdrs = [
+    "GID", "Формат", "Город", "Адрес", "Оператор",
+    "Широта", "Долгота", "minBid, ₽",
+    "OTS/час", "Разрешение", "Размер (м)", "Сторона", "Фото (URL)"
+  ];
   scrHdrs.forEach((h, i) => {
     hdr(ws3, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
@@ -1416,15 +1421,63 @@ async function downloadMediaPlan() {
     const cells = [
       s.screen_id ?? "", s.format ?? "", s.city ?? "", s.address ?? "",
       s.owner ?? "",
-      Number.isFinite(s.lat) ? +s.lat.toFixed(6) : "",
-      Number.isFinite(s.lon) ? +s.lon.toFixed(6) : "",
-      Number.isFinite(s.minBid) ? +s.minBid.toFixed(2) : ""
+      Number.isFinite(s.lat)    ? +s.lat.toFixed(6)    : "",
+      Number.isFinite(s.lon)    ? +s.lon.toFixed(6)    : "",
+      Number.isFinite(s.minBid) ? +s.minBid.toFixed(2) : "",
+      Number.isFinite(s.ots)    ? Math.round(s.ots)    : "",
+      s.resolution ?? "",
+      s.size_wh    ?? "",
+      s.side       ?? "",
+      s.image_url  ?? ""
     ];
     cells.forEach((c, ci) => {
-      val(ws3, i + 2, ci + 1, c, { fill, border: true });
+      const cell = val(ws3, i + 2, ci + 1, c, { fill, border: true });
+      // Make photo URL a hyperlink
+      if (ci === 12 && c) {
+        cell.value = { text: "Фото", hyperlink: String(c) };
+        cell.font  = { color: { argb: "2563EB" }, underline: true, size: 10 };
+      }
     });
     ws3.getRow(i + 2).height = 16;
   });
+
+  // ── Лист 4: По форматам ──────────────────────────────────────────
+  const ws4 = wb.addWorksheet("По форматам");
+  ws4.columns = [{ width: 24 }, { width: 14 }, { width: 20 }, { width: 20 }];
+  const fmtHdrs = ["Формат", "Экранов", "OTS/выход (ср.)", "Ставка/выход (ср.), ₽"];
+  fmtHdrs.forEach((h, i) => {
+    hdr(ws4, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
+  });
+  ws4.getRow(1).height = 22;
+
+  const fs = calc.formatStats || {};
+  const totalPlaysCamp = meta.totalPlays || 1;
+  const totalScreensCamp = screens.length || 1;
+  const hpdCamp = meta.hpd || 1;
+  const daysCamp = meta.days || 1;
+  // Average plays per hour per screen across the campaign
+  const avgPlaysPerHour = totalPlaysCamp / (totalScreensCamp * daysCamp * hpdCamp);
+
+  Object.entries(fs)
+    .sort((a, b) => b[1].screens - a[1].screens)
+    .forEach(([fmtName, fdata], i) => {
+      const fill = i % 2 === 0 ? WHITE : GREY;
+      const avgOtsPerHour = fdata.otsCnt > 0 ? fdata.otsSum / fdata.otsCnt : null;
+      const avgOtsPerPlay = avgOtsPerHour != null && avgPlaysPerHour > 0
+        ? Math.round(avgOtsPerHour / avgPlaysPerHour)
+        : null;
+      const avgBid = fdata.bidCnt > 0 ? +(fdata.bidSum / fdata.bidCnt).toFixed(2) : null;
+      const cells = [
+        fmtName,
+        fdata.screens,
+        avgOtsPerPlay != null ? avgOtsPerPlay.toLocaleString("ru-RU") : "—",
+        avgBid != null ? avgBid.toLocaleString("ru-RU") : "—"
+      ];
+      cells.forEach((c, ci) => {
+        val(ws4, i + 2, ci + 1, c, { fill, border: true, right: ci >= 1 });
+      });
+      ws4.getRow(i + 2).height = 18;
+    });
 
   // Сохранение
   const buf  = await wb.xlsx.writeBuffer();
@@ -2687,12 +2740,29 @@ async function onCalcClick() {
 
   state.lastChosen = chosenAll;
 
+  // Per-format breakdown
+  const formatStats = {};
+  for (const s of chosenAll) {
+    const fmt = s.format || "—";
+    if (!formatStats[fmt]) formatStats[fmt] = { screens: 0, otsSum: 0, otsCnt: 0, bidSum: 0, bidCnt: 0 };
+    formatStats[fmt].screens++;
+    if (Number.isFinite(s.ots) && s.ots > 0) {
+      formatStats[fmt].otsSum += s.ots;
+      formatStats[fmt].otsCnt++;
+    }
+    if (Number.isFinite(s.minBid) && s.minBid > 0) {
+      formatStats[fmt].bidSum += s.minBid;
+      formatStats[fmt].bidCnt++;
+    }
+  }
+
   window.PLANNER = window.PLANNER || {};
   window.PLANNER.lastCalc = {
     brief,
     chosen: chosenAll,
     perRegion: perRegionRows,
     warnings: warnings || [],
+    formatStats,
     meta: {
       days,
       hpd,
@@ -2757,7 +2827,8 @@ ${perRegionText}`
   if (el("download-plan-xlsx")) el("download-plan-xlsx").disabled = chosenAll.length === 0;
 
   window.dispatchEvent(new CustomEvent("planner:calc-done", {
-    detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount }
+    detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount,
+              formatStats, meta: window.PLANNER.lastCalc.meta }
   }));
 
   setStatus("");
@@ -3521,21 +3592,48 @@ async function dspFetchInventoriesByCityId(cityId) {
 function mapDspInventory(inv) {
   const loc  = inv.location   || {};
   const meta = inv.metadata   || {};
+
+  // Resolution: try several possible field paths
+  const resolution =
+    meta.resolution || meta.pixelSize || meta.pixelResolution ||
+    meta.screenResolution ||
+    (meta.pixelWidth  && meta.pixelHeight  ? `${meta.pixelWidth}×${meta.pixelHeight}`   : "") ||
+    (meta.resolutionW && meta.resolutionH  ? `${meta.resolutionW}×${meta.resolutionH}`  : "") ||
+    "";
+
+  // Physical size: "3×6" m or "3x6" etc.
+  const size_wh =
+    meta.sizeDescription || meta.blockSize || meta.size || meta.physicalSize ||
+    (meta.blockWidth  && meta.blockHeight  ? `${meta.blockWidth}×${meta.blockHeight}`   : "") ||
+    (meta.sizeWidth   && meta.sizeHeight   ? `${meta.sizeWidth}×${meta.sizeHeight}`     : "") ||
+    (meta.width       && meta.height       ? `${meta.width}×${meta.height}`             : "") ||
+    "";
+
+  // Side / facing
+  const side =
+    meta.side || meta.facing || meta.sideNumber || meta.sideId ||
+    meta.sideDescription || meta.facingDescription ||
+    inv.side  || inv.facing || inv.sideDescription ||
+    "";
+
   return {
-    screen_id: inv.gid || String(inv.id),
-    city:      inv.inventoryTypeAndCity?.cityName || inv.city?.name
-             || (typeof loc.city === "string" ? loc.city : loc.city?.name)
-             || "",
-    format:    meta.format || inv.type || "",
-    address:   loc.address  || inv.name || "",
-    lat:       loc.latitude  ?? NaN,
-    lon:       loc.longitude ?? NaN,
-    minBid:    inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? NaN,
-    ots:       meta.ots ?? meta.otsInfo?.otsValue ?? NaN,
-    grp:       meta.grp ?? NaN,
-    owner:     inv.displayOwner?.name || "",
-    image_url: inv.images?.[0]?.url   || "",
-    _dspId:    inv.id,
+    screen_id:  inv.gid || String(inv.id),
+    city:       inv.inventoryTypeAndCity?.cityName || inv.city?.name
+              || (typeof loc.city === "string" ? loc.city : loc.city?.name)
+              || "",
+    format:     meta.format || inv.type || "",
+    address:    loc.address  || inv.name || "",
+    lat:        loc.latitude  ?? NaN,
+    lon:        loc.longitude ?? NaN,
+    minBid:     inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? NaN,
+    ots:        meta.ots ?? meta.otsInfo?.otsValue ?? NaN,
+    grp:        meta.grp ?? NaN,
+    owner:      inv.displayOwner?.name || "",
+    image_url:  inv.images?.[0]?.url   || "",
+    resolution,
+    size_wh,
+    side,
+    _dspId:     inv.id,
   };
 }
 
