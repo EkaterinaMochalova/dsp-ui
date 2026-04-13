@@ -1,3 +1,6 @@
+// DSP auth enabled by default (set false before loading this script to disable)
+if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
+
 (async function() {
   const root = document.getElementById("planner-root");
   if (!root) { console.error("[widget-init] #planner-root not found"); return; }
