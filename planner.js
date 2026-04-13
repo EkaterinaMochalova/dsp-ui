@@ -411,7 +411,21 @@ window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
   const keys = ["mon","tue","wed","thu","fri","sat","sun"];
   const out = { mon:[], tue:[], wed:[], thu:[], fri:[], sat:[], sun:[] };
 
-  // Новая модель: массив интервалов с выбором дней
+  // Новая модель: блоки [{days, times:[{from,to}]}]
+  const groups = window.PLANNER?.state?.weeklyGroups;
+  if (Array.isArray(groups) && groups.length) {
+    for (const grp of groups) {
+      for (const t of (grp.times || [])) {
+        if (!t.from || !t.to) continue;
+        for (const k of keys) {
+          if (grp.days?.[k]) out[k].push({ from: t.from, to: t.to });
+        }
+      }
+    }
+    return out;
+  }
+
+  // Fallback: старая модель weeklyIntervals
   const intervals = window.PLANNER?.state?.weeklyIntervals;
   if (Array.isArray(intervals)) {
     for (const intv of intervals) {
@@ -423,16 +437,6 @@ window.getWeeklyScheduleFromUI = function getWeeklyScheduleFromUI() {
     return out;
   }
 
-  // Fallback: старая модель через DOM (на случай если state не инициализирован)
-  for (const k of keys) {
-    const wrap = document.getElementById(`${k}-rows`);
-    if (!wrap) continue;
-    for (const row of wrap.querySelectorAll(".row")) {
-      const from = String(row.querySelector(".w-from")?.value || "").trim();
-      const to   = String(row.querySelector(".w-to")?.value || "").trim();
-      if (from && to) out[k].push({ from, to });
-    }
-  }
   return out;
 };
 
@@ -480,15 +484,44 @@ function renderSelectionExtra() {
 
   if (mode === "near_address") {
     extra.innerHTML = `
-      <input id="planner-addr" type="text" placeholder="Адрес"
-             style="width:100%; padding:10px; border:1px solid #ddd; border-radius:10px; margin-bottom:8px;">
+      <div id="addr-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+      <button type="button" id="addr-add-btn" style="
+        width:100%; padding:8px; border:1.5px dashed #c4b5fd; border-radius:10px;
+        background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer;">
+        + Добавить адрес
+      </button>
       <input id="planner-radius" type="number" min="50" value="500" placeholder="Радиус, м"
-             style="width:100%; padding:10px; border:1px solid #ddd; border-radius:10px;">
+             style="width:100%; padding:10px; border:1px solid #ddd; border-radius:10px; margin-top:8px;">
       <div style="font-size:12px; color:#666; margin-top:6px;">
-        Геокодим адрес и выбираем экраны в радиусе.
+        Геокодируем каждый адрес и берём экраны в радиусе от любого из них.
       </div>
     `;
-    attachAddressSuggest(el("planner-addr"));
+
+    function addAddressRow(value) {
+      const list = el("addr-list");
+      if (!list) return;
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; gap:6px; align-items:center;";
+      const inp = document.createElement("input");
+      inp.type = "text"; inp.placeholder = "Адрес";
+      inp.value = value || "";
+      inp.style.cssText = "flex:1; padding:10px; border:1px solid #ddd; border-radius:10px; font-size:14px;";
+      inp.className = "planner-addr-input";
+      const del = document.createElement("button");
+      del.type = "button"; del.textContent = "×";
+      del.style.cssText = "background:none; border:none; font-size:20px; color:#aaa; cursor:pointer; line-height:1; padding:0 4px;";
+      del.addEventListener("click", () => { row.remove(); });
+      row.appendChild(inp); row.appendChild(del);
+      list.appendChild(row);
+      attachAddressSuggest(inp);
+      return inp;
+    }
+
+    addAddressRow(); // первый адрес
+    el("addr-add-btn")?.addEventListener("click", () => {
+      const inp = addAddressRow();
+      inp?.focus();
+    });
     return;
   }
 
@@ -964,8 +997,17 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
   };
 
   if (selectionMode === "near_address") {
-    brief.selection.address = pickAnyVal("#planner-addr", "#addr");
-    brief.selection.radius_m = pickAnyNum(500, "#planner-radius", "#radius");
+    // Collect all address inputs (new multi-address UI)
+    const addrInputs = [...document.querySelectorAll(".planner-addr-input")];
+    const addresses = addrInputs.map(i => String(i.value || "").trim()).filter(Boolean);
+    // Fallback: old single input
+    if (!addresses.length) {
+      const single = pickAnyVal("#planner-addr", "#addr");
+      if (single) addresses.push(single);
+    }
+    brief.selection.addresses = addresses;
+    brief.selection.address   = addresses[0] || ""; // backward compat
+    brief.selection.radius_m  = pickAnyNum(500, "#planner-radius", "#radius");
   }
   if (selectionMode === "poi") {
     brief.selection.poi_type = String(qsVal("#poi-type") || "pet_store").trim();
@@ -2157,49 +2199,56 @@ async function onCalcClick() {
       setStatus(`Экраны у POI: ${pool.length} из ${before} (регион: ${region}, POI: ${pois.length})`);
     }
 
-    // Near address mode
+    // Near address mode — поддержка нескольких адресов
     if (isNearAddress) {
-      const addr = String(brief.selection.address || "").trim();
+      const addresses = (brief.selection.addresses && brief.selection.addresses.length)
+        ? brief.selection.addresses
+        : (brief.selection.address ? [brief.selection.address] : []);
       const screenRadius = Number(brief.selection.radius_m || 500);
 
-      if (!addr) {
-        alert("Введите адрес.");
-        setStatus("");
-        return;
+      if (!addresses.length) {
+        alert("Введите хотя бы один адрес.");
+        setStatus(""); return;
       }
       if (!window.GeoUtils?.haversineMeters) {
         alert("GeoUtils не найден. Проверь подключение geo.js");
-        setStatus("");
-        return;
+        setStatus(""); return;
       }
 
-      setStatus(`Геокодирую адрес: «${addr}»…`);
-
-      let pt = null;
-      try {
-        pt = await geocodeAddressNominatim(addr);
-      } catch (e) {
-        console.error("[geo] nominatim error:", e);
-        alert(e?.message || "Ошибка геокодинга (Nominatim).");
-        setStatus("");
-        return;
+      // Геокодируем все адреса
+      const points = [];
+      for (const addr of addresses) {
+        setStatus(`Геокодирую: «${addr}»…`);
+        try {
+          const pt = await geocodeAddressNominatim(addr);
+          if (pt) points.push(pt);
+          else console.warn("[geo] not found:", addr);
+        } catch (e) {
+          console.error("[geo] nominatim error:", e);
+        }
       }
 
-      if (!pt) {
-        alert("Адрес не найден. Попробуй уточнить (город, улица, дом).");
-        setStatus("");
-        return;
+      if (!points.length) {
+        alert("Ни один адрес не найден. Попробуй уточнить (город, улица, дом).");
+        setStatus(""); return;
       }
 
+      // Берём экраны в радиусе от ЛЮБОГО из найденных точек
       const before = pool.length;
-      pool = pickScreensNearPoint(pool, pt, screenRadius);
+      const screenSet = new Set();
+      for (const pt of points) {
+        for (const s of pickScreensNearPoint(pool, pt, screenRadius)) {
+          screenSet.add(s);
+        }
+      }
+      pool = [...screenSet];
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у адреса" });
+        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у адресов" });
         continue;
       }
 
-      setStatus(`Экраны у адреса: ${pool.length} из ${before} (радиус: ${screenRadius} м)`);
+      setStatus(`Экраны у ${points.length} адресов: ${pool.length} из ${before} (радиус: ${screenRadius} м)`);
     }
 
     // ROUTE mode

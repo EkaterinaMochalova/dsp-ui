@@ -56,6 +56,14 @@
         Очистить регионы
       </button>
 
+      <!-- DSP loading progress (shown only while inventory loads) -->
+      <div id="dsp-load-progress" style="display:none; align-items:center; gap:10px; margin-top:12px;
+           padding:10px 14px; background:#F4F1FF; border-radius:10px; font-size:13px; color:#5B3EF5;">
+        <div style="width:16px; height:16px; border:2px solid #5B3EF5; border-top-color:transparent;
+             border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
+        <span id="dsp-load-status-text">Загружаю инвентарь…</span>
+      </div>
+
       <div class="wiz-nav">
         <button type="button" class="wiz-btn" id="wiz-next-1">Дальше</button>
       </div>
@@ -86,31 +94,12 @@
     </label>
 
     <label class="radio-row">
-      <input type="radio" name="schedule" value="custom" />
-      Своё время (одно окно каждый день)
+      <input type="radio" name="schedule" value="weekly" />
+      Свой график
     </label>
 
-    <div id="custom-time-wrap" class="row-2" style="display:none; margin-top:10px;">
-      <input id="time-from" type="time" value="07:00" class="ux-input" />
-      <input id="time-to" type="time" value="22:00" class="ux-input" />
-    </div>
-  </div>
-
-  <div class="planner-block">
-    <div class="planner-label">Дни недели</div>
-
-    <label class="check-row" style="margin-bottom:10px;">
-      <input id="weekdays-enabled" type="checkbox" />
-      Рваный график (интервалы по дням недели)
-    </label>
-
-    <!-- ВАЖНО: этот контейнер по умолчанию скрыт -->
-    <div id="weekdays-wrap" style="display:none;">
-      <div class="planner-note" style="margin-bottom:10px;">
-        Для каждого дня можно задать 1+ интервалов. Пример: 07:00–10:00 и 17:00–21:00.
-      </div>
-
-      <!-- сюда рендерим карточки дней -->
+    <!-- Раскрывается при выборе "Свой график" -->
+    <div id="weekly-wrap" style="display:none; margin-top:12px;">
       <div id="weekly-days" class="weekly-days"></div>
     </div>
   </div>
@@ -196,10 +185,28 @@
   <!-- Стратегия подбора -->
   <div class="planner-block reach-mode-block">
     <div class="planner-label">Стратегия подбора</div>
-    <div class="radio-row" style="gap:14px;">
-      <label class="ux-radio"><input type="radio" name="reach_mode" value="max_reach" checked><span>Макс. охват</span></label>
-      <label class="ux-radio"><input type="radio" name="reach_mode" value="balanced"><span>Баланс</span></label>
-      <label class="ux-radio"><input type="radio" name="reach_mode" value="max_freq"><span>Макс. частота</span></label>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <label class="ux-radio" style="align-items:flex-start;">
+        <input type="radio" name="reach_mode" value="max_reach" checked style="margin-top:2px;">
+        <div>
+          <span>Макс. охват</span>
+          <div class="planner-note" style="margin-top:2px;">Берём максимум экранов — широкий охват аудитории</div>
+        </div>
+      </label>
+      <label class="ux-radio" style="align-items:flex-start;">
+        <input type="radio" name="reach_mode" value="balanced" style="margin-top:2px;">
+        <div>
+          <span>Баланс</span>
+          <div class="planner-note" style="margin-top:2px;">Оптимальное сочетание охвата и частоты показа</div>
+        </div>
+      </label>
+      <label class="ux-radio" style="align-items:flex-start;">
+        <input type="radio" name="reach_mode" value="max_freq" style="margin-top:2px;">
+        <div>
+          <span>Макс. частота</span>
+          <div class="planner-note" style="margin-top:2px;">Концентрируем бюджет на меньшем числе экранов для большей частоты</div>
+        </div>
+      </label>
     </div>
   </div>
 
@@ -231,6 +238,24 @@
     </div>
   </div>
 
+  <!-- Зона на карте (перед "Как собираем") -->
+  <div class="planner-block">
+    <div class="planner-label">Зона на карте</div>
+    <div id="poly-badge" style="display:none; align-items:center; gap:8px; margin-bottom:8px;
+         padding:8px 12px; background:#EDE9FD; border-radius:8px; font-size:13px; color:#3a2bb5;">
+      <span>📍</span>
+      <span id="poly-badge-text"></span>
+      <button id="poly-clear-btn" type="button" style="margin-left:auto; background:none; border:none;
+              color:#5B3EF5; cursor:pointer; font-size:12px; text-decoration:underline; padding:0;">
+        Очистить зону
+      </button>
+    </div>
+    <button id="poly-draw-btn" type="button" class="wiz-btn ghost">🗺 Нарисовать зону</button>
+    <div class="planner-note" style="margin-top:6px;">
+      Нарисуйте полигон — в расчёт попадут только экраны внутри зоны.
+    </div>
+  </div>
+
   <!-- Как собираем программу -->
   <div class="planner-block">
     <div class="planner-label">Как собираем программу</div>
@@ -259,6 +284,8 @@
   <!-- Операторы -->
   <div class="planner-block">
     <div class="planner-label">Операторы</div>
+    <input type="text" id="owner-search" placeholder="Поиск оператора…" class="ux-input"
+           style="margin-bottom:10px; width:100%;">
     <div style="display:flex; gap:14px; align-items:center; margin-bottom:10px;">
       <button type="button" id="owner-all" class="wiz-btn ghost">Все</button>
       <button type="button" id="owner-clear" class="wiz-btn ghost">Очистить</button>
@@ -282,25 +309,8 @@
     </div>
   </div>
 
-  <!-- Зона на карте -->
-  <div class="planner-block">
-    <div class="planner-label">Зона на карте</div>
-    <div id="poly-badge" style="display:none; align-items:center; gap:8px; margin-bottom:8px;
-         padding:8px 12px; background:#EDE9FD; border-radius:8px; font-size:13px; color:#3a2bb5;">
-      <span>📍</span>
-      <span id="poly-badge-text"></span>
-      <button id="poly-clear-btn" type="button" style="margin-left:auto; background:none; border:none;
-              color:#5B3EF5; cursor:pointer; font-size:12px; text-decoration:underline; padding:0;">
-        Очистить зону
-      </button>
-    </div>
-    <button id="poly-draw-btn" type="button" class="wiz-btn ghost">🗺 Нарисовать зону</button>
-    <div class="planner-note" style="margin-top:6px;">
-      Нарисуйте полигон — в расчёт попадут только экраны внутри зоны.
-    </div>
-  </div>
-
   <button id="calc-btn" class="ux-primary" disabled>Рассчитать</button>
+  <div id="calc-blocked-hint" style="display:none; margin-top:8px; font-size:12px; color:#e84444; padding:6px 10px; background:#fff5f5; border-radius:8px;"></div>
   <div id="status" class="planner-status"></div>
 
   <div class="wiz-nav" style="margin-top:12px;">
@@ -823,13 +833,16 @@
   }
 
   function syncCustomTime(){
-  const t = getScheduleType();
-  const wrap = el("custom-time-wrap");
-  if(wrap) wrap.style.display = (t === "custom") ? "flex" : "none";
-
-    const w = el("weekdays-wrap");
-  if(w) w.style.display = (t === "weekly") ? "block" : "none";
-}
+    const t = getScheduleType();
+    const w = el("weekly-wrap");
+    if(w){
+      const show = (t === "weekly");
+      w.style.display = show ? "block" : "none";
+      if(show && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
+        window.PLANNER_UI.renderWeeklyUI();
+      }
+    }
+  }
 
   function syncGrp(){
     const wrap = el("grp-wrap");
@@ -873,9 +886,30 @@
     }
 
     const calcBtn = el("calc-btn");
+    const hint    = el("calc-blocked-hint");
     if(calcBtn){
-      calcBtn.disabled = (p.done !== 4);
-      calcBtn.style.opacity = (p.done !== 4) ? ".55" : "1";
+      const blocked = (p.done !== 4);
+      calcBtn.disabled = blocked;
+      calcBtn.style.opacity = blocked ? ".55" : "1";
+
+      if(hint){
+        if(blocked){
+          const reasons = [];
+          const st = window.PLANNER?.state;
+          const regions = Array.isArray(st?.selectedRegions) ? st.selectedRegions : [];
+          if(!regions.length) reasons.push("не выбран регион");
+          if(!p.dates.start || !p.dates.end) reasons.push("не указаны даты");
+          const mode = getBudgetMode();
+          const bval = mode === "goal_ots" ? el("goal-ots")?.value : el("budget-input")?.value;
+          if(!bval || Number(bval) <= 0) reasons.push("не задан бюджет");
+          if(window.DSP_AUTH_ENABLED && !st?.dspInventoryWarmupDone)
+            reasons.push("инвентарь ещё загружается");
+          hint.textContent = reasons.length ? "Что блокирует: " + reasons.join(", ") : "";
+          hint.style.display = reasons.length ? "block" : "none";
+        } else {
+          hint.style.display = "none";
+        }
+      }
     }
   }
 
@@ -927,40 +961,33 @@
 </script>
 
 <script>
+/* Loading progress indicator in Step 1 */
 (function(){
-  const el = (id)=>document.getElementById(id);
+  function el(id){ return document.getElementById(id); }
 
-  function syncWeekdaysUI(){
-    const on = !!el("weekdays-enabled")?.checked;
-
-    const wrap = el("weekdays-wrap");
-    if(wrap) wrap.style.display = on ? "block" : "none";
-    // если включили — отрисуем дни
-if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
-  window.PLANNER_UI.renderWeeklyUI();
-}
-
-    // если включили рваный график — скрываем custom-time (чтобы не путалось)
-    const custom = el("custom-time-wrap");
-    if(custom) custom.style.display = (!on && (document.querySelector('input[name="schedule"]:checked')?.value === "custom"))
-      ? "flex"
-      : "none";
-
-    // уведомим остальную систему
-    window.dispatchEvent(new CustomEvent("planner:filters-changed"));
-    if(typeof window.renderProgress === "function") window.renderProgress();
+  function updateLoadingProgress(){
+    const bar  = el("dsp-load-progress");
+    if(!bar) return;
+    const done = window.PLANNER?.state?.dspInventoryWarmupDone;
+    const statusText = el("dsp-load-status-text");
+    if(done){
+      bar.style.display = "none";
+    } else if(window.DSP_AUTH_ENABLED){
+      bar.style.display = "flex";
+      const total   = window.PLANNER?.state?.screensAll?.length || 0;
+      if(statusText) statusText.textContent = total > 0
+        ? `Загружаю инвентарь… ${total.toLocaleString("ru-RU")} экранов`
+        : "Загружаю инвентарь…";
+    } else {
+      bar.style.display = "none";
+    }
   }
 
-  function init(){
-    el("weekdays-enabled")?.addEventListener("change", syncWeekdaysUI);
+  window.addEventListener("planner:screens-ready", updateLoadingProgress);
+  setInterval(updateLoadingProgress, 800);
 
-    // важно: при старте и при возврате назад
-    syncWeekdaysUI();
-    window.addEventListener("pageshow", syncWeekdaysUI);
-  }
-
-  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else init();
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", updateLoadingProgress);
+  else updateLoadingProgress();
 })();
 </script>
 
@@ -2020,8 +2047,14 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
       if(!avail.has(o)) st.selectedOwners.delete(o);
     }
 
-    const expanded = !!window.PLANNER.ui.ownersExpanded;
-    const visible = expanded ? list : list.slice(0, COLLAPSE_LIMIT);
+    // Filter by search query
+    const searchQ = (el("owner-search")?.value || "").trim().toLowerCase();
+    const filtered = searchQ
+      ? list.filter(x => x.owner.toLowerCase().includes(searchQ))
+      : list;
+
+    const expanded = !!window.PLANNER.ui.ownersExpanded || !!searchQ;
+    const visible = expanded ? filtered : filtered.slice(0, COLLAPSE_LIMIT);
 
     wrap.innerHTML = "";
 
@@ -2059,7 +2092,7 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
 
     const tgl = el(IDS.toggle);
     if(tgl){
-      const need = list.length > COLLAPSE_LIMIT;
+      const need = !searchQ && filtered.length > COLLAPSE_LIMIT;
       tgl.style.display = need ? "inline-flex" : "none";
       tgl.textContent = expanded ? "Свернуть операторов" : "Показать всех операторов";
     }
@@ -2071,6 +2104,9 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
 
   function bind(){
     const st = ensureState();
+
+    // Owner search
+    el("owner-search")?.addEventListener("input", () => renderOwners());
 
     el(IDS.all)?.addEventListener("click", () => {
       const list = computeOwnersWithCounts();
@@ -2215,6 +2251,8 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
             <div class="ps-metric"><div class="k">Выходов / день</div><div class="v">${playsPerDay == null ? "—" : fmtInt(playsPerDay)}</div></div>
             <div class="ps-metric"><div class="k">Выходов / час</div><div class="v">${playsPerHour == null ? "—" : fmtInt(playsPerHour)}</div></div>
             <div class="ps-metric"><div class="k">OTS всего</div><div class="v">${otsTotal == null ? "—" : fmtInt(otsTotal)}</div></div>
+            <div class="ps-metric"><div class="k">Стоимость выхода</div><div class="v">${(totalBudget > 0 && totalPlays > 0) ? Math.round(totalBudget / totalPlays).toLocaleString("ru-RU") + " ₽" : "—"}</div></div>
+            <div class="ps-metric"><div class="k">CPM (за 1 000 показов)</div><div class="v">${(totalBudget > 0 && otsTotal > 0) ? Math.round(totalBudget / otsTotal * 1000).toLocaleString("ru-RU") + " ₽" : "—"}</div></div>
           </div>
 
           ${warnsHtml}
@@ -2441,6 +2479,10 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
   from{ transform: rotate(0deg); }
   to{ transform: rotate(360deg); }
 }
+@keyframes spin{
+  from{ transform: rotate(0deg); }
+  to{ transform: rotate(360deg); }
+}
 </style>
 
 <script>
@@ -2593,11 +2635,11 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
     window.PLANNER = window.PLANNER || {};
     window.PLANNER.state = window.PLANNER.state || {};
     const st = window.PLANNER.state;
-
-    // Новая модель: массив интервалов, каждый с выбором дней
-    if(!st.weeklyIntervals){
-      st.weeklyIntervals = [
-        { from:"07:00", to:"22:00", days:{mon:true,tue:true,wed:true,thu:true,fri:true,sat:false,sun:false} }
+    // Модель: блоки [{days:{mon,...}, times:[{from,to},...]}]
+    if(!st.weeklyGroups){
+      st.weeklyGroups = [
+        { days:{mon:true,tue:true,wed:true,thu:true,fri:true,sat:false,sun:false},
+          times:[{from:"07:00",to:"22:00"}] }
       ];
     }
     return st;
@@ -2675,134 +2717,171 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
     });
   }
 
+  function makeDayPills(grpIdx, grp, card){
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;";
+    DAYS.forEach(d => {
+      const lbl = document.createElement("label");
+      const checked = !!grp.days[d.key];
+      lbl.style.cssText = `display:inline-flex;align-items:center;cursor:pointer;
+        font-size:13px;padding:4px 10px;border-radius:8px;user-select:none;
+        border:1.5px solid ${checked?"#5b3ef5":"#ddd"};
+        background:${checked?"#f4f1ff":"#fff"};`;
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = checked; cb.style.display = "none";
+      cb.addEventListener("change", () => {
+        grp.days[d.key] = cb.checked;
+        lbl.style.borderColor = cb.checked ? "#5b3ef5" : "#ddd";
+        lbl.style.background   = cb.checked ? "#f4f1ff" : "#fff";
+        refreshGroupBars(grpIdx, card);
+        if(typeof window.renderProgress === "function") window.renderProgress();
+      });
+      lbl.addEventListener("click", () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); });
+      lbl.appendChild(cb);
+      lbl.appendChild(document.createTextNode(d.label));
+      row.appendChild(lbl);
+    });
+    return row;
+  }
+
+  function makeTimeRow(grpIdx, grp, tIdx, card){
+    const t = grp.times[tIdx];
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:6px;";
+    row.innerHTML = `
+      <input type="time" class="ux-input wd-from" value="${t.from}" style="width:105px;">
+      <span style="color:#aaa;">—</span>
+      <input type="time" class="ux-input wd-to"   value="${t.to}"   style="width:105px;">
+      <button type="button" class="wd-remove" style="margin-left:auto;font-size:18px;line-height:1;padding:0 6px;" title="Удалить время">×</button>
+    `;
+    row.querySelector(".wd-from").addEventListener("change", e => {
+      grp.times[tIdx].from = e.target.value;
+      refreshGroupBars(grpIdx, card);
+      if(typeof window.renderProgress === "function") window.renderProgress();
+    });
+    row.querySelector(".wd-to").addEventListener("change", e => {
+      grp.times[tIdx].to = e.target.value;
+      refreshGroupBars(grpIdx, card);
+      if(typeof window.renderProgress === "function") window.renderProgress();
+    });
+    row.querySelector(".wd-remove").addEventListener("click", () => {
+      grp.times.splice(tIdx, 1);
+      renderWeeklyUI();
+      if(typeof window.renderProgress === "function") window.renderProgress();
+    });
+    return row;
+  }
+
+  function refreshGroupBars(grpIdx, card){
+    const st = ensureState();
+    const barsEl = card.querySelector(".wd-bars");
+    if(barsEl) renderBars(barsEl, true, st.weeklyGroups[grpIdx].times);
+  }
+
   function renderWeeklyUI(){
     const st = ensureState();
     const wrap = el("weekly-days");
     if(!wrap) return;
     wrap.innerHTML = "";
 
-    // Кнопка добавить интервал
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.className = "wd-btn";
-    addBtn.style.cssText = "margin-bottom:14px;font-size:13px;padding:6px 14px;";
-    addBtn.textContent = "+ Добавить интервал";
-    addBtn.addEventListener("click", () => {
-      const last = st.weeklyIntervals[st.weeklyIntervals.length - 1];
-      const prevDays = last ? JSON.parse(JSON.stringify(last.days)) : {mon:true,tue:true,wed:true,thu:true,fri:true,sat:false,sun:false};
-      let nextFrom = "07:00", nextTo = "22:00";
-      if(last){
-        const start = clamp(timeToMin(last.to), timeToMin(BAR_FROM), timeToMin(BAR_TO)-15);
-        nextFrom = minToTime(start);
-        nextTo = minToTime(clamp(start+60, start+15, timeToMin(BAR_TO)));
-      }
-      st.weeklyIntervals.push({ from:nextFrom, to:nextTo, days:prevDays });
-      renderWeeklyUI();
-      if(typeof window.renderProgress === "function") window.renderProgress();
-    });
-    wrap.appendChild(addBtn);
-
-    st.weeklyIntervals.forEach((intv, idx) => {
+    st.weeklyGroups.forEach((grp, grpIdx) => {
       const card = document.createElement("div");
       card.className = "wd-card";
-      card.style.marginBottom = "12px";
+      card.style.marginBottom = "14px";
 
-      // Строка с временем
-      const timeRow = document.createElement("div");
-      timeRow.className = "wd-row";
-      timeRow.style.cssText = "align-items:center;margin-bottom:10px;gap:6px;";
-      timeRow.innerHTML = `
-        <input type="time" class="ux-input wd-from" value="${intv.from}" style="width:110px;" />
-        <span style="color:#888;">—</span>
-        <input type="time" class="ux-input wd-to" value="${intv.to}" style="width:110px;" />
-        <button type="button" class="wd-remove" style="margin-left:auto;">Удалить</button>
+      // Header row: "Блок N" + удалить
+      const hdr = document.createElement("div");
+      hdr.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;";
+      hdr.innerHTML = `
+        <span style="font-size:12px;font-weight:600;color:#667085;text-transform:uppercase;letter-spacing:.5px;">
+          Блок ${grpIdx + 1}
+        </span>
+        <button type="button" class="wd-remove" style="font-size:12px;padding:2px 8px;">Удалить блок</button>
       `;
-      const fromEl = timeRow.querySelector(".wd-from");
-      const toEl   = timeRow.querySelector(".wd-to");
-      fromEl.addEventListener("change", () => {
-        st.weeklyIntervals[idx].from = fromEl.value;
-        refreshBar(idx, card);
-        if(typeof window.renderProgress === "function") window.renderProgress();
-      });
-      toEl.addEventListener("change", () => {
-        st.weeklyIntervals[idx].to = toEl.value;
-        refreshBar(idx, card);
-        if(typeof window.renderProgress === "function") window.renderProgress();
-      });
-      timeRow.querySelector(".wd-remove").addEventListener("click", () => {
-        st.weeklyIntervals.splice(idx, 1);
+      hdr.querySelector(".wd-remove").addEventListener("click", () => {
+        st.weeklyGroups.splice(grpIdx, 1);
         renderWeeklyUI();
         if(typeof window.renderProgress === "function") window.renderProgress();
       });
-      card.appendChild(timeRow);
+      card.appendChild(hdr);
 
-      // Галочки дней недели
-      const daysRow = document.createElement("div");
-      daysRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;";
-      DAYS.forEach(d => {
-        const lbl = document.createElement("label");
-        const checked = !!intv.days[d.key];
-        lbl.style.cssText = `display:inline-flex;align-items:center;gap:3px;cursor:pointer;
-          font-size:13px;padding:4px 10px;border-radius:8px;border:1.5px solid ${checked?"#5b3ef5":"#ddd"};
-          background:${checked?"#f4f1ff":"#fff"};user-select:none;`;
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = checked;
-        cb.style.display = "none";
-        cb.addEventListener("change", () => {
-          st.weeklyIntervals[idx].days[d.key] = cb.checked;
-          lbl.style.borderColor = cb.checked ? "#5b3ef5" : "#ddd";
-          lbl.style.background   = cb.checked ? "#f4f1ff" : "#fff";
-          if(typeof window.renderProgress === "function") window.renderProgress();
-        });
-        lbl.addEventListener("click", () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); });
-        lbl.appendChild(cb);
-        lbl.appendChild(document.createTextNode(d.label));
-        daysRow.appendChild(lbl);
+      // Day pills
+      card.appendChild(makeDayPills(grpIdx, grp, card));
+
+      // Time rows
+      const timesWrap = document.createElement("div");
+      timesWrap.className = "wd-times-wrap";
+      grp.times.forEach((_, tIdx) => timesWrap.appendChild(makeTimeRow(grpIdx, grp, tIdx, card)));
+      card.appendChild(timesWrap);
+
+      // Add time button
+      const addTime = document.createElement("button");
+      addTime.type = "button"; addTime.className = "wd-btn";
+      addTime.style.cssText = "font-size:12px;padding:4px 12px;margin-top:4px;";
+      addTime.textContent = "+ Добавить время";
+      addTime.addEventListener("click", () => {
+        const last = grp.times[grp.times.length - 1];
+        const start = last ? clamp(timeToMin(last.to), timeToMin(BAR_FROM), timeToMin(BAR_TO)-15) : 7*60;
+        grp.times.push({ from: minToTime(start), to: minToTime(clamp(start+60,start+15,timeToMin(BAR_TO))) });
+        renderWeeklyUI();
+        if(typeof window.renderProgress === "function") window.renderProgress();
       });
-      card.appendChild(daysRow);
+      card.appendChild(addTime);
 
-      // Бар визуализации
+      // Time bar
       const bars = document.createElement("div");
-      bars.className = "wd-bars";
-      bars.dataset.intvIdx = idx;
-      renderBars(bars, true, [intv]);
+      bars.className = "wd-bars"; bars.style.marginTop = "8px";
+      renderBars(bars, true, grp.times);
       card.appendChild(bars);
 
       wrap.appendChild(card);
     });
-  }
 
-  function refreshBar(idx, card){
-    const st = ensureState();
-    const barsEl = card.querySelector(".wd-bars");
-    if(barsEl) renderBars(barsEl, true, [st.weeklyIntervals[idx]]);
+    // Add block button
+    const addBlock = document.createElement("button");
+    addBlock.type = "button"; addBlock.className = "wd-btn";
+    addBlock.style.cssText = "width:100%;margin-top:4px;font-size:13px;padding:8px;";
+    addBlock.textContent = "+ Добавить блок";
+    addBlock.addEventListener("click", () => {
+      st.weeklyGroups.push({
+        days:{mon:false,tue:false,wed:false,thu:false,fri:false,sat:true,sun:true},
+        times:[{from:"10:00",to:"20:00"}]
+      });
+      renderWeeklyUI();
+      if(typeof window.renderProgress === "function") window.renderProgress();
+    });
+    wrap.appendChild(addBlock);
   }
 
   window.PLANNER_UI = window.PLANNER_UI || {};
   window.PLANNER_UI.renderWeeklyUI = renderWeeklyUI;
 
-  function syncScheduleVisibility(){
-    const t = document.querySelector('input[name="schedule"]:checked')?.value || "all_day";
-    const custom = document.getElementById("custom-time-wrap");
-    if (custom) custom.style.display = (t === "custom") ? "flex" : "none";
-    const weekly = document.getElementById("weekdays-wrap");
-    if (weekly) weekly.style.display = (t === "weekly") ? "block" : "none";
-  }
-
   window.PLANNER_UI.validateStep2Schedule = function(){
     const t = document.querySelector('input[name="schedule"]:checked')?.value || "all_day";
     if(t !== "weekly") return true;
     const st = ensureState();
-    const ints = st.weeklyIntervals || [];
-    if(!ints.length) return false;
-    for(const intv of ints){
-      if(!intv.from || !intv.to) return false;
-      if(timeToMin(intv.to) <= timeToMin(intv.from)) return false;
-      if(!DAYS.some(d => intv.days?.[d.key])) return false; // хотя бы один день
+    const groups = st.weeklyGroups || [];
+    if(!groups.length) return false;
+    for(const grp of groups){
+      if(!grp.times?.length) return false;
+      if(!DAYS.some(d => grp.days?.[d.key])) return false;
+      for(const t of grp.times){
+        if(!t.from || !t.to) return false;
+        if(timeToMin(t.to) <= timeToMin(t.from)) return false;
+      }
     }
     return true;
   };
+
+  function syncScheduleVisibility(){
+    const t = document.querySelector('input[name="schedule"]:checked')?.value || "all_day";
+    const weekly = document.getElementById("weekly-wrap");
+    if(weekly){
+      const show = (t === "weekly");
+      weekly.style.display = show ? "block" : "none";
+      if(show) renderWeeklyUI();
+    }
+  }
 
   function bind(){
     document.querySelectorAll('input[name="schedule"]').forEach(r => {
@@ -2811,12 +2890,7 @@ if(on && typeof window.PLANNER_UI?.renderWeeklyUI === "function"){
         if(typeof window.renderProgress === "function") window.renderProgress();
       });
     });
-
     syncScheduleVisibility();
-    setTimeout(() => {
-      const on = !!document.getElementById("weekdays-enabled")?.checked;
-      if(on) renderWeeklyUI();
-    }, 300);
   }
 
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
