@@ -3381,11 +3381,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const rate = Math.max(0, Number(el("commission-rate")?.value || 0));
         if(rate > 0){
           const commission = budget * rate / 100;
-          const placement  = budget - commission;
+          const total      = budget + commission;
           commDisp.style.display = "block";
           commDisp.innerHTML =
-            "Стоимость размещения: <b>" + fmtMoney(placement) + "</b>" +
-            " &nbsp;/&nbsp; Комиссия системы: <b>" + fmtMoney(commission) + "</b>";
+            "Стоимость размещения: <b>" + fmtMoney(budget) + "</b>" +
+            " &nbsp;+&nbsp; Комиссия: <b>" + fmtMoney(commission) + "</b>" +
+            " &nbsp;=&nbsp; Итого: <b>" + fmtMoney(total) + "</b>";
         } else {
           commDisp.style.display = "none";
         }
