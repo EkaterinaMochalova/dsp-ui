@@ -3996,6 +3996,8 @@ function getDspCacheKey() {
 
 function dspSaveInventoryToStorage(cityCache) {
   try {
+    const total = Object.values(cityCache || {}).reduce((s, a) => s + a.length, 0);
+    if (total === 0) { console.log("[DSP] skipping cache save: 0 screens"); return; }
     const payload = JSON.stringify({ ts: Date.now(), d: cityCache });
     // localStorage обычно ограничен ~5MB — пробуем только если данных немного
     if (payload.length > 4_000_000) { console.log("[DSP] cache too large for localStorage, skipping"); return; }
@@ -4016,6 +4018,11 @@ function dspLoadInventoryFromStorage() {
     const total = Object.values(d).reduce((s, a) => s + a.length, 0);
     const ageMin = Math.round((Date.now() - ts) / 60000);
     console.log(`[DSP] cache hit: ${total} screens, age=${ageMin}min, ttl=24h`);
+    if (total === 0) {
+      console.log("[DSP] cache has 0 screens — ignoring, will reload from API");
+      localStorage.removeItem(key);
+      return null;
+    }
     return d;
   } catch { return null; }
 }
