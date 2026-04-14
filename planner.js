@@ -1914,8 +1914,18 @@ async function geocodeAddressNominatim(query, regionHint) {
     }
   }
 
-  const q = regionHint ? `${String(regionHint).trim()}, ${q0}` : q0;
+  // Yandex — primary if key available (better quality for Russian addresses)
+  if (window.YANDEX_MAPS_KEY) {
+    try {
+      const pt = await geocodeAddressYandex(query, regionHint);
+      if (pt) return pt;
+    } catch(e) {
+      console.warn("[geo] Yandex failed, falling back to Nominatim:", e.message);
+    }
+  }
 
+  // Fallback: Nominatim (OpenStreetMap)
+  const q = regionHint ? `${String(regionHint).trim()}, ${q0}` : q0;
   try {
     const url = `https://nominatim.openstreetmap.org/search?` +
       `q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=0`;
@@ -1931,11 +1941,6 @@ async function geocodeAddressNominatim(query, regionHint) {
     }
   } catch (e) {
     console.warn("[geo] Nominatim failed:", e.message);
-  }
-
-  // Fallback: Yandex если ключ задан
-  if (window.YANDEX_MAPS_KEY) {
-    return geocodeAddressYandex(query, regionHint);
   }
 
   return null;

@@ -665,7 +665,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@49c62bf/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -707,6 +707,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         </div>
         <div id="city-suggestions" class="city-suggestions"></div>
         <div id="city-selected" class="city-selected"></div>
+        <!-- City import from file -->
+        <div style="margin-top:8px;">
+          <label style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
+                 border:1.5px dashed #c4b5fd; border-radius:10px; background:#faf8ff;
+                 color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:500;">
+            ↓ Импорт городов из файла
+            <input type="file" id="region-file-input" accept=".xlsx,.csv,.txt" style="display:none;">
+          </label>
+          <div id="region-import-status" style="margin-top:6px; font-size:12px; color:#667085; display:none;"></div>
+        </div>
         <div class="planner-note">
           Под "регион" у нас попадают: крупные города (как отдельные), МО/ЛО (областью) и т.д.
         </div>
