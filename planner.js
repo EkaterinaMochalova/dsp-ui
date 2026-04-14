@@ -585,7 +585,7 @@ function renderSelectionExtra() {
       if (panel) panel.style.display = "none";
     });
 
-    // Загрузка файла
+    // Загрузка файла — авто-добавление без нажатия кнопки
     el("addr-file-input")?.addEventListener("change", async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -594,23 +594,47 @@ function renderSelectionExtra() {
       const name = file.name.toLowerCase();
       try {
         let lines = [];
+
         if (name.endsWith(".txt")) {
           const text = await file.text();
-          lines = text.split(/\r?\n/);
+          lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
         } else if (name.endsWith(".csv")) {
           const text = await file.text();
-          const result = window.Papa?.parse(text, { skipEmptyLines: true });
-          lines = (result?.data || []).map(row => row[0] || "");
+          // Detect header row
+          const result = window.Papa?.parse(text, { header: true, skipEmptyLines: true });
+          if (result?.data?.length) {
+            lines = _extractAddrLines(result.data);
+          } else {
+            // No header — use first column
+            const r2 = window.Papa?.parse(text, { skipEmptyLines: true });
+            lines = (r2?.data || []).map(row => String(row[0] || "").trim()).filter(Boolean);
+          }
+
         } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
           const buf = await file.arrayBuffer();
           const wb  = window.XLSX?.read(buf, { type: "array" });
           const ws  = wb?.Sheets?.[wb.SheetNames[0]];
-          const rows = window.XLSX?.utils?.sheet_to_json(ws, { header: 1 }) || [];
-          lines = rows.map(row => String(row[0] || "").trim());
+          const rows = window.XLSX?.utils?.sheet_to_json(ws, { defval: "" }) || [];
+          if (rows.length) {
+            lines = _extractAddrLines(rows);
+          } else {
+            // Fallback: raw array
+            const raw = window.XLSX?.utils?.sheet_to_json(ws, { header: 1 }) || [];
+            lines = raw.slice(1).map(row => String(row[0] || "").trim()).filter(Boolean);
+          }
         }
+
+        // Auto-add immediately
+        const added = bulkAddAddresses(lines);
+        if (status) status.textContent = added ? `Добавлено: ${added} адресов` : "Нет адресов в файле";
+        // Close import panel
+        const panel = el("addr-import-panel");
+        if (panel && added) panel.style.display = "none";
+        // Also update textarea for reference
         const textarea = el("addr-paste-area");
-        if (textarea) textarea.value = lines.filter(Boolean).join("\n");
-        if (status) status.textContent = `Загружено ${lines.filter(Boolean).length} строк`;
+        if (textarea) textarea.value = lines.join("\n");
+
       } catch(err) {
         if (status) status.textContent = "Ошибка чтения файла";
         console.error("[addr-import]", err);
@@ -618,7 +642,7 @@ function renderSelectionExtra() {
       e.target.value = "";
     });
 
-    // Применить импорт
+    // Применить импорт из textarea (ручная вставка)
     el("addr-import-apply")?.addEventListener("click", () => {
       const text = el("addr-paste-area")?.value || "";
       const lines = text.split(/\r?\n/);
@@ -1736,6 +1760,111 @@ async function downloadMediaPlan() {
   URL.revokeObjectURL(url);
 }
 
+// ===== File import helpers =====
+
+/**
+ * Auto-detects columns in parsed rows (objects with headers) and returns
+ * a list of strings suitable for bulkAddAddresses().
+ * Supports:
+ *  - Dedicated address column: "Адрес", "address", "адрес"
+ *  - Dedicated city column: "Город", "city"
+ *  - Lat/Lon columns → converted to "@lat,lon" (skip geocoding)
+ * Falls back to first text column if nothing detected.
+ */
+function _extractAddrLines(rows) {
+  if (!rows || !rows.length) return [];
+  const keys = Object.keys(rows[0]);
+
+  // Normalised header matching
+  const findKey = (...patterns) =>
+    keys.find(k => patterns.some(p => k.trim().toLowerCase() === p.toLowerCase())) || null;
+
+  const addrKey = findKey("адрес", "address", "Адрес", "Address");
+  const cityKey = findKey("город", "city", "Город", "City");
+  const latKey  = findKey("lat", "latitude", "широта", "Широта");
+  const lonKey  = findKey("lon", "lng", "longitude", "долгота", "Долгота");
+
+  const lines = [];
+  for (const row of rows) {
+    // If we have lat + lon columns → coordinate point (no geocoding needed)
+    if (latKey && lonKey) {
+      const lat = Number(String(row[latKey] || "").replace(",", "."));
+      const lon = Number(String(row[lonKey] || "").replace(",", "."));
+      if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) {
+        // Prepend address hint if available (shown in UI input)
+        const hint = addrKey ? String(row[addrKey] || "").trim() : "";
+        lines.push(hint ? `@${lat},${lon} (${hint})` : `@${lat},${lon}`);
+        continue;
+      }
+    }
+    // Address column
+    if (addrKey) {
+      const v = String(row[addrKey] || "").trim();
+      if (v) { lines.push(v); continue; }
+    }
+    // City column
+    if (cityKey) {
+      const v = String(row[cityKey] || "").trim();
+      if (v) { lines.push(v); continue; }
+    }
+    // Fallback: first non-empty string value
+    const first = Object.values(row).map(v => String(v || "").trim()).find(v => v);
+    if (first) lines.push(first);
+  }
+  return lines.filter(Boolean);
+}
+
+/**
+ * Auto-detects city/region names from parsed rows and matches them
+ * against state.regionsAll. Returns { matched: string[], unmatched: string[] }.
+ */
+function _extractAndMatchCities(rows) {
+  if (!rows || !rows.length) return { matched: [], unmatched: [] };
+  const keys = Object.keys(rows[0]);
+
+  const findKey = (...patterns) =>
+    keys.find(k => patterns.some(p => k.trim().toLowerCase() === p.toLowerCase())) || null;
+
+  const cityKey   = findKey("город", "city", "Город", "City", "регион", "region");
+  const addrKey   = findKey("адрес", "address", "Адрес", "Address");
+
+  const regionsAll = Array.isArray(state?.regionsAll) ? state.regionsAll : [];
+  const dspCities  = Array.isArray(state?.dspCities)  ? state.dspCities  : [];
+  const allKnown   = [...new Set([...regionsAll, ...dspCities])];
+  const allKnownLC = allKnown.map(r => r.toLowerCase());
+
+  const rawCities = [];
+  for (const row of rows) {
+    let val = "";
+    if (cityKey) {
+      val = String(row[cityKey] || "").trim();
+    } else if (addrKey) {
+      // Extract first comma-segment as city
+      val = String(row[addrKey] || "").split(",")[0].trim();
+    } else {
+      val = String(Object.values(row)[0] || "").split(",")[0].trim();
+    }
+    if (val) rawCities.push(val);
+  }
+
+  // Deduplicate raw city names
+  const uniqueRaw = [...new Set(rawCities)];
+  const matched = [], unmatched = [];
+  for (const raw of uniqueRaw) {
+    const rawLC = raw.toLowerCase();
+    // Exact match first
+    const exactIdx = allKnownLC.indexOf(rawLC);
+    if (exactIdx !== -1) { matched.push(allKnown[exactIdx]); continue; }
+    // Partial: known region starts with raw or raw starts with known region
+    const partial = allKnown.find((r, i) =>
+      allKnownLC[i].startsWith(rawLC) || rawLC.startsWith(allKnownLC[i])
+    );
+    if (partial) { matched.push(partial); continue; }
+    unmatched.push(raw);
+  }
+  return { matched: [...new Set(matched)], unmatched };
+}
+
 // ===== Yandex Geocoding + Suggest =====
 // Ключ задаётся в HTML-блоке Tilda: <script>window.YANDEX_MAPS_KEY = "ваш_ключ";</script>
 
@@ -1775,6 +1904,15 @@ async function geocodeAddressYandex(query, regionHint) {
 async function geocodeAddressNominatim(query, regionHint) {
   const q0 = String(query || "").trim();
   if (!q0) return null;
+
+  // Direct coordinates: "@lat,lon" or "@lat,lon (hint)" format (from coordinate import)
+  if (q0.startsWith("@")) {
+    const m = q0.match(/^@(-?[\d.]+),(-?[\d.]+)/);
+    if (m) {
+      const lat = Number(m[1]), lon = Number(m[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+    }
+  }
 
   const q = regionHint ? `${String(regionHint).trim()}, ${q0}` : q0;
 
@@ -3492,6 +3630,87 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
         return;
       }
       renderRegionSuggestions(e.target.value);
+    });
+  }
+
+  // ===== City import from file =====
+  const regionFileInput = el("region-file-input");
+  if (regionFileInput) {
+    regionFileInput.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const statusEl = el("region-import-status");
+      if (statusEl) { statusEl.style.display = "block"; statusEl.textContent = "Читаю файл…"; }
+      const name = file.name.toLowerCase();
+      try {
+        let rows = [];
+        let rawLines = [];
+
+        if (name.endsWith(".txt")) {
+          const text = await file.text();
+          rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          rows = rawLines.map(l => ({ _val: l }));
+
+        } else if (name.endsWith(".csv")) {
+          const text = await file.text();
+          const parsed = window.Papa?.parse(text, { header: true, skipEmptyLines: true });
+          if (parsed?.data?.length) {
+            rows = parsed.data;
+          } else {
+            const p2 = window.Papa?.parse(text, { skipEmptyLines: true });
+            rawLines = (p2?.data || []).map(r => String(r[0] || "").trim()).filter(Boolean);
+            rows = rawLines.map(l => ({ _val: l }));
+          }
+
+        } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+          const buf = await file.arrayBuffer();
+          const wb  = window.XLSX?.read(buf, { type: "array" });
+          const ws  = wb?.Sheets?.[wb.SheetNames[0]];
+          rows = window.XLSX?.utils?.sheet_to_json(ws, { defval: "" }) || [];
+          if (!rows.length) {
+            const raw = window.XLSX?.utils?.sheet_to_json(ws, { header: 1 }) || [];
+            rawLines = raw.slice(1).map(r => String(r[0] || "").trim()).filter(Boolean);
+            rows = rawLines.map(l => ({ _val: l }));
+          }
+        }
+
+        if (!rows.length) {
+          if (statusEl) statusEl.textContent = "Файл пустой";
+          e.target.value = ""; return;
+        }
+
+        // Match cities
+        const { matched, unmatched } = _extractAndMatchCities(rows);
+
+        // Add matched regions
+        if (!Array.isArray(state.selectedRegions)) state.selectedRegions = [];
+        let added = 0;
+        for (const r of matched) {
+          if (!state.selectedRegions.includes(r)) {
+            state.selectedRegions.push(r);
+            added++;
+          }
+        }
+        if (matched.length) {
+          state.selectedRegion = state.selectedRegions[0] || null;
+          renderSelectedRegions();
+          renderProgress();
+          window.dispatchEvent(new CustomEvent("planner:pool-updated"));
+        }
+
+        // Status message
+        let msg = "";
+        if (added > 0) msg += `Добавлено городов: ${added}`;
+        else if (matched.length > 0) msg += `Все ${matched.length} городов уже выбраны`;
+        else msg += "Не удалось распознать города";
+        if (unmatched.length) msg += `. Не найдены: ${unmatched.slice(0, 5).join(", ")}${unmatched.length > 5 ? ` и ещё ${unmatched.length - 5}` : ""}`;
+        if (statusEl) statusEl.textContent = msg;
+
+      } catch(err) {
+        if (statusEl) statusEl.textContent = "Ошибка чтения файла";
+        console.error("[region-import]", err);
+      }
+      e.target.value = "";
     });
   }
 
