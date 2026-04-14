@@ -632,6 +632,29 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     border: 1px solid rgba(37,99,235,.12);
     border-radius: 8px;
   }
+
+  /* ===== FLOATING RECALC BUTTON ===== */
+  #planner-recalc-float {
+    position: fixed;
+    right: 28px;
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: #5B3EF5;
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(91,62,245,.45);
+    transition: top .15s, opacity .2s;
+    white-space: nowrap;
+  }
+  #planner-recalc-float:hover { background: #4730d4; }
+  #planner-recalc-float .rf-icon { font-size: 16px; line-height: 1; }
 `;
   document.head.appendChild(style);
 
@@ -647,6 +670,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
 <div id="planner-widget" class="planner-root">
+<button id="planner-recalc-float" style="display:none;" title="Пересчитать">
+  <span class="rf-icon">↻</span> Пересчитать
+</button>
 <br><br><br><br>  <h2 class="planner-title">Расчёт размещения</h2>
   <div id="dsp-user-bar" style="display:none; font-size:12px; color:#888; margin:-8px 0 10px;"></div>
   <div class="wiz-progress" id="wiz-progress">
@@ -3399,6 +3425,55 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   document.querySelectorAll('input[name="budget_mode"]').forEach(r =>
     r.addEventListener("change", update)
   );
+})();
+`);
+
+  // Script block 22 — Floating "Пересчитать" button
+  runScript(`
+(function(){
+  const floatBtn = el("planner-recalc-float");
+  const calcBtn  = el("calc-btn");
+  if (!floatBtn || !calcBtn) return;
+
+  let hideTimer = null;
+
+  function showFloat(targetEl) {
+    if (!window.PLANNER?.lastCalc) return; // только после первого расчёта
+    clearTimeout(hideTimer);
+
+    // Позиционируем по Y-центру изменённого элемента, прижимаем к правому краю
+    if (targetEl) {
+      const rect = targetEl.getBoundingClientRect();
+      const y = rect.top + rect.height / 2;
+      // Держим кнопку в видимой зоне экрана
+      const clampedY = Math.max(60, Math.min(window.innerHeight - 60, y));
+      floatBtn.style.top = clampedY + "px";
+    }
+
+    floatBtn.style.display = "flex";
+    floatBtn.style.opacity = "1";
+  }
+
+  function hideFloat() {
+    floatBtn.style.opacity = "0";
+    hideTimer = setTimeout(() => { floatBtn.style.display = "none"; }, 200);
+  }
+
+  // Слушаем любые изменения внутри виджета
+  const widget = document.getElementById("planner-widget");
+  if (widget) {
+    widget.addEventListener("input",  (e) => showFloat(e.target));
+    widget.addEventListener("change", (e) => showFloat(e.target));
+  }
+
+  // Клик по плавающей кнопке — запускаем расчёт
+  floatBtn.addEventListener("click", () => {
+    hideFloat();
+    calcBtn.click();
+  });
+
+  // После завершения расчёта — скрываем кнопку
+  window.addEventListener("planner:calc-done", hideFloat);
 })();
 `);
 
