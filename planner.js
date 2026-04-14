@@ -2953,9 +2953,9 @@ async function onCalcClick() {
     }
 
     // Если выбранные экраны упёрлись в SC_MAX и бюджет не освоен — добираем экраны из пула.
-    // В режиме max_freq наоборот: минимум экранов, максимум частоты — не добираем.
-    const isMaxFreq = brief.reachMode === "max_freq";
-    if (constructionsTarget === null && ppmOverride === null && !isMaxFreq && chosen.length < pool.length) {
+    // Работает для всех режимов: max_freq начинает с минимума экранов, но если бюджет всё равно
+    // не освоен при SC_MAX — тоже нужно добирать.
+    if (constructionsTarget === null && ppmOverride === null && chosen.length < pool.length) {
       const pickedSet = new Set(chosen);
       const extraPool = pool.filter(s => !pickedSet.has(s));
       let guardCount = 0;
