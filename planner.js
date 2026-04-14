@@ -2609,6 +2609,43 @@ async function onCalcClick() {
     return;
   }
 
+  // ===== Pre-geocode addresses (once, before region loop) =====
+  let _geocodedPoints = null;
+  if (isNearAddress) {
+    const addresses = (brief.selection.addresses && brief.selection.addresses.length)
+      ? brief.selection.addresses
+      : (brief.selection.address ? [brief.selection.address] : []);
+
+    if (!addresses.length) {
+      alert("Введите хотя бы один адрес.");
+      setStatus(""); return;
+    }
+
+    _geocodedPoints = [];
+    const GEOCODE_DELAY_MS = 350; // Nominatim rate limit: 1 req/sec
+    for (let i = 0; i < addresses.length; i++) {
+      const addr = addresses[i];
+      setStatus(`Геокодирую ${i + 1}/${addresses.length}: «${addr}»…`);
+      try {
+        const pt = await geocodeAddressNominatim(addr);
+        if (pt) _geocodedPoints.push(pt);
+        else console.warn("[geo] not found:", addr);
+      } catch (e) {
+        console.error("[geo] geocode error:", e);
+      }
+      // Rate-limit delay for Nominatim (skip if coord or Yandex key set)
+      if (!addr.startsWith("@") && !window.YANDEX_MAPS_KEY && i < addresses.length - 1) {
+        await new Promise(r => setTimeout(r, GEOCODE_DELAY_MS));
+      }
+    }
+
+    if (!_geocodedPoints.length) {
+      alert("Ни один адрес не найден. Попробуй уточнить (город, улица, дом).");
+      setStatus(""); return;
+    }
+    setStatus(`Геокодировано: ${_geocodedPoints.length} из ${addresses.length} адресов`);
+  }
+
   // =========================
   // 1) PREPARE POOLS PER REGION
   // =========================
@@ -2675,32 +2712,15 @@ async function onCalcClick() {
 
     // Near address mode — поддержка нескольких адресов
     if (isNearAddress) {
-      const addresses = (brief.selection.addresses && brief.selection.addresses.length)
-        ? brief.selection.addresses
-        : (brief.selection.address ? [brief.selection.address] : []);
       const screenRadius = Number(brief.selection.radius_m || 500);
 
-      if (!addresses.length) {
-        alert("Введите хотя бы один адрес.");
-        setStatus(""); return;
-      }
       if (!window.GeoUtils?.haversineMeters) {
         alert("GeoUtils не найден. Проверь подключение geo.js");
         setStatus(""); return;
       }
 
-      // Геокодируем все адреса
-      const points = [];
-      for (const addr of addresses) {
-        setStatus(`Геокодирую: «${addr}»…`);
-        try {
-          const pt = await geocodeAddressNominatim(addr);
-          if (pt) points.push(pt);
-          else console.warn("[geo] not found:", addr);
-        } catch (e) {
-          console.error("[geo] nominatim error:", e);
-        }
-      }
+      // Use pre-geocoded points (computed once before the region loop)
+      const points = _geocodedPoints || [];
 
       if (!points.length) {
         alert("Ни один адрес не найден. Попробуй уточнить (город, улица, дом).");
