@@ -1395,16 +1395,19 @@ async function downloadMediaPlan() {
   const meta    = calc.meta    || {};
   const perReg  = calc.perRegion || [];
   const screens = calc.chosen  || [];
+  const fs      = calc.formatStats || {};
 
-  const fmt = n => Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "—";
+  const fmt  = n => Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "—";
   const fmtR = n => Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—";
   const dateStr = s => s ? String(s).split("-").reverse().join(".") : "—";
 
-  const PURPLE = "5B3EF5";
-  const LIGHT  = "EDE9FD";
-  const GREY   = "F5F5F7";
-  const WHITE  = "FFFFFF";
-  const DARK   = "0B1220";
+  const PURPLE    = "5B3EF5";
+  const LIGHT     = "EDE9FD";
+  const GREY      = "F5F5F7";
+  const WHITE     = "FFFFFF";
+  const DARK      = "0B1220";
+  const RED_LIGHT = "FFE4E4";
+  const RED_TEXT  = "CC0000";
 
   function hdr(ws, row, col, value, opts = {}) {
     const cell = ws.getCell(row, col);
@@ -1422,7 +1425,7 @@ async function downloadMediaPlan() {
   function val(ws, row, col, value, opts = {}) {
     const cell = ws.getCell(row, col);
     cell.value = value;
-    cell.font  = { color: { argb: opts.muted ? "888888" : DARK }, size: opts.size || 10 };
+    cell.font  = { color: { argb: opts.color || (opts.muted ? "888888" : DARK) }, size: opts.size || 10 };
     cell.alignment = { vertical: "middle", horizontal: opts.right ? "right" : "left", wrapText: true };
     if (opts.fill) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill } };
     if (opts.border) {
@@ -1432,13 +1435,111 @@ async function downloadMediaPlan() {
     return cell;
   }
 
-  // ── Лист 1: Сводка ──────────────────────────────────────────────
-  const ws1 = wb.addWorksheet("Сводка");
-  ws1.columns = [
-    { width: 24 }, { width: 30 }, { width: 24 }, { width: 30 }
-  ];
+  // ── Schedule helpers ────────────────────────────────────────────
+  const DOW_RU    = { mon:"пн", tue:"вт", wed:"ср", thu:"чт", fri:"пт", sat:"сб", sun:"вс" };
+  const DOW_ORDER = ["mon","tue","wed","thu","fri","sat","sun"];
 
-  // Заголовок
+  function scheduleToLabel(sch) {
+    if (!sch) return "—";
+    const t = sch.type;
+    if (t === "all_day") return "Весь день (00:00 – 24:00)";
+    if (t === "peak")    return "Прайм (07:00 – 23:00)";
+    if (t === "custom") {
+      const from = sch.from || "00:00", to = sch.to || "24:00";
+      return `${from} – ${to}`;
+    }
+    if (t === "weekly") {
+      if (sch.mode === "global") {
+        const ivs = sch.globalIntervals || [];
+        return ivs.length ? "Еж. " + ivs.map(i => `${i.from}–${i.to}`).join(", ") : "Еженедельно";
+      }
+      const weekly = sch.weekly || {};
+      const groups = [];
+      for (const d of DOW_ORDER) {
+        const ivs = weekly[d] || [];
+        const key = ivs.map(i => `${i.from}–${i.to}`).join(",");
+        if (!key) continue;
+        const idx  = DOW_ORDER.indexOf(d);
+        const last = groups[groups.length - 1];
+        if (last && last.key === key && last.lastIdx === idx - 1) {
+          last.days.push(d); last.lastIdx = idx;
+        } else {
+          groups.push({ key, days: [d], lastIdx: idx, ivs });
+        }
+      }
+      return groups.map(g => {
+        const dayStr = g.days.length === 1
+          ? DOW_RU[g.days[0]]
+          : `${DOW_RU[g.days[0]]}–${DOW_RU[g.days[g.days.length - 1]]}`;
+        const timeStr = g.ivs.map(i => `${i.from}–${i.to}`).join(", ");
+        return `${dayStr} ${timeStr}`;
+      }).join(" / ") || "—";
+    }
+    return "—";
+  }
+
+  function hpdToLabel(sch, hpdAvg) {
+    if (!sch || sch.type !== "weekly" || !sch.weekly) {
+      return Number.isFinite(hpdAvg) ? hpdAvg.toFixed(1) : "—";
+    }
+    const weekly = sch.weekly;
+    const hpds = {};
+    for (const d of DOW_ORDER) {
+      const ivs = weekly[d] || [];
+      if (!ivs.length) continue;
+      let h = 0;
+      for (const iv of ivs) {
+        const [fh = 0, fm = 0] = String(iv.from || "0:0").split(":").map(Number);
+        const [th = 0, tm = 0] = String(iv.to   || "0:0").split(":").map(Number);
+        h += (th + tm / 60) - (fh + fm / 60);
+      }
+      hpds[d] = +(h.toFixed(1));
+    }
+    const groups = [];
+    for (const d of DOW_ORDER) {
+      if (!(d in hpds)) continue;
+      const h = hpds[d], idx = DOW_ORDER.indexOf(d);
+      const last = groups[groups.length - 1];
+      if (last && last.h === h && last.lastIdx === idx - 1) {
+        last.days.push(d); last.lastIdx = idx;
+      } else {
+        groups.push({ h, days: [d], lastIdx: idx });
+      }
+    }
+    return groups.map(g => {
+      const dayStr = g.days.length === 1
+        ? DOW_RU[g.days[0]]
+        : `${DOW_RU[g.days[0]]}–${DOW_RU[g.days[g.days.length - 1]]}`;
+      return `${dayStr}: ${g.h}`;
+    }).join(", ") || (Number.isFinite(hpdAvg) ? hpdAvg.toFixed(1) : "—");
+  }
+
+  const REACH_LABELS = {
+    max_reach: "Максимальный охват",
+    balanced:  "Баланс охват/частота",
+    max_freq:  "Максимальная частота"
+  };
+
+  // ── Budget extras from DOM ──────────────────────────────────────
+  const vatOn    = !!el("vat-enabled")?.checked;
+  const vatRate  = vatOn  ? Math.max(0, Number(el("vat-rate")?.value  || 20)) : 0;
+  const commOn   = !!el("commission-enabled")?.checked;
+  const commRate = commOn ? Math.max(0, Number(el("commission-rate")?.value || 0)) : 0;
+
+  // brief.budget.amount = net (placement) budget after commission deduction
+  const netBudget   = brief.budget?.amount || meta.totalBudget || 0;
+  const grossBudget = commOn && commRate > 0 ? netBudget * (1 + commRate / 100) : netBudget;
+  const commAmount  = grossBudget - netBudget;
+  const vatAmount   = vatOn && vatRate > 0 ? netBudget * vatRate / 100 : 0;
+
+  const totalPlaysAll = meta.totalPlays || 1;
+  const costPerPlay   = meta.totalBudget > 0 && totalPlaysAll > 0
+    ? Math.round(meta.totalBudget / totalPlaysAll) : null;
+
+  // ── Лист 1: Сводка ─────────────────────────────────────────────
+  const ws1 = wb.addWorksheet("Сводка");
+  ws1.columns = [{ width: 26 }, { width: 32 }, { width: 26 }, { width: 32 }];
+
   ws1.mergeCells("A1:D1");
   const title = ws1.getCell("A1");
   title.value = "Медиаплан размещения";
@@ -1447,13 +1548,24 @@ async function downloadMediaPlan() {
   title.alignment = { vertical: "middle", horizontal: "left" };
   ws1.getRow(1).height = 36;
 
-  // Параметры кампании
   let r = 3;
+
+  const regionsText = (brief.geo?.regions || brief.selectedRegions || []).join(", ") || "—";
+  const formatsAuto = brief.formats?.mode === "auto";
+  const formatsText = formatsAuto
+    ? "Все форматы"
+    : ((brief.formats?.selected || []).join(", ") || "—");
+  const schLabel    = scheduleToLabel(brief.schedule);
+  const hpdLabel    = hpdToLabel(brief.schedule, meta.hpd);
+  const reachLabel  = REACH_LABELS[brief.reachMode] || brief.reachMode || "—";
+  const bidLabel    = brief.bidMode === "min" ? "Минимальная" : "Рекомендованная";
+
   const params = [
-    ["Регион(ы)",    (brief.selectedRegions || []).join(", ") || "—",  "Форматы",  (brief.selectedFormats?.size ? [...brief.selectedFormats].join(", ") : "Все")],
-    ["Период",       `${dateStr(brief.dates?.start)} — ${dateStr(brief.dates?.end)}`,  "Дней",  meta.days ?? "—"],
-    ["Расписание",   brief.scheduleLabel || "—",  "Часов/день",  Number.isFinite(meta.hpd) ? meta.hpd.toFixed(1) : "—"],
-    ["Режим ставки", brief.bidMode === "min" ? "Минимальная" : "Рекомендованная",  "Стратегия",  brief.reachMode || "—"],
+    ["Регион(ы)",    regionsText,   "Форматы",      formatsText],
+    ["Период",       `${dateStr(brief.dates?.start)} — ${dateStr(brief.dates?.end)}`,
+                                    "Дней",         meta.days ?? "—"],
+    ["Расписание",   schLabel,      "Часов/день",   hpdLabel],
+    ["Режим ставки", bidLabel,      "Стратегия",    reachLabel],
   ];
   for (const [k1, v1, k2, v2] of params) {
     hdr(ws1, r, 1, k1, { bg: GREY, border: true });
@@ -1465,133 +1577,163 @@ async function downloadMediaPlan() {
   }
 
   r++;
-  // Итоги
   ws1.mergeCells(r, 1, r, 4);
   hdr(ws1, r, 1, "Итоги кампании", { bg: PURPLE, light: true, size: 12 });
   ws1.getRow(r).height = 26;
   r++;
 
+  // Бюджет: с разбивкой по НДС/комиссии
+  const budgetRows = [];
+  if (commOn && commRate > 0) {
+    budgetRows.push(["Бюджет без комиссии", fmtR(netBudget), `Комиссия ${commRate}%`, fmtR(commAmount)]);
+    budgetRows.push(["Итого (с комиссией)", fmtR(grossBudget), "", ""]);
+  } else {
+    budgetRows.push(["Бюджет", fmtR(meta.totalBudget), "", ""]);
+  }
+  if (vatOn && vatRate > 0) {
+    budgetRows.push([`НДС ${vatRate}%`, fmtR(vatAmount), "Итого с НДС", fmtR(netBudget + vatAmount)]);
+  }
+
   const totals = [
-    ["Бюджет",       fmtR(meta.totalBudget),   "Экраны",       fmt(screens.length)],
-    ["Выходов всего",fmt(meta.totalPlays),       "Выходов/день", fmt(meta.totalPlays / Math.max(1, meta.days || 1))],
-    ["OTS всего",    fmt(meta.totalOts),         "OTS/день",     fmt(meta.totalOts / Math.max(1, meta.days || 1))],
+    ...budgetRows,
+    ["Экраны",        fmt(screens.length),
+                                     "Стоимость выхода",   costPerPlay != null ? fmtR(costPerPlay) : "—"],
+    ["Выходов всего", fmt(meta.totalPlays),
+                                     "Выходов/день",       fmt(meta.totalPlays / Math.max(1, meta.days || 1))],
+    ["OTS всего",     fmt(meta.totalOts),
+                                     "OTS/день",           fmt(meta.totalOts   / Math.max(1, meta.days || 1))],
   ];
   for (const [k1, v1, k2, v2] of totals) {
     hdr(ws1, r, 1, k1, { bg: LIGHT, border: true });
     val(ws1, r, 2, v1, { border: true });
-    hdr(ws1, r, 3, k2, { bg: LIGHT, border: true });
-    val(ws1, r, 4, v2, { border: true });
+    if (k2) { hdr(ws1, r, 3, k2, { bg: LIGHT, border: true }); }
+    if (v2) { val(ws1, r, 4, v2, { border: true }); }
     ws1.getRow(r).height = 20;
     r++;
   }
 
-  // ── Лист 2: По регионам ─────────────────────────────────────────
+  // ── Лист 2: По регионам ────────────────────────────────────────
   const ws2 = wb.addWorksheet("По регионам");
   ws2.columns = [
-    { width: 28 }, { width: 12 }, { width: 14 }, { width: 18 },
-    { width: 18 }, { width: 18 }
+    { width: 28 }, { width: 12 }, { width: 14 }, { width: 18 }, { width: 18 }
   ];
-  const regHdrs = ["Регион", "Экраны", "Выходов/день", "Бюджет, ₽", "OTS всего", "Тип"];
-  regHdrs.forEach((h, i) => {
+  ["Регион", "Экраны", "Выходов/день", "Бюджет, ₽", "OTS всего"].forEach((h, i) => {
     hdr(ws2, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
   ws2.getRow(1).height = 22;
 
   perReg.forEach((row, i) => {
     const fill = i % 2 === 0 ? WHITE : GREY;
-    const playsPerDay = Number.isFinite(row.plays) && Number.isFinite(meta.days) && meta.days > 0
+    const playsPerDay = Number.isFinite(row.plays) && meta.days > 0
       ? Math.round(row.plays / meta.days) : null;
-    const cells = [
+    [
       row.region || "—",
       row.screens ?? "—",
       playsPerDay != null ? fmt(playsPerDay) : "—",
       Number.isFinite(row.budget) ? Math.round(row.budget).toLocaleString("ru-RU") : "—",
-      Number.isFinite(row.ots) ? fmt(row.ots) : "—",
-      row.tier || "—"
-    ];
-    cells.forEach((c, ci) => {
-      val(ws2, i + 2, ci + 1, c, { fill, border: true, right: ci >= 1 });
-    });
+      Number.isFinite(row.ots)    ? fmt(row.ots) : "—",
+    ].forEach((c, ci) => val(ws2, i + 2, ci + 1, c, { fill, border: true, right: ci >= 1 }));
     ws2.getRow(i + 2).height = 18;
   });
 
-  // ── Лист 3: Экраны ──────────────────────────────────────────────
+  // ── Лист 3: Экраны ────────────────────────────────────────────
   const ws3 = wb.addWorksheet("Экраны");
+  const bidColLabel = brief.bidMode === "min" ? "Мин. ставка, ₽" : "Реко. ставка, ₽";
   ws3.columns = [
     { width: 18 }, { width: 16 }, { width: 18 }, { width: 40 },
-    { width: 20 }, { width: 10 }, { width: 10 }, { width: 12 },
-    { width: 14 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 48 }
+    { width: 20 }, { width: 10 }, { width: 10 }, { width: 14 },
+    { width: 14 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 40 }
   ];
-  const scrHdrs = [
+  [
     "GID", "Формат", "Город", "Адрес", "Оператор",
-    "Широта", "Долгота", "minBid, ₽",
-    "OTS/час", "Разрешение", "Размер (м)", "Сторона", "Фото (URL)"
-  ];
-  scrHdrs.forEach((h, i) => {
+    "Широта", "Долгота", bidColLabel,
+    "OTS/час", "Разрешение", "Соотн. сторон", "Размер (м)", "Сторона", "Фото"
+  ].forEach((h, i) => {
     hdr(ws3, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
   ws3.getRow(1).height = 22;
 
+  // GCD helper for aspect ratio
+  const gcdFn = (a, b) => b === 0 ? a : gcdFn(b, a % b);
+
   screens.forEach((s, i) => {
-    const fill = i % 2 === 0 ? WHITE : GREY;
-    const cells = [
+    const rowIdx = i + 2;
+
+    // Bid value based on selected mode
+    const bidVal = brief.bidMode === "min"
+      ? (Number.isFinite(s.minBid)  && s.minBid  > 0 ? s.minBid  : null)
+      : (Number.isFinite(s.recoBid) && s.recoBid > 0 ? s.recoBid
+          : (Number.isFinite(s.minBid) && s.minBid > 0 ? s.minBid : null));
+    const noBid = bidVal == null;
+    const fill  = noBid ? RED_LIGHT : (i % 2 === 0 ? WHITE : GREY);
+
+    // Aspect ratio from resolution string
+    let aspectRatio = "";
+    if (s.resolution) {
+      const m = s.resolution.match(/(\d+)[×xX](\d+)/);
+      if (m) {
+        const w = Number(m[1]), h = Number(m[2]);
+        const g = gcdFn(w, h);
+        aspectRatio = `${w / g}:${h / g}`;
+      }
+    }
+
+    [
       s.screen_id ?? "", s.format ?? "", s.city ?? "", s.address ?? "",
       s.owner ?? "",
-      Number.isFinite(s.lat)    ? +s.lat.toFixed(6)    : "",
-      Number.isFinite(s.lon)    ? +s.lon.toFixed(6)    : "",
-      Number.isFinite(s.minBid) ? +s.minBid.toFixed(2) : "",
-      Number.isFinite(s.ots)    ? Math.round(s.ots)    : "",
+      Number.isFinite(s.lat) ? +s.lat.toFixed(6) : "",
+      Number.isFinite(s.lon) ? +s.lon.toFixed(6) : "",
+      bidVal != null ? +bidVal.toFixed(2) : "",
+      Number.isFinite(s.ots) ? Math.round(s.ots) : "",
       s.resolution ?? "",
-      s.size_wh    ?? "",
-      s.side       ?? "",
-      s.image_url  ?? ""
-    ];
-    cells.forEach((c, ci) => {
-      const cell = val(ws3, i + 2, ci + 1, c, { fill, border: true });
-      // Make photo URL a hyperlink
-      if (ci === 12 && c) {
+      aspectRatio,
+      s.size_wh ?? "",
+      s.side    ?? "",
+      s.image_url ?? ""
+    ].forEach((c, ci) => {
+      const cell = val(ws3, rowIdx, ci + 1, c, { fill, border: true });
+      if (ci === 13 && c) {  // Фото — гиперссылка
         cell.value = { text: "Фото", hyperlink: String(c) };
         cell.font  = { color: { argb: "2563EB" }, underline: true, size: 10 };
       }
     });
-    ws3.getRow(i + 2).height = 16;
+
+    // No-bid: red text + note
+    if (noBid) {
+      const bidCell = ws3.getCell(rowIdx, 8);
+      bidCell.value = "нет эфира";
+      bidCell.font  = { color: { argb: RED_TEXT }, bold: true, size: 10 };
+      try {
+        bidCell.note = "Нет эфира в настоящий момент — ставка отсутствует";
+      } catch {}
+    }
+
+    ws3.getRow(rowIdx).height = 16;
   });
 
-  // ── Лист 4: По форматам ──────────────────────────────────────────
+  // ── Лист 4: По форматам ───────────────────────────────────────
   const ws4 = wb.addWorksheet("По форматам");
-  ws4.columns = [{ width: 24 }, { width: 14 }, { width: 20 }, { width: 20 }];
-  const fmtHdrs = ["Формат", "Экранов", "OTS/выход (ср.)", "Ставка/выход (ср.), ₽"];
-  fmtHdrs.forEach((h, i) => {
+  ws4.columns = [
+    { width: 24 }, { width: 14 }, { width: 20 }, { width: 24 }, { width: 22 }
+  ];
+  ["Формат", "Экранов", "OTS/выход (ср.)", "Стоимость выхода, ₽", "Ср. ставка, ₽"].forEach((h, i) => {
     hdr(ws4, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
   ws4.getRow(1).height = 22;
 
-  const fs = calc.formatStats || {};
-  const totalPlaysCamp = meta.totalPlays || 1;
-  const totalScreensCamp = screens.length || 1;
-  const hpdCamp = meta.hpd || 1;
-  const daysCamp = meta.days || 1;
-  // Average plays per hour per screen across the campaign
-  const avgPlaysPerHour = totalPlaysCamp / (totalScreensCamp * daysCamp * hpdCamp);
-
-  Object.entries(fs)
-    .sort((a, b) => b[1].screens - a[1].screens)
+  Object.entries(fs).sort((a, b) => b[1].screens - a[1].screens)
     .forEach(([fmtName, fdata], i) => {
-      const fill = i % 2 === 0 ? WHITE : GREY;
-      const avgOtsPerHour = fdata.otsCnt > 0 ? fdata.otsSum / fdata.otsCnt : null;
-      const avgOtsPerPlay = avgOtsPerHour != null && avgPlaysPerHour > 0
-        ? Math.round(avgOtsPerHour / avgPlaysPerHour)
-        : null;
-      const avgBid = fdata.bidCnt > 0 ? +(fdata.bidSum / fdata.bidCnt).toFixed(2) : null;
-      const cells = [
+      const fill       = i % 2 === 0 ? WHITE : GREY;
+      const otsPerPlay = fdata.otsPerPlay  != null ? fdata.otsPerPlay  : null;
+      const costPerPl  = fdata.costPerPlay != null ? fdata.costPerPlay : null;
+      const avgBid     = fdata.bidCnt > 0  ? +(fdata.bidSum / fdata.bidCnt).toFixed(2) : null;
+      [
         fmtName,
         fdata.screens,
-        avgOtsPerPlay != null ? avgOtsPerPlay.toLocaleString("ru-RU") : "—",
-        avgBid != null ? avgBid.toLocaleString("ru-RU") : "—"
-      ];
-      cells.forEach((c, ci) => {
-        val(ws4, i + 2, ci + 1, c, { fill, border: true, right: ci >= 1 });
-      });
+        otsPerPlay != null ? otsPerPlay.toLocaleString("ru-RU") : "—",
+        costPerPl  != null ? costPerPl.toLocaleString("ru-RU")  : "—",
+        avgBid     != null ? avgBid.toLocaleString("ru-RU")     : "—",
+      ].forEach((c, ci) => val(ws4, i + 2, ci + 1, c, { fill, border: true, right: ci >= 1 }));
       ws4.getRow(i + 2).height = 18;
     });
 
@@ -1601,7 +1743,7 @@ async function downloadMediaPlan() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href     = url;
-  a.download = `mediaplan_${(brief.selectedRegions || []).join("-") || "plan"}_${dateStr(brief.dates?.start)}.xlsx`;
+  a.download = `mediaplan_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateStr(brief.dates?.start)}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -2501,6 +2643,12 @@ async function onCalcClick() {
       setStatus(`Экраны у маршрута: ${pool.length} из ${before} (радиус: ${screenRadius}м)`);
     }
 
+    // Prefer screens with valid minBid: exclude no-bid screens if any bid screens exist
+    const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
+    if (hasBidScreens) {
+      pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+    }
+
     // GRP filter
     let grpDroppedNoValue = 0;
     if (brief.grp?.enabled) {
@@ -2868,6 +3016,7 @@ async function onCalcClick() {
         screens: 0,
         otsTotal: 0,   // суммарный OTS кампании по формату (s.ots × hpd × days)
         playsEst: 0,   // оценка выходов по формату (равномерно)
+        bidSum: 0, bidCnt: 0,  // для средней ставки по формату
       };
     }
     formatStats[fmt].screens++;
@@ -2875,6 +3024,8 @@ async function onCalcClick() {
     if (Number.isFinite(s.ots) && s.ots > 0) {
       formatStats[fmt].otsTotal += s.ots * hpd * days;
     }
+    const bidForStat = Number.isFinite(s.minBid) && s.minBid > 0 ? s.minBid : null;
+    if (bidForStat != null) { formatStats[fmt].bidSum += bidForStat; formatStats[fmt].bidCnt++; }
   }
 
   // otsPerPlay = otsTotal / playsEst — считается здесь же, чтобы не тащить hpd/days в рендер
@@ -3757,6 +3908,8 @@ function mapDspInventory(inv) {
     lat:        loc.latitude  ?? NaN,
     lon:        loc.longitude ?? NaN,
     minBid:     inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? NaN,
+    recoBid:    inv.recommendedBid ?? inv.recoBid ?? inv.minBidInfo?.recoBid
+              ?? inv.minBidInfo?.recommendedBid ?? inv.recPrice ?? NaN,
     ots:        meta.ots ?? meta.otsInfo?.otsValue ?? NaN,
     grp:        meta.grp ?? NaN,
     owner:      inv.displayOwner?.name || "",
