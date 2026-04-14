@@ -2963,13 +2963,18 @@ async function onCalcClick() {
       }
     }
 
-    // OTS = sum(s.ots/h × hpd × days) across chosen screens
-    // s.ots is viewers/hour; multiply by active hours per screen
-    const otsTotal = chosen.reduce((sum, s) => {
-      return sum + (Number.isFinite(s.ots) && s.ots > 0 ? s.ots * hpd * days : 0);
-    }, 0);
-    if (otsTotal === 0) hasOts = false;
-    if (otsTotal > 0) otsTotalAll += otsTotal;
+    // OTS = avgOtsPerPlay × totalPlays
+    // s.ots = viewers/hour; playsPerHour = totalPlays / (screens × hpd × days)
+    // avgOtsPerPlay = avgOts / playsPerHour
+    const avgChosenOts = avgNumberNonZero(chosen.map(s => s.ots));
+    const playsPerHourPerScreen = (chosen.length > 0 && hpd > 0 && days > 0)
+      ? totalPlaysEffective / (chosen.length * hpd * days) : null;
+    const avgOtsPerPlay = (avgChosenOts != null && playsPerHourPerScreen != null && playsPerHourPerScreen > 0)
+      ? avgChosenOts / playsPerHourPerScreen : null;
+    const otsTotal = (avgOtsPerPlay != null && totalPlaysEffective > 0)
+      ? Math.round(totalPlaysEffective * avgOtsPerPlay) : null;
+    if (avgOtsPerPlay == null) hasOts = false;
+    if (otsTotal != null) otsTotalAll += otsTotal;
 
     chosenAll = chosenAll.concat(chosen);
 
