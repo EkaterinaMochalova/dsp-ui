@@ -1647,7 +1647,7 @@ async function downloadMediaPlan() {
   [
     "GID", "Формат", "Город", "Адрес", "Оператор",
     "Широта", "Долгота", bidColLabel,
-    "OTS/час", "Разрешение", "Соотн. сторон", "Размер (м)", "Сторона", "Фото"
+    "OTS/выход", "Разрешение", "Соотн. сторон", "Размер (м)", "Сторона", "Фото"
   ].forEach((h, i) => {
     hdr(ws3, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
@@ -2963,17 +2963,11 @@ async function onCalcClick() {
       }
     }
 
-    // OTS = avgOtsPerPlay × totalPlays
-    // s.ots = viewers/hour; playsPerHour = totalPlays / (screens × hpd × days)
-    // avgOtsPerPlay = avgOts / playsPerHour
+    // OTS = avg(s.ots per play) × totalPlays  — s.ots уже OTS за один выход
     const avgChosenOts = avgNumberNonZero(chosen.map(s => s.ots));
-    const playsPerHourPerScreen = (chosen.length > 0 && hpd > 0 && days > 0)
-      ? totalPlaysEffective / (chosen.length * hpd * days) : null;
-    const avgOtsPerPlay = (avgChosenOts != null && playsPerHourPerScreen != null && playsPerHourPerScreen > 0)
-      ? avgChosenOts / playsPerHourPerScreen : null;
-    const otsTotal = (avgOtsPerPlay != null && totalPlaysEffective > 0)
-      ? Math.round(totalPlaysEffective * avgOtsPerPlay) : null;
-    if (avgOtsPerPlay == null) hasOts = false;
+    const otsTotal = avgChosenOts != null
+      ? Math.round(totalPlaysEffective * avgChosenOts) : null;
+    if (avgChosenOts == null) hasOts = false;
     if (otsTotal != null) otsTotalAll += otsTotal;
 
     chosenAll = chosenAll.concat(chosen);
@@ -3022,24 +3016,25 @@ async function onCalcClick() {
     if (!formatStats[fmt]) {
       formatStats[fmt] = {
         screens: 0,
-        otsTotal: 0,   // суммарный OTS кампании по формату (s.ots × hpd × days)
-        playsEst: 0,   // оценка выходов по формату (равномерно)
+        otsSum: 0, otsCnt: 0,  // для avg(s.ots per play)
+        playsEst: 0,            // оценка выходов по формату (равномерно)
         bidSum: 0, bidCnt: 0,  // для средней ставки по формату
       };
     }
     formatStats[fmt].screens++;
     formatStats[fmt].playsEst += playsPerScreen;
     if (Number.isFinite(s.ots) && s.ots > 0) {
-      formatStats[fmt].otsTotal += s.ots * hpd * days;
+      formatStats[fmt].otsSum += s.ots;
+      formatStats[fmt].otsCnt++;
     }
     const bidForStat = Number.isFinite(s.minBid) && s.minBid > 0 ? s.minBid : null;
     if (bidForStat != null) { formatStats[fmt].bidSum += bidForStat; formatStats[fmt].bidCnt++; }
   }
 
-  // otsPerPlay = otsTotal / playsEst — считается здесь же, чтобы не тащить hpd/days в рендер
+  // otsPerPlay = avg(s.ots) — s.ots уже OTS за один выход
   for (const fd of Object.values(formatStats)) {
-    fd.otsPerPlay = (fd.playsEst > 0 && fd.otsTotal > 0)
-      ? Math.round(fd.otsTotal / fd.playsEst)
+    fd.otsPerPlay = fd.otsCnt > 0
+      ? Math.round(fd.otsSum / fd.otsCnt)
       : null;
     fd.costPerPlay = (fd.playsEst > 0 && totalBudgetFinal > 0)
       ? Math.round(totalBudgetFinal / totalPlaysEffectiveAll)  // тот же budget/plays что в сводке
