@@ -2938,7 +2938,7 @@ async function onCalcClick() {
       totalPlaysTheory = Math.max(totalPlaysTheory, totalPlaysTheoryByChosen);
     }
 
-    const capPlaysByChosen = Math.floor(effectivePPH * chosen.length * days * hpd);
+    let capPlaysByChosen = Math.floor(effectivePPH * chosen.length * days * hpd);
     // Если ppmOverride — теоретический максимум определяется частотой, а не бюджетом.
     // Но всё равно кэпим по бюджету, чтобы не выходить за введённую сумму.
     if (ppmOverride !== null) {
@@ -2951,6 +2951,28 @@ async function onCalcClick() {
       const budgetMaxPlays = Math.floor(budget / effectiveChosenBid);
       totalPlaysEffective = Math.min(totalPlaysEffective, budgetMaxPlays);
     }
+
+    // Если выбранные экраны упёрлись в SC_MAX и бюджет не освоен — добираем экраны из пула
+    if (constructionsTarget === null && ppmOverride === null && chosen.length < pool.length) {
+      const pickedSet = new Set(chosen);
+      const extraPool = pool.filter(s => !pickedSet.has(s));
+      let guardCount = 0;
+      while (totalPlaysEffective < totalPlaysTheory && extraPool.length > 0 && guardCount++ < 20) {
+        const shortfall = totalPlaysTheory - totalPlaysEffective;
+        const playsPerExtraScreen = Math.max(1, Math.floor(SC_MAX * days * hpd));
+        const extraNeeded = Math.ceil(shortfall / playsPerExtraScreen);
+        const toAdd = extraPool.splice(0, Math.min(extraNeeded, extraPool.length));
+        chosen = [...chosen, ...toAdd];
+
+        avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
+        effectiveChosenBid = brief.bidMode === "min" ? avgChosenBid : avgChosenBid * BID_MULTIPLIER;
+
+        capPlaysByChosen = Math.floor(SC_MAX * chosen.length * days * hpd);
+        const budgetCap = (effectiveChosenBid > 0) ? Math.floor(budget / effectiveChosenBid) : Infinity;
+        totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen, budgetCap);
+      }
+    }
+
     totalPlaysEffectiveAll += totalPlaysEffective;
 
     const actualBudget = Math.ceil(totalPlaysEffective * effectiveChosenBid);
