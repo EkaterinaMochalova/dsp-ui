@@ -1642,12 +1642,12 @@ async function downloadMediaPlan() {
   ws3.columns = [
     { width: 18 }, { width: 16 }, { width: 18 }, { width: 40 },
     { width: 20 }, { width: 10 }, { width: 10 }, { width: 14 },
-    { width: 14 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 40 }
+    { width: 14 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 40 }
   ];
   [
     "GID", "Формат", "Город", "Адрес", "Оператор",
     "Широта", "Долгота", bidColLabel,
-    "OTS/выход", "Разрешение", "Соотн. сторон", "Размер (м)", "Сторона", "Фото"
+    "OTS/выход", "Разрешение", "Соотн. сторон", "Сторона", "Фото"
   ].forEach((h, i) => {
     hdr(ws3, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
@@ -1676,7 +1676,6 @@ async function downloadMediaPlan() {
       Number.isFinite(s.ots) ? Math.round(s.ots) : "",
       s.resolution ?? "",
       aspectRatio,
-      s.size_wh ?? "",
       s.side    ?? "",
       s.image_url ?? ""
     ].forEach((c, ci) => {
@@ -2950,7 +2949,9 @@ async function onCalcClick() {
       let guardCount = 0;
       while (totalPlaysEffective < totalPlaysTheory && extraPool.length > 0 && guardCount++ < 20) {
         const shortfall = totalPlaysTheory - totalPlaysEffective;
-        const playsPerExtraScreen = Math.max(1, Math.floor(SC_MAX * days * hpd));
+        // Используем pphTarget, а не SC_MAX — это сохраняет порядок:
+        // max_reach (pphTarget=10) добирает больше экранов, max_freq (pphTarget=60) — меньше
+        const playsPerExtraScreen = Math.max(1, Math.floor(pphTarget * days * hpd));
         const extraNeeded = Math.ceil(shortfall / playsPerExtraScreen);
         const toAdd = extraPool.splice(0, Math.min(extraNeeded, extraPool.length));
         chosen = [...chosen, ...toAdd];
