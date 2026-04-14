@@ -2952,8 +2952,10 @@ async function onCalcClick() {
       totalPlaysEffective = Math.min(totalPlaysEffective, budgetMaxPlays);
     }
 
-    // Если выбранные экраны упёрлись в SC_MAX и бюджет не освоен — добираем экраны из пула
-    if (constructionsTarget === null && ppmOverride === null && chosen.length < pool.length) {
+    // Если выбранные экраны упёрлись в SC_MAX и бюджет не освоен — добираем экраны из пула.
+    // В режиме max_freq наоборот: минимум экранов, максимум частоты — не добираем.
+    const isMaxFreq = brief.reachMode === "max_freq";
+    if (constructionsTarget === null && ppmOverride === null && !isMaxFreq && chosen.length < pool.length) {
       const pickedSet = new Set(chosen);
       const extraPool = pool.filter(s => !pickedSet.has(s));
       let guardCount = 0;
