@@ -2963,10 +2963,13 @@ async function onCalcClick() {
       }
     }
 
-    const avgChosenOts = avgNumberNonZero(chosen.map(s => s.ots));
-    const otsTotal = (avgChosenOts == null) ? null : totalPlaysEffective * avgChosenOts;
-    if (avgChosenOts == null) hasOts = false;
-    if (otsTotal != null) otsTotalAll += otsTotal;
+    // OTS = sum(s.ots/h × hpd × days) across chosen screens
+    // s.ots is viewers/hour; multiply by active hours per screen
+    const otsTotal = chosen.reduce((sum, s) => {
+      return sum + (Number.isFinite(s.ots) && s.ots > 0 ? s.ots * hpd * days : 0);
+    }, 0);
+    if (otsTotal === 0) hasOts = false;
+    if (otsTotal > 0) otsTotalAll += otsTotal;
 
     chosenAll = chosenAll.concat(chosen);
 
