@@ -1653,9 +1653,6 @@ async function downloadMediaPlan() {
   });
   ws3.getRow(1).height = 22;
 
-  // GCD helper for aspect ratio
-  const gcdFn = (a, b) => b === 0 ? a : gcdFn(b, a % b);
-
   screens.forEach((s, i) => {
     const rowIdx = i + 2;
 
@@ -1667,16 +1664,8 @@ async function downloadMediaPlan() {
     const noBid = bidVal == null;
     const fill  = noBid ? RED_LIGHT : (i % 2 === 0 ? WHITE : GREY);
 
-    // Aspect ratio from resolution string
-    let aspectRatio = "";
-    if (s.resolution) {
-      const m = s.resolution.match(/(\d+)[×xX](\d+)/);
-      if (m) {
-        const w = Number(m[1]), h = Number(m[2]);
-        const g = gcdFn(w, h);
-        aspectRatio = `${w / g}:${h / g}`;
-      }
-    }
+    // Aspect ratio — already computed in mapDspInventory
+    const aspectRatio = s.aspectRatio || "";
 
     [
       s.screen_id ?? "", s.format ?? "", s.city ?? "", s.address ?? "",
@@ -3899,52 +3888,72 @@ async function dspFetchInventoriesByCityId(cityId) {
 }
 
 function mapDspInventory(inv) {
-  const loc  = inv.location   || {};
-  const meta = inv.metadata   || {};
+  const loc    = inv.location   || {};
+  const meta   = inv.metadata   || {};
+  const mbInfo = inv.minBidInfo || {};
 
-  // Resolution: try several possible field paths
-  const resolution =
-    meta.resolution || meta.pixelSize || meta.pixelResolution ||
-    meta.screenResolution ||
-    (meta.pixelWidth  && meta.pixelHeight  ? `${meta.pixelWidth}×${meta.pixelHeight}`   : "") ||
-    (meta.resolutionW && meta.resolutionH  ? `${meta.resolutionW}×${meta.resolutionH}`  : "") ||
-    "";
+  // GCD helper for aspect ratio
+  const _gcd = (a, b) => b === 0 ? a : _gcd(b, a % b);
 
-  // Physical size: "3×6" m or "3x6" etc.
-  const size_wh =
-    meta.sizeDescription || meta.blockSize || meta.size || meta.physicalSize ||
-    (meta.blockWidth  && meta.blockHeight  ? `${meta.blockWidth}×${meta.blockHeight}`   : "") ||
-    (meta.sizeWidth   && meta.sizeHeight   ? `${meta.sizeWidth}×${meta.sizeHeight}`     : "") ||
-    (meta.width       && meta.height       ? `${meta.width}×${meta.height}`             : "") ||
-    "";
+  // Resolution from screenResolutionPx → physicalResolutionPx → mediaParams.resolution
+  const resPx = inv.screenResolutionPx
+    || inv.physicalResolutionPx
+    || inv.mediaParams?.resolution
+    || meta.mediaParams?.[0]?.resolution
+    || {};
+  const resW = resPx.width  || 0;
+  const resH = resPx.height || 0;
+  const resolution = (resW && resH) ? `${resW}×${resH}` : "";
 
-  // Side / facing
-  const side =
-    meta.side || meta.facing || meta.sideNumber || meta.sideId ||
-    meta.sideDescription || meta.facingDescription ||
-    inv.side  || inv.facing || inv.sideDescription ||
-    "";
+  // Aspect ratio = width / height (ширина/высота)
+  let aspectRatio = "";
+  if (resW && resH) {
+    const g = _gcd(resW, resH);
+    aspectRatio = `${resW / g}:${resH / g}`;
+  } else {
+    // fallback: from surfaceDimensionMM ratios
+    const ar = inv.surfaceDimensionMM;
+    if (ar?.awRation && ar?.ahRation) aspectRatio = `${ar.awRation}:${ar.ahRation}`;
+  }
+
+  // Physical size from surfaceDimensionMM (mm → metres, e.g. "3×6")
+  const dim = inv.surfaceDimensionMM || {};
+  const dimW = dim.width  || 0;
+  const dimH = dim.height || 0;
+  const size_wh = (dimW && dimH)
+    ? `${(dimW / 1000).toFixed(1)}×${(dimH / 1000).toFixed(1)}`
+    : "";
+
+  // Side
+  const side = meta.side || "";
+
+  // OTS per play: minBidInfo.ots is the canonical per-play OTS used in bidding
+  const ots = mbInfo.ots
+    ?? meta.otsInfo?.otsValue
+    ?? meta.otsInfo?.estimatedOts
+    ?? NaN;
 
   return {
-    screen_id:  inv.gid || String(inv.id),
-    city:       inv.inventoryTypeAndCity?.cityName || inv.city?.name
-              || (typeof loc.city === "string" ? loc.city : loc.city?.name)
-              || "",
-    format:     meta.format || inv.type || "",
-    address:    loc.address  || inv.name || "",
-    lat:        loc.latitude  ?? NaN,
-    lon:        loc.longitude ?? NaN,
-    minBid:     inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? NaN,
-    recoBid:    inv.recommendedBid ?? inv.recoBid ?? inv.minBidInfo?.recoBid
-              ?? inv.minBidInfo?.recommendedBid ?? inv.recPrice ?? NaN,
-    ots:        meta.ots ?? meta.otsInfo?.otsValue ?? NaN,
-    grp:        meta.grp ?? NaN,
-    owner:      inv.displayOwner?.name || "",
-    image_url:  inv.images?.[0]?.url   || "",
+    screen_id:   inv.gid || String(inv.id),
+    city:        inv.inventoryTypeAndCity?.cityName
+               || inv.city?.name
+               || (typeof loc.city === "string" ? loc.city : loc.city?.name)
+               || "",
+    format:      meta.format || inv.type || "",
+    address:     loc.address  || inv.name || "",
+    lat:         loc.latitude  ?? NaN,
+    lon:         loc.longitude ?? NaN,
+    minBid:      mbInfo.minBidCharged ?? mbInfo.minBid ?? NaN,
+    recoBid:     NaN,   // not provided by this API
+    ots,
+    grp:         meta.grp ?? NaN,
+    owner:       inv.displayOwner?.name || "",
+    image_url:   inv.images?.[0]?.url   || "",
     resolution,
+    aspectRatio,
     size_wh,
     side,
-    _dspId:     inv.id,
+    _dspId:      inv.id,
   };
 }
 
