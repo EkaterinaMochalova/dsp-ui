@@ -3921,8 +3921,8 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
     poiCsvBtn.addEventListener("click", () => {
       const pois = getPoisForExport();
       if (!pois.length) return;
-      const header = "id,name,lat,lon";
-      const rows = pois.map(p => [p.id, `"${String(p.name||"").replace(/"/g,'""')}"`, p.lat, p.lon].join(","));
+      const header = "Название,Широта,Долгота";
+      const rows = pois.map(p => [`"${String(p.name||"").replace(/"/g,'""')}"`, p.lat, p.lon].join(","));
       const blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
       a.download = "poi_addresses.csv"; a.click();
@@ -3938,12 +3938,11 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("POI");
       ws.columns = [
-        { header: "ID",    key: "id",   width: 20 },
-        { header: "Адрес / Название", key: "name", width: 40 },
-        { header: "Широта", key: "lat", width: 14 },
-        { header: "Долгота", key: "lon", width: 14 },
+        { header: "Название", key: "name", width: 44 },
+        { header: "Широта",   key: "lat",  width: 16 },
+        { header: "Долгота",  key: "lon",  width: 16 },
       ];
-      pois.forEach(p => ws.addRow(p));
+      pois.forEach(p => ws.addRow({ name: p.name, lat: p.lat, lon: p.lon }));
       ws.getRow(1).font = { bold: true };
       const buf = await wb.xlsx.writeBuffer();
       const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
