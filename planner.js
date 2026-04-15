@@ -4244,46 +4244,77 @@ function dspApplyInventories(raw) {
   renderOwners();
 }
 
-// ---- localStorage-кэш инвентаря ----
-const DSP_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 часа (1 раз в день)
+// ---- IndexedDB-кэш инвентаря (нет лимита размера, переживает Shift+R) ----
+const DSP_CACHE_TTL  = 24 * 60 * 60 * 1000; // 24 часа
+const DSP_IDB_NAME   = "dsp_planner";
+const DSP_IDB_STORE  = "inventory";
+const DSP_IDB_VER    = 1;
 
-/** Ключ кэша привязан к агентству, чтобы разные пользователи не делили данные */
 function getDspCacheKey() {
   const agencyId = getDspAgencyId() || "default";
-  return `dsp_inv_v3_${agencyId}`;
+  return `dsp_inv_v4_${agencyId}`;
 }
 
-function dspSaveInventoryToStorage(cityCache) {
+function _openIdb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DSP_IDB_NAME, DSP_IDB_VER);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(DSP_IDB_STORE);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function dspSaveInventoryToStorage(cityCache) {
   try {
     const total = Object.values(cityCache || {}).reduce((s, a) => s + a.length, 0);
     if (total === 0) { console.log("[DSP] skipping cache save: 0 screens"); return; }
-    const payload = JSON.stringify({ ts: Date.now(), d: cityCache });
-    // localStorage обычно ограничен ~5MB — пробуем только если данных немного
-    if (payload.length > 4_000_000) { console.log("[DSP] cache too large for localStorage, skipping"); return; }
-    localStorage.setItem(getDspCacheKey(), payload);
-    console.log("[DSP] inventory saved to localStorage, ttl=24h");
+    const db  = await _openIdb();
+    const key = getDspCacheKey();
+    await new Promise((res, rej) => {
+      const tx  = db.transaction(DSP_IDB_STORE, "readwrite");
+      tx.objectStore(DSP_IDB_STORE).put({ ts: Date.now(), d: cityCache }, key);
+      tx.oncomplete = res; tx.onerror = rej;
+    });
+    db.close();
+    console.log(`[DSP] inventory saved to IndexedDB (${total} screens), ttl=24h`);
+    // Также чистим старые localStorage-кэши
+    ["dsp_inv_v2", "dsp_inv_v3_" + (getDspAgencyId() || "default")].forEach(k => {
+      try { localStorage.removeItem(k); } catch {}
+    });
   } catch (e) {
-    console.log("[DSP] cache save skipped:", e.message);
+    console.warn("[DSP] IDB save failed:", e.message);
   }
 }
 
-function dspLoadInventoryFromStorage() {
+async function dspLoadInventoryFromStorage() {
   try {
+    const db  = await _openIdb();
     const key = getDspCacheKey();
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const { ts, d } = JSON.parse(raw);
-    if (Date.now() - ts > DSP_CACHE_TTL) { localStorage.removeItem(key); return null; }
-    const total = Object.values(d).reduce((s, a) => s + a.length, 0);
-    const ageMin = Math.round((Date.now() - ts) / 60000);
-    console.log(`[DSP] cache hit: ${total} screens, age=${ageMin}min, ttl=24h`);
-    if (total === 0) {
-      console.log("[DSP] cache has 0 screens — ignoring, will reload from API");
-      localStorage.removeItem(key);
+    const rec = await new Promise((res, rej) => {
+      const tx  = db.transaction(DSP_IDB_STORE, "readonly");
+      const req = tx.objectStore(DSP_IDB_STORE).get(key);
+      req.onsuccess = () => res(req.result);
+      req.onerror   = () => rej(req.error);
+    });
+    db.close();
+    if (!rec) return null;
+    if (Date.now() - rec.ts > DSP_CACHE_TTL) {
+      // Просрочен — удаляем
+      const db2 = await _openIdb();
+      const tx2 = db2.transaction(DSP_IDB_STORE, "readwrite");
+      tx2.objectStore(DSP_IDB_STORE).delete(key);
+      db2.close();
       return null;
     }
-    return d;
-  } catch { return null; }
+    const total  = Object.values(rec.d).reduce((s, a) => s + a.length, 0);
+    const ageMin = Math.round((Date.now() - rec.ts) / 60000);
+    console.log(`[DSP] IDB cache hit: ${total} screens, age=${ageMin}min`);
+    if (total === 0) return null;
+    return rec.d;
+  } catch (e) {
+    console.warn("[DSP] IDB load failed:", e.message);
+    return null;
+  }
 }
 
 // Применяет уже смапленные экраны (из кэша или после расчёта) в state.screens
@@ -4324,10 +4355,10 @@ function dspApplyMappedScreens(screens) {
 async function loadScreensFromDSP() {
   setStatus("Загружаю инвентарь…");
 
-  let cityCache = dspLoadInventoryFromStorage();
+  let cityCache = await dspLoadInventoryFromStorage();
   if (cityCache) {
     const total = Object.values(cityCache).reduce((s, a) => s + a.length, 0);
-    console.log(`[DSP] loaded from localStorage: ${total} screens, ${Object.keys(cityCache).length} cities`);
+    console.log(`[DSP] loaded from IndexedDB: ${total} screens, ${Object.keys(cityCache).length} cities`);
     state.dspInventoryWarmupPromise = null;
     state.dspInventoryWarmupDone = true;
   } else {
