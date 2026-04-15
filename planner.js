@@ -1653,13 +1653,16 @@ async function downloadMediaPlan() {
   // Бюджет: с разбивкой по НДС/комиссии
   const budgetRows = [];
   if (commOn && commRate > 0) {
-    budgetRows.push(["Бюджет без комиссии", fmtR(netBudget), `Комиссия ${commRate}%`, fmtR(commAmount)]);
-    budgetRows.push(["Итого (с комиссией)", fmtR(grossBudget), "", ""]);
+    budgetRows.push(["Бюджет размещения", fmtR(netBudget), `Комиссия агентства ${commRate}%`, fmtR(commAmount)]);
+    budgetRows.push(["Итого для клиента (с комиссией)", fmtR(grossBudget), "", ""]);
   } else {
-    budgetRows.push(["Бюджет", fmtR(meta.totalBudget), "", ""]);
+    budgetRows.push(["Бюджет размещения", fmtR(netBudget), "", ""]);
   }
   if (vatOn && vatRate > 0) {
-    budgetRows.push([`НДС ${vatRate}%`, fmtR(vatAmount), "Итого с НДС", fmtR(netBudget + vatAmount)]);
+    budgetRows.push([`НДС ${vatRate}%`, fmtR(vatAmount), `Итого с НДС`, fmtR(netBudget + vatAmount)]);
+    if (commOn && commRate > 0) {
+      budgetRows.push(["Итого для клиента с НДС", fmtR(grossBudget + vatAmount), "", ""]);
+    }
   }
 
   const totals = [
@@ -1672,37 +1675,114 @@ async function downloadMediaPlan() {
                                      "OTS/день",           fmt(meta.totalOts   / Math.max(1, meta.days || 1))],
   ];
   for (const [k1, v1, k2, v2] of totals) {
-    hdr(ws1, r, 1, k1, { bg: LIGHT, border: true });
-    val(ws1, r, 2, v1, { border: true });
-    if (k2) { hdr(ws1, r, 3, k2, { bg: LIGHT, border: true }); }
+    const isFinal = k1.startsWith("Итого для клиента");
+    hdr(ws1, r, 1, k1, { bg: isFinal ? PURPLE : LIGHT, light: isFinal, border: true });
+    const vCell = val(ws1, r, 2, v1, { border: true });
+    if (isFinal) { vCell.font = { bold: true, color: { argb: DARK }, size: 11 }; }
+    if (k2) { hdr(ws1, r, 3, k2, { bg: isFinal ? PURPLE : LIGHT, light: isFinal, border: true }); }
     if (v2) { val(ws1, r, 4, v2, { border: true }); }
-    ws1.getRow(r).height = 20;
+    ws1.getRow(r).height = isFinal ? 24 : 20;
     r++;
   }
 
-  // ── Лист 2: По регионам ────────────────────────────────────────
+  // ── Лист 2: По регионам и форматам (иерархически) ────────────────
   const ws2 = wb.addWorksheet("По регионам");
   ws2.columns = [
-    { width: 28 }, { width: 12 }, { width: 14 }, { width: 18 }, { width: 18 }
+    { width: 32 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 14 }
   ];
-  ["Регион", "Экраны", "Выходов/день", "Бюджет, ₽", "OTS всего"].forEach((h, i) => {
+  ["Регион / Формат", "Экранов", "Выходов всего", "Выходов/день", "Бюджет, ₽", "OTS всего", "OTS/выход (ср.)"].forEach((h, i) => {
     hdr(ws2, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
   ws2.getRow(1).height = 22;
 
-  perReg.forEach((row, i) => {
-    const fill = i % 2 === 0 ? WHITE : GREY;
-    const playsPerDay = Number.isFinite(row.plays) && meta.days > 0
-      ? Math.round(row.plays / meta.days) : null;
+  // Build region→format→[screens] map
+  const rfMap = {}; // region → format → screens[]
+  const bidKey = brief.bidMode === "min" ? "minBid" : "recoBid";
+  for (const s of screens) {
+    const reg = String(s.region || s.city || "—").trim();
+    const fmt_ = String(s.format || "—").trim();
+    if (!rfMap[reg]) rfMap[reg] = {};
+    if (!rfMap[reg][fmt_]) rfMap[reg][fmt_] = [];
+    rfMap[reg][fmt_].push(s);
+  }
+
+  let ws2Row = 2;
+  const perRegSorted = [...perReg].sort((a, b) => (b.budget || 0) - (a.budget || 0));
+
+  for (const reg of perRegSorted) {
+    const regionName = reg.region || "—";
+    const regionScreens = reg.screens || 0;
+    const regionBudget  = reg.budget  || 0;
+    const regionPlays   = reg.plays   || 0;
+    const regionOts     = reg.ots     || 0;
+    const playsPerDay   = meta.days > 0 ? Math.round(regionPlays / meta.days) : 0;
+
+    // Region header row
+    ws2.mergeCells(ws2Row, 1, ws2Row, 7);
+    const regionCell = ws2.getCell(ws2Row, 1);
+    regionCell.value = regionName;
+    regionCell.font  = { bold: true, size: 11, color: { argb: WHITE } };
+    regionCell.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: PURPLE } };
+    regionCell.alignment = { vertical: "middle", horizontal: "left", indent: 0 };
+    ws2.getRow(ws2Row).height = 22;
+    ws2Row++;
+
+    // Region totals row
     [
-      row.region || "—",
-      row.screens ?? "—",
-      playsPerDay != null ? fmt(playsPerDay) : "—",
-      Number.isFinite(row.budget) ? Math.round(row.budget).toLocaleString("ru-RU") : "—",
-      Number.isFinite(row.ots)    ? fmt(row.ots) : "—",
-    ].forEach((c, ci) => val(ws2, i + 2, ci + 1, c, { fill, border: true, right: ci >= 1 }));
-    ws2.getRow(i + 2).height = 18;
-  });
+      "  Итого по региону",
+      fmt(regionScreens),
+      fmt(regionPlays),
+      fmt(playsPerDay),
+      Math.round(regionBudget).toLocaleString("ru-RU"),
+      Number.isFinite(regionOts) && regionOts > 0 ? fmt(regionOts) : "—",
+      "—"
+    ].forEach((c, ci) => {
+      const cell = val(ws2, ws2Row, ci + 1, c, { fill: LIGHT, border: true, right: ci >= 1 });
+      cell.font = { bold: true, color: { argb: DARK }, size: 10 };
+    });
+    ws2.getRow(ws2Row).height = 18;
+    ws2Row++;
+
+    // Format rows
+    const fmtGroups = rfMap[regionName] || {};
+    const sortedFmts = Object.entries(fmtGroups).sort((a, b) => b[1].length - a[1].length);
+
+    sortedFmts.forEach(([fmtName, fmtScreens], fi) => {
+      const weight = regionScreens > 0 ? fmtScreens.length / regionScreens : 0;
+      const fmtBudget = regionBudget * weight;
+      const fmtPlays  = regionPlays  * weight;
+      const fmtPlaysDay = meta.days > 0 ? Math.round(fmtPlays / meta.days) : 0;
+      const fmtOts    = regionOts    * weight;
+
+      // Avg bid for this format
+      const bids = fmtScreens.map(s => {
+        const b = brief.bidMode === "min" ? s.minBid : (s.recoBid || s.minBid);
+        return Number.isFinite(b) && b > 0 ? b : null;
+      }).filter(b => b != null);
+      const avgBid = bids.length > 0 ? bids.reduce((a, b) => a + b, 0) / bids.length : null;
+
+      // Avg OTS/play
+      const otsVals = fmtScreens.map(s => Number.isFinite(s.ots) && s.ots > 0 ? s.ots : null).filter(x => x != null);
+      const avgOts  = otsVals.length > 0 ? otsVals.reduce((a, b) => a + b, 0) / otsVals.length : null;
+
+      const fill = fi % 2 === 0 ? WHITE : GREY;
+      [
+        "    " + fmtName,
+        fmt(fmtScreens.length),
+        fmt(Math.round(fmtPlays)),
+        fmt(fmtPlaysDay),
+        Math.round(fmtBudget).toLocaleString("ru-RU"),
+        Number.isFinite(fmtOts) && fmtOts > 0 ? fmt(Math.round(fmtOts)) : "—",
+        avgOts != null ? fmt(Math.round(avgOts)) : "—",
+      ].forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill, border: true, right: ci >= 1 }));
+      ws2.getRow(ws2Row).height = 17;
+      ws2Row++;
+    });
+
+    // Empty separator row
+    ws2.getRow(ws2Row).height = 6;
+    ws2Row++;
+  }
 
   // ── Лист 3: Экраны ────────────────────────────────────────────
   const ws3 = wb.addWorksheet("Экраны");
@@ -1767,31 +1847,6 @@ async function downloadMediaPlan() {
     ws3.getRow(rowIdx).height = 16;
   });
 
-  // ── Лист 4: По форматам ───────────────────────────────────────
-  const ws4 = wb.addWorksheet("По форматам");
-  ws4.columns = [
-    { width: 24 }, { width: 14 }, { width: 20 }, { width: 24 }, { width: 22 }
-  ];
-  ["Формат", "Экранов", "OTS/выход (ср.)", "Стоимость выхода, ₽", "Ср. ставка, ₽"].forEach((h, i) => {
-    hdr(ws4, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
-  });
-  ws4.getRow(1).height = 22;
-
-  Object.entries(fs).sort((a, b) => b[1].screens - a[1].screens)
-    .forEach(([fmtName, fdata], i) => {
-      const fill       = i % 2 === 0 ? WHITE : GREY;
-      const otsPerPlay = fdata.otsPerPlay  != null ? fdata.otsPerPlay  : null;
-      const costPerPl  = fdata.costPerPlay != null ? fdata.costPerPlay : null;
-      const avgBid     = fdata.bidCnt > 0  ? +(fdata.bidSum / fdata.bidCnt).toFixed(2) : null;
-      [
-        fmtName,
-        fdata.screens,
-        otsPerPlay != null ? otsPerPlay.toLocaleString("ru-RU") : "—",
-        costPerPl  != null ? costPerPl.toLocaleString("ru-RU")  : "—",
-        avgBid     != null ? avgBid.toLocaleString("ru-RU")     : "—",
-      ].forEach((c, ci) => val(ws4, i + 2, ci + 1, c, { fill, border: true, right: ci >= 1 }));
-      ws4.getRow(i + 2).height = 18;
-    });
 
   // Сохранение
   const buf  = await wb.xlsx.writeBuffer();
