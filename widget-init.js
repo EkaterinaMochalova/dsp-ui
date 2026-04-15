@@ -902,7 +902,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <div class="planner-block" style="margin-top:4px;">
     <label class="check-row"><input type="checkbox" id="constructions-enabled"> Задать кол-во конструкций</label>
     <div id="constructions-count-wrap" style="display:none; margin-top:8px;">
-      <input type="number" id="constructions-count" min="1" step="1" placeholder="Количество конструкций" class="ux-input">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="number" id="constructions-count" min="1" step="1" placeholder="Количество конструкций" class="ux-input" style="flex:1;">
+        <button type="button" id="constructions-max-btn" title="Взять все доступные экраны"
+          style="padding:8px 14px; border:1px solid #c4b5fd; border-radius:10px; background:#faf8ff;
+                 color:#5B3EF5; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;">
+          max
+        </button>
+      </div>
       <div style="margin-top:12px;">
         <div style="font-size:12px; font-weight:600; margin-bottom:6px; color:#0b1220;">
           Выходов в час на экран: <span id="constructions-ppm-val" style="color:#5b3ef5;">10</span>
@@ -2744,9 +2751,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         </div>\` : ""}
 
         <div class="ps-card">
-          <div class="ps-title">По регионам</div>
-          <div class="ps-sub">Бюджет / выходы / OTS по каждому выбранному региону</div>
-          <div class="ps-regions">\${regionCards || \`<div class="ps-warn">Нет данных по регионам — нажмите «Рассчитать».</div>\`}</div>
+          <details id="ps-regions-details" \${perRegion.length <= 3 ? "open" : ""}>
+            <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; padding:2px 0;">
+              <div>
+                <div class="ps-title" style="display:inline;">По регионам</div>
+                <span style="font-size:12px; color:#667085; margin-left:8px;">\${perRegion.length} \${perRegion.length===1?"регион":perRegion.length<5?"региона":"регионов"}</span>
+              </div>
+              <span class="ps-toggle-icon" style="font-size:18px; color:#5B3EF5; line-height:1;">⌄</span>
+            </summary>
+            <div class="ps-sub" style="margin-bottom:8px;">Бюджет / выходы / OTS по каждому выбранному региону</div>
+            <div class="ps-regions">\${regionCards || \`<div class="ps-warn">Нет данных по регионам — нажмите «Рассчитать».</div>\`}</div>
+          </details>
 
           <details class="ps-details" style="margin-top:10px;">
             <summary>Техническая сводка (raw)</summary>

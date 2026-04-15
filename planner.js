@@ -487,7 +487,15 @@ function renderSelectionExtra() {
 
   if (mode === "near_address") {
     extra.innerHTML = `
-      <div id="addr-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+      <!-- Список адресов (сворачивается) -->
+      <div id="addr-list-wrap" style="margin-bottom:8px;">
+        <div id="addr-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+        <button type="button" id="addr-list-toggle" style="display:none; margin-top:6px; width:100%;
+          padding:7px; border:1px solid #e0d9ff; border-radius:10px; background:#faf8ff;
+          color:#5B3EF5; font-size:12px; cursor:pointer; font-weight:500;">
+          Показать все адреса
+        </button>
+      </div>
 
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
         <button type="button" id="addr-add-btn" style="
@@ -543,6 +551,7 @@ function renderSelectionExtra() {
       const list = el("addr-list");
       if (!list) return;
       const row = document.createElement("div");
+      row.className = "addr-row";
       row.style.cssText = "display:flex; gap:6px; align-items:center;";
       const inp = document.createElement("input");
       inp.type = "text"; inp.placeholder = "Адрес";
@@ -559,16 +568,48 @@ function renderSelectionExtra() {
       return inp;
     }
 
+    const ADDR_COLLAPSE_LIMIT = 5;
+    let addrCollapsed = false;
+
+    function updateAddrToggle() {
+      const list    = el("addr-list");
+      const toggle  = el("addr-list-toggle");
+      if (!list || !toggle) return;
+      const rows = list.querySelectorAll(".addr-row");
+      if (rows.length <= ADDR_COLLAPSE_LIMIT) {
+        rows.forEach(r => r.style.display = "flex");
+        toggle.style.display = "none";
+        addrCollapsed = false;
+        return;
+      }
+      toggle.style.display = "block";
+      rows.forEach((r, i) => { r.style.display = (addrCollapsed && i >= ADDR_COLLAPSE_LIMIT) ? "none" : "flex"; });
+      const hidden = addrCollapsed ? rows.length - ADDR_COLLAPSE_LIMIT : 0;
+      toggle.textContent = addrCollapsed
+        ? `Показать все адреса (ещё ${hidden})`
+        : `Свернуть список (${rows.length} адресов)`;
+    }
+
     function bulkAddAddresses(lines) {
       const clean = lines.map(l => String(l || "").trim()).filter(Boolean);
       if (!clean.length) return 0;
       // Clear empty rows first
       document.querySelectorAll(".planner-addr-input").forEach(i => {
-        if (!i.value.trim()) i.closest("div")?.remove();
+        if (!i.value.trim()) i.closest(".addr-row")?.remove();
       });
       clean.forEach(addr => addAddressRow(addr));
+      // Auto-collapse if many addresses
+      if (clean.length > ADDR_COLLAPSE_LIMIT) {
+        addrCollapsed = true;
+      }
+      updateAddrToggle();
       return clean.length;
     }
+
+    el("addr-list-toggle")?.addEventListener("click", () => {
+      addrCollapsed = !addrCollapsed;
+      updateAddrToggle();
+    });
 
     addAddressRow(); // первый адрес
 
@@ -2647,6 +2688,15 @@ async function onCalcClick() {
       setStatus(""); return;
     }
     setStatus(`Геокодировано: ${_geocodedPoints.length} из ${addresses.length} адресов`);
+    // Сохраняем для возможной выгрузки (как POI)
+    window.PLANNER.lastGeocodedPoints = _geocodedPoints.map((pt, i) => ({
+      lat: pt.lat, lon: pt.lon,
+      name: addresses[i] || `Адрес ${i + 1}`,
+      id: `addr_${i}`
+    }));
+    window.dispatchEvent(new CustomEvent("planner:geocoded-ready", {
+      detail: { count: _geocodedPoints.length }
+    }));
   }
 
   // =========================
@@ -3291,6 +3341,13 @@ ${perRegionText}`
   if (el("download-csv")) el("download-csv").disabled = chosenAll.length === 0;
   if (el("download-plan-xlsx")) el("download-plan-xlsx").disabled = chosenAll.length === 0;
 
+  // POI кнопки: включаем при наличии POI или геокодированных адресов
+  const hasPois   = Array.isArray(window.PLANNER?.lastPOIs) && window.PLANNER.lastPOIs.length > 0;
+  const hasGeoAddr = Array.isArray(window.PLANNER?.lastGeocodedPoints) && window.PLANNER.lastGeocodedPoints.length > 0;
+  const hasAnyPoi = hasPois || hasGeoAddr;
+  if (el("download-poi-csv"))  el("download-poi-csv").disabled  = !hasAnyPoi;
+  if (el("download-poi-xlsx")) el("download-poi-xlsx").disabled = !hasAnyPoi;
+
   window.dispatchEvent(new CustomEvent("planner:calc-done", {
     detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount,
               formatStats, meta: window.PLANNER.lastCalc.meta }
@@ -3583,6 +3640,24 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
     });
   }
 
+  // "max" кнопка для кол-ва конструкций
+  el("constructions-max-btn")?.addEventListener("click", () => {
+    const regions = Array.isArray(state.selectedRegions) ? state.selectedRegions : [];
+    // Считаем пул: экраны выбранных регионов (с учётом фильтра форматов и операторов)
+    let pool = state.screens.filter(s => !regions.length || regions.includes(String(s.region || "").trim()));
+    const fmtsAuto = !!el("formats-auto")?.checked;
+    if (!fmtsAuto && state.selectedFormats?.size) {
+      pool = pool.filter(s => state.selectedFormats.has(s.format));
+    }
+    if (typeof window.PLANNER?.getScreensFilteredByOwner === "function") {
+      pool = window.PLANNER.getScreensFilteredByOwner(pool);
+    }
+    const maxCount = pool.length;
+    const inp = el("constructions-count");
+    if (inp) { inp.value = maxCount; inp.dispatchEvent(new Event("input")); }
+    renderProgress();
+  });
+
   const formatsAuto = el("formats-auto");
   if (formatsAuto) {
     formatsAuto.addEventListener("change", (e) => {
@@ -3750,6 +3825,54 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   if (planBtn) {
     planBtn.disabled = true;
     planBtn.addEventListener("click", () => downloadMediaPlan());
+  }
+
+  // POI / адреса — скачать CSV/XLSX
+  function getPoisForExport() {
+    if (Array.isArray(window.PLANNER?.lastPOIs) && window.PLANNER.lastPOIs.length) {
+      return window.PLANNER.lastPOIs.map(p => ({ id: p.id, name: p.name, lat: p.lat, lon: p.lon }));
+    }
+    if (Array.isArray(window.PLANNER?.lastGeocodedPoints) && window.PLANNER.lastGeocodedPoints.length) {
+      return window.PLANNER.lastGeocodedPoints;
+    }
+    return [];
+  }
+
+  const poiCsvBtn = el("download-poi-csv");
+  if (poiCsvBtn) {
+    poiCsvBtn.disabled = true;
+    poiCsvBtn.addEventListener("click", () => {
+      const pois = getPoisForExport();
+      if (!pois.length) return;
+      const header = "id,name,lat,lon";
+      const rows = pois.map(p => [p.id, `"${String(p.name||"").replace(/"/g,'""')}"`, p.lat, p.lon].join(","));
+      const blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = "poi_addresses.csv"; a.click();
+    });
+  }
+
+  const poiXlsxBtn = el("download-poi-xlsx");
+  if (poiXlsxBtn) {
+    poiXlsxBtn.disabled = true;
+    poiXlsxBtn.addEventListener("click", async () => {
+      const pois = getPoisForExport();
+      if (!pois.length) return;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("POI");
+      ws.columns = [
+        { header: "ID",    key: "id",   width: 20 },
+        { header: "Адрес / Название", key: "name", width: 40 },
+        { header: "Широта", key: "lat", width: 14 },
+        { header: "Долгота", key: "lon", width: 14 },
+      ];
+      pois.forEach(p => ws.addRow(p));
+      ws.getRow(1).font = { bold: true };
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = "poi_addresses.xlsx"; a.click();
+    });
   }
 
   // ===== Calc =====
