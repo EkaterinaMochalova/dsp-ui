@@ -3791,6 +3791,21 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
     });
   }
 
+  // ===== Выбрать все регионы =====
+  el("regions-select-all")?.addEventListener("click", () => {
+    const all = Array.isArray(state.regionsAll) ? state.regionsAll : [];
+    if (!all.length) return;
+    if (!Array.isArray(state.selectedRegions)) state.selectedRegions = [];
+    let added = 0;
+    for (const r of all) {
+      if (!state.selectedRegions.includes(r)) { state.selectedRegions.push(r); added++; }
+    }
+    state.selectedRegion = state.selectedRegions[0] || null;
+    renderSelectedRegions();
+    renderProgress();
+    window.dispatchEvent(new CustomEvent("planner:pool-updated"));
+  });
+
   // ===== City import from file =====
   const regionFileInput = el("region-file-input");
   if (regionFileInput) {
