@@ -1136,7 +1136,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   window.PLANNER_UI.getSelectedRegionsLabel = function(){
     const a = window.PLANNER_UI.getSelectedRegionsArr();
-    return a.length ? a.join(", ") : null;
+    if (!a.length) return null;
+    const SHOW = 3;
+    if (a.length <= SHOW) return a.join(", ");
+    return a.slice(0, SHOW).join(", ") + \` и ещё \${a.length - SHOW}\`;
   };
 })();
 `);
