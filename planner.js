@@ -179,11 +179,12 @@ function getReachModeFromUI() {
 }
 
 function targetPlaysPerHourPerScreen(mode) {
-  // max_freq = максимум экранов (низкий pph → нужно больше экранов чтобы освоить бюджет)
-  // max_reach = минимум экранов (высокий pph → концентрируем показы на меньшем числе экранов)
-  if (mode === "max_freq")  return 10;
-  if (mode === "max_reach") return 60;
-  return 30; // balanced
+  // max_reach = больше всего экранов (низкий pph → нужно больше экранов)
+  // balanced   = средне
+  // max_freq   = меньше всего экранов (высокий pph → концентрируем показы)
+  if (mode === "max_reach") return 10;
+  if (mode === "max_freq")  return 60;
+  return 15; // balanced
 }
 
 // ===== Utils =====
@@ -3115,7 +3116,7 @@ async function onCalcClick() {
       while (totalPlaysEffective < totalPlaysTheory && extraPool.length > 0 && guardCount++ < 20) {
         const shortfall = totalPlaysTheory - totalPlaysEffective;
         // Используем pphTarget, а не SC_MAX — это сохраняет порядок:
-        // max_freq (pphTarget=10) добирает больше экранов, max_reach (pphTarget=60) — меньше
+        // max_reach (pphTarget=10) добирает больше экранов, max_freq (pphTarget=60) — меньше
         const playsPerExtraScreen = Math.max(1, Math.floor(pphTarget * days * hpd));
         const extraNeeded = Math.ceil(shortfall / playsPerExtraScreen);
         const toAdd = extraPool.splice(0, Math.min(extraNeeded, extraPool.length));

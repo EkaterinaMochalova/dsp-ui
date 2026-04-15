@@ -3476,6 +3476,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     widget.addEventListener("change", (e) => showFloat(e.target));
   }
 
+  // Форматы и операторы меняются через кастомный ивент (не input/change)
+  window.addEventListener("planner:filters-changed", () => showFloat(null));
+
   // Клик по плавающей кнопке — запускаем расчёт
   floatBtn.addEventListener("click", () => {
     hideFloat();
