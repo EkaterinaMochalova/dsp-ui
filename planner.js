@@ -818,6 +818,9 @@ function getRegionForDspCity(city) {
 }
 
 // ===== Regions UI (мультивыбор) =====
+const REGIONS_COLLAPSE_LIMIT = 10;
+if (typeof state._regionsCollapsed === "undefined") state._regionsCollapsed = false;
+
 function renderSelectedRegions() {
   const wrap = el("region-selected");
   if (!wrap) return;
@@ -832,47 +835,53 @@ function renderSelectedRegions() {
 
   if (clearBtn) clearBtn.style.display = regions.length ? "inline-block" : "none";
 
-  regions.forEach((r) => {
+  // Auto-collapse when many regions added at once
+  if (regions.length > REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = true;
+
+  const visible = state._regionsCollapsed ? regions.slice(0, REGIONS_COLLAPSE_LIMIT) : regions;
+
+  visible.forEach((r) => {
     const chip = document.createElement("div");
     chip.className = "chip";
-    chip.style.display = "inline-flex";
-    chip.style.alignItems = "center";
-    chip.style.gap = "8px";
-    chip.style.padding = "6px 10px";
-    chip.style.border = "1px solid #ddd";
-    chip.style.borderRadius = "999px";
-    chip.style.background = "#fff";
+    chip.style.cssText = "display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid #ddd; border-radius:999px; background:#fff;";
 
     const label = document.createElement("span");
     label.textContent = r;
 
     const x = document.createElement("button");
-    x.type = "button";
-    x.textContent = "×";
+    x.type = "button"; x.textContent = "×";
     x.setAttribute("aria-label", `Удалить ${r}`);
-    x.style.border = "0";
-    x.style.background = "transparent";
-    x.style.cursor = "pointer";
-    x.style.fontSize = "18px";
-    x.style.lineHeight = "1";
-    x.style.padding = "0 2px";
+    x.style.cssText = "border:0; background:transparent; cursor:pointer; font-size:18px; line-height:1; padding:0 2px;";
 
     x.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
+      e.preventDefault(); e.stopPropagation();
       state.selectedRegions = (state.selectedRegions || []).filter(xx => String(xx).trim() !== r);
       state.selectedRegion = (state.selectedRegions[0] || null);
-
+      if (state.selectedRegions.length <= REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = false;
       renderSelectedRegions();
       renderProgress();
       window.dispatchEvent(new CustomEvent("planner:pool-updated"));
     });
 
-    chip.appendChild(label);
-    chip.appendChild(x);
+    chip.appendChild(label); chip.appendChild(x);
     wrap.appendChild(chip);
   });
+
+  // Toggle button
+  if (regions.length > REGIONS_COLLAPSE_LIMIT) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.style.cssText = "margin-top:6px; width:100%; padding:6px; border:1px solid #e0d9ff; border-radius:10px; background:#faf8ff; color:#5B3EF5; font-size:12px; cursor:pointer; font-weight:500;";
+    const hidden = regions.length - REGIONS_COLLAPSE_LIMIT;
+    toggle.textContent = state._regionsCollapsed
+      ? `Показать все регионы (ещё ${hidden})`
+      : `Свернуть (${regions.length} регионов)`;
+    toggle.addEventListener("click", () => {
+      state._regionsCollapsed = !state._regionsCollapsed;
+      renderSelectedRegions();
+    });
+    wrap.appendChild(toggle);
+  }
 }
 
 function renderRegionSuggestions(q) {
