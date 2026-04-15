@@ -3326,13 +3326,11 @@ async function onCalcClick() {
   }
 
   // otsPerPlay = avg(s.ots) — s.ots уже OTS за один выход
+  // costPerPlay = средняя ставка по формату (ставка = стоимость одного выхода)
   for (const fd of Object.values(formatStats)) {
-    fd.otsPerPlay = fd.otsCnt > 0
-      ? Math.round(fd.otsSum / fd.otsCnt)
-      : null;
-    fd.costPerPlay = (fd.playsEst > 0 && totalBudgetFinal > 0)
-      ? Math.round(totalBudgetFinal / totalPlaysEffectiveAll)  // тот же budget/plays что в сводке
-      : null;
+    fd.otsPerPlay  = fd.otsCnt > 0 ? Math.round(fd.otsSum / fd.otsCnt) : null;
+    fd.avgBid      = fd.bidCnt > 0 ? +(fd.bidSum / fd.bidCnt).toFixed(2) : null;
+    fd.costPerPlay = fd.avgBid;   // стоимость выхода = средняя ставка по формату
   }
 
   window.PLANNER = window.PLANNER || {};
