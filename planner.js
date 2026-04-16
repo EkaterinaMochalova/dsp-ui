@@ -201,6 +201,46 @@ function escapeHtml(s) {
   }[m]));
 }
 
+// ===== Event Logging (Google Sheets webhook) =====
+const LOG_WEBHOOK_URL = window.LOG_WEBHOOK_URL ||
+  "https://script.google.com/macros/s/AKfycbzRDpqKB9DupqXeBaiMrWkQTakHZxb7Nr-75afBl6481KXxFI3cFUEiXDxNzj9iP9pN/exec";
+
+function logEvent(eventName) {
+  try {
+    const calc  = window.PLANNER?.lastCalc;
+    const brief = calc?.brief || {};
+    const meta  = calc?.meta  || {};
+    const email = getDspUserEmail?.() || window.sessionStorage?.getItem("dsp_user_email") || "—";
+
+    const regions = (brief.geo?.regions || []).join(", ");
+    const formats = brief.formats?.mode === "auto"
+      ? "Все"
+      : (brief.formats?.selected || []).join(", ");
+    const budget  = meta.totalBudget || brief.budget?.amount || "";
+    const dates   = brief.dates?.start && brief.dates?.end
+      ? `${brief.dates.start} — ${brief.dates.end}` : "";
+    const strategy = brief.reachMode || "";
+    const screens  = calc?.chosen?.length ?? "";
+    const plays    = meta.totalPlays ?? "";
+    const ots      = meta.totalOts ?? "";
+
+    const payload = { event: eventName, email, regions, formats, budget, dates, strategy, screens, plays, ots };
+
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(LOG_WEBHOOK_URL, JSON.stringify(payload));
+    } else {
+      fetch(LOG_WEBHOOK_URL, {
+        method: "POST", body: JSON.stringify(payload),
+        headers: { "Content-Type": "text/plain" }, // text/plain avoids CORS preflight
+        keepalive: true
+      }).catch(() => {});
+    }
+    console.log("[log]", eventName, payload);
+  } catch (e) {
+    console.warn("[log] error:", e);
+  }
+}
+
 /**
  * Ray-casting point-in-polygon.
  * polygon: [[lat, lon], ...]  (closed or open — doesn't matter)
@@ -3416,6 +3456,7 @@ ${perRegionText}`
   }));
 
   setStatus("");
+  logEvent("calc");
 }
 
 // ===== Progress / Calc button state =====
@@ -3896,12 +3937,12 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
 
   // ===== Downloads =====
   const downloadBtn = el("download-csv");
-  if (downloadBtn) downloadBtn.addEventListener("click", () => downloadXLSX(state.lastChosen));
+  if (downloadBtn) downloadBtn.addEventListener("click", () => { downloadXLSX(state.lastChosen); logEvent("download_gids"); });
 
   const planBtn = el("download-plan-xlsx");
   if (planBtn) {
     planBtn.disabled = true;
-    planBtn.addEventListener("click", () => downloadMediaPlan());
+    planBtn.addEventListener("click", () => { downloadMediaPlan(); logEvent("download_plan"); });
   }
 
   // POI / адреса — скачать CSV/XLSX
@@ -3926,6 +3967,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       const blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
       a.download = "poi_addresses.csv"; a.click();
+      logEvent("download_poi");
     });
   }
 
@@ -3948,6 +3990,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
       a.download = "poi_addresses.xlsx"; a.click();
+      logEvent("download_poi");
     });
   }
 
