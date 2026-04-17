@@ -1328,57 +1328,130 @@ async function fetchRouteOSRM(A, B) {
   return coords; // [ [lon,lat], ... ]
 }
 
+// Yandex geocode of a road name → returns {center, bbox} or null
+async function geocodeRoadYandex(roadName, regionHint) {
+  const key = window.YANDEX_MAPS_KEY;
+  if (!key) return null;
+  const query = regionHint ? `${roadName}, ${regionHint}` : roadName;
+  const url = `https://geocode-maps.yandex.ru/1.x/?apikey=${key}&geocode=${encodeURIComponent(query)}&results=1&format=json&kind=street`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("Yandex geocode HTTP " + r.status);
+  const j = await r.json();
+  const member = j?.response?.GeoObjectCollection?.featureMember?.[0];
+  if (!member) return null;
+  const gobj = member.GeoObject;
+  const pos = gobj?.Point?.pos?.split(" ");
+  const lower = gobj?.boundedBy?.Envelope?.lowerCorner?.split(" ");
+  const upper = gobj?.boundedBy?.Envelope?.upperCorner?.split(" ");
+  if (!pos || !lower || !upper) return null;
+  return {
+    center: { lon: Number(pos[0]), lat: Number(pos[1]) },
+    bbox: {
+      minLon: Number(lower[0]), minLat: Number(lower[1]),
+      maxLon: Number(upper[0]), maxLat: Number(upper[1]),
+    }
+  };
+}
+
+// Parse Overpass response elements into [[lon,lat], ...] polyline
+function _parseOverpassPolyline(data) {
+  const nodes = {};
+  for (const el of (data.elements || [])) {
+    if (el.type === "node") nodes[el.id] = el;
+  }
+  const allPoints = [];
+  for (const el of (data.elements || [])) {
+    if (el.type === "way" && Array.isArray(el.nodes)) {
+      for (const nid of el.nodes) {
+        const n = nodes[nid];
+        if (n) allPoints.push([n.lon, n.lat]);
+      }
+    }
+  }
+  return allPoints;
+}
+
 async function fetchHighwayGeometry(roadName, regionHint) {
-  // Try to get the road geometry from Overpass API
   const q = String(roadName || "").trim();
   if (!q) return null;
 
-  // Build area filter from regionHint if available
-  let areaFilter = "";
-  if (regionHint) {
-    // Use area search for better results in specific region
-    areaFilter = `area["name"~"${regionHint.replace(/"/g, '')}"]->.searchArea;`;
+  const qSafe = q.replace(/"/g, "");
+  const OVERPASS_ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+  ];
+
+  // Step 1: Try Yandex to get the road's bounding box
+  let bbox = null;
+  if (window.YANDEX_MAPS_KEY) {
+    try {
+      const yRes = await geocodeRoadYandex(q, regionHint);
+      if (yRes?.bbox) {
+        bbox = yRes.bbox;
+        console.log(`[highway] Yandex bbox for «${q}»:`, bbox);
+      }
+    } catch(e) {
+      console.warn("[highway] Yandex geocode road failed:", e.message);
+    }
   }
 
-  // Query Overpass for ways with this name
-  const overpassQuery = areaFilter
-    ? `[out:json][timeout:15];${areaFilter}(way["name"~"${q.replace(/"/g, '')}",i](area.searchArea);>;);out body;`
-    : `[out:json][timeout:15];(way["name"~"${q.replace(/"/g, '')}",i]["highway"](if:count_tags()>0);>;);out body;`;
+  // Step 2: Try Overpass with bbox (targeted = faster, less rate-limited)
+  // bbox query: [south,west,north,east]
+  const bboxStr = bbox
+    ? `${bbox.minLat},${bbox.minLon},${bbox.maxLat},${bbox.maxLon}`
+    : null;
 
-  const overpassUrl = "https://overpass-api.de/api/interpreter";
+  // Expand bbox slightly (0.05° ≈ 5 km padding)
+  const bboxExpandedStr = bbox
+    ? `${bbox.minLat - 0.05},${bbox.minLon - 0.05},${bbox.maxLat + 0.05},${bbox.maxLon + 0.05}`
+    : null;
 
-  try {
-    const resp = await fetch(overpassUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "data=" + encodeURIComponent(overpassQuery)
-    });
-    if (!resp.ok) throw new Error("Overpass HTTP " + resp.status);
-    const data = await resp.json();
+  const makeQuery = (useBbox) => useBbox
+    ? `[out:json][timeout:15];(way["name"~"${qSafe}",i]["highway"](${useBbox});>;);out body;`
+    : `[out:json][timeout:20];(way["name"~"${qSafe}",i]["highway"];>;);out body;`;
 
-    // Build node lookup
-    const nodes = {};
-    for (const el of (data.elements || [])) {
-      if (el.type === "node") nodes[el.id] = el;
-    }
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    // Try bbox query first (if we have one), then full query
+    const queries = bboxExpandedStr
+      ? [makeQuery(bboxExpandedStr), makeQuery(null)]
+      : [makeQuery(null)];
 
-    // Collect all way segments as polyline points [lon, lat]
-    const allPoints = [];
-    for (const el of (data.elements || [])) {
-      if (el.type === "way" && Array.isArray(el.nodes)) {
-        for (const nid of el.nodes) {
-          const n = nodes[nid];
-          if (n) allPoints.push([n.lon, n.lat]);
+    for (const overpassQuery of queries) {
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "data=" + encodeURIComponent(overpassQuery),
+          signal: AbortSignal.timeout(20000),
+        });
+        if (!resp.ok) {
+          if (resp.status === 429) { console.warn("[highway] Overpass 429 on", endpoint); break; }
+          throw new Error("Overpass HTTP " + resp.status);
         }
+        const data = await resp.json();
+        const pts = _parseOverpassPolyline(data);
+        if (pts.length >= 2) {
+          console.log(`[highway] got ${pts.length} points from ${endpoint}`);
+          return pts;
+        }
+      } catch(e) {
+        console.warn(`[highway] ${endpoint} failed:`, e.message);
       }
     }
-
-    if (allPoints.length < 2) return null;
-    return allPoints; // [[lon,lat], ...]
-  } catch (e) {
-    console.warn("[highway] Overpass error:", e.message);
-    return null;
   }
+
+  // Step 3: Fallback — if Yandex gave us a bbox, synthesize a simple diagonal polyline
+  // so screens near the road corridor are still matched
+  if (bbox) {
+    console.warn("[highway] Overpass unavailable, falling back to Yandex bbox diagonal");
+    return [
+      [bbox.minLon, bbox.minLat],
+      [bbox.maxLon, bbox.maxLat],
+    ];
+  }
+
+  return null;
 }
 
 function getLatLon(s) {
