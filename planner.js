@@ -3491,13 +3491,13 @@ async function onCalcClick() {
       : null;
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
-    // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу)
-    // Пересчитываем теоретический максимум выходов по фактическим ставкам выбранных экранов.
-    // В режиме goal_ots цель уже зафиксирована через playsPlanned — не поднимаем теорию вверх,
-    // иначе появится ложное предупреждение «не хватает ёмкости».
+    // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу).
+    // Пересчитываем totalPlaysTheory по фактической ставке выбранных экранов — это убирает
+    // раздутие, которое возникает в attempt-loop когда выбираются самые дешёвые экраны:
+    // дешёвые → низкий effectiveChosenBid → большой totalPlaysTheoryByChosen → while-loop
+    // добирает весь пул. Теперь после финального выбора пересчитываем строго по chosen-ставке.
     if (brief.budget.mode !== "goal_ots" && Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0) {
-      const totalPlaysTheoryByChosen = Math.floor(budget / effectiveChosenBid);
-      totalPlaysTheory = Math.max(totalPlaysTheory, totalPlaysTheoryByChosen);
+      totalPlaysTheory = Math.floor(budget / effectiveChosenBid);
     }
 
     let capPlaysByChosen = Math.floor(effectivePPH * chosen.length * days * hpd);
