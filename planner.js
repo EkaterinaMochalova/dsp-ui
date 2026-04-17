@@ -779,6 +779,19 @@ function renderSelectionExtra() {
     attachAddressSuggest(el("route-to"));
     return;
   }
+
+  if (mode === "highway") {
+    extra.innerHTML = `
+      <input id="highway-name" type="text" placeholder="Название дороги, например: Рублёвское шоссе"
+             style="width:100%; padding:10px; border:1px solid #ddd; border-radius:10px; margin-bottom:8px;">
+      <input id="planner-radius" type="number" min="50" value="500" placeholder="Радиус от дороги, м"
+             style="width:100%; padding:10px; border:1px solid #ddd; border-radius:10px;">
+      <div style="font-size:12px; color:#666; margin-top:6px;">
+        Введите название магистрали, шоссе или улицы. Экраны будут подобраны вдоль всей дороги в заданном радиусе.
+      </div>
+    `;
+    return;
+  }
 }
 
 // ===== City -> Region loader =====
@@ -1251,6 +1264,10 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
     brief.selection.route_to = pickAnyVal("#route-to");
     brief.selection.radius_m = pickAnyNum(300, "#planner-radius", "#radius");
   }
+  if (selectionMode === "highway") {
+    brief.selection.highway_name = el("highway-name")?.value || "";
+    brief.selection.radius_m = pickAnyNum(500, "#planner-radius", "#radius");
+  }
 
   if (!Number.isFinite(brief.grp.min)) brief.grp.min = 0;
   if (!Number.isFinite(brief.grp.max)) brief.grp.max = 9.98;
@@ -1311,6 +1328,59 @@ async function fetchRouteOSRM(A, B) {
   return coords; // [ [lon,lat], ... ]
 }
 
+async function fetchHighwayGeometry(roadName, regionHint) {
+  // Try to get the road geometry from Overpass API
+  const q = String(roadName || "").trim();
+  if (!q) return null;
+
+  // Build area filter from regionHint if available
+  let areaFilter = "";
+  if (regionHint) {
+    // Use area search for better results in specific region
+    areaFilter = `area["name"~"${regionHint.replace(/"/g, '')}"]->.searchArea;`;
+  }
+
+  // Query Overpass for ways with this name
+  const overpassQuery = areaFilter
+    ? `[out:json][timeout:15];${areaFilter}(way["name"~"${q.replace(/"/g, '')}",i](area.searchArea);>;);out body;`
+    : `[out:json][timeout:15];(way["name"~"${q.replace(/"/g, '')}",i]["highway"](if:count_tags()>0);>;);out body;`;
+
+  const overpassUrl = "https://overpass-api.de/api/interpreter";
+
+  try {
+    const resp = await fetch(overpassUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "data=" + encodeURIComponent(overpassQuery)
+    });
+    if (!resp.ok) throw new Error("Overpass HTTP " + resp.status);
+    const data = await resp.json();
+
+    // Build node lookup
+    const nodes = {};
+    for (const el of (data.elements || [])) {
+      if (el.type === "node") nodes[el.id] = el;
+    }
+
+    // Collect all way segments as polyline points [lon, lat]
+    const allPoints = [];
+    for (const el of (data.elements || [])) {
+      if (el.type === "way" && Array.isArray(el.nodes)) {
+        for (const nid of el.nodes) {
+          const n = nodes[nid];
+          if (n) allPoints.push([n.lon, n.lat]);
+        }
+      }
+    }
+
+    if (allPoints.length < 2) return null;
+    return allPoints; // [[lon,lat], ...]
+  } catch (e) {
+    console.warn("[highway] Overpass error:", e.message);
+    return null;
+  }
+}
+
 function getLatLon(s) {
   const lat = Number(
     s?.lat ?? s?.LAT ?? s?.latitude ?? s?.Latitude ?? s?.y ?? s?.Y
@@ -1369,6 +1439,81 @@ function pickScreensNearPolyline(screens, lineLonLat, radiusM) {
     if (d <= radiusM) out.push(s);
   }
   return out;
+}
+
+function _screenIdOf(s) {
+  return (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
+}
+
+// Replace a chosen screen with nearest similar one from the pool
+function replaceScreen(screenId) {
+  const chosen = state.lastChosen;
+  if (!chosen || !chosen.length) return null;
+
+  const idx = chosen.findIndex(s => _screenIdOf(s) === String(screenId));
+  if (idx < 0) return null;
+
+  const old = chosen[idx];
+  const oldLoc = getLatLon(old);
+  const dist = window.GeoUtils?.haversineMeters;
+
+  const allScreens = state.screensAll || [];
+  const chosenIds = new Set(chosen.map(s => _screenIdOf(s)));
+
+  // Candidates: same format, same region, not chosen, has coordinates
+  let candidates = allScreens.filter(s => {
+    const sid = _screenIdOf(s);
+    if (!sid || chosenIds.has(sid)) return false;
+    if (s.format !== old.format) return false;
+    if (s.region && old.region && s.region !== old.region) return false;
+    const loc = getLatLon(s);
+    if (!loc) return false;
+    return true;
+  });
+
+  // Fallback: any format, same region
+  if (!candidates.length) {
+    candidates = allScreens.filter(s => {
+      const sid = _screenIdOf(s);
+      if (!sid || chosenIds.has(sid)) return false;
+      if (s.region && old.region && s.region !== old.region) return false;
+      return !!getLatLon(s);
+    });
+  }
+
+  if (!candidates.length) return null;
+
+  // Sort by distance to old screen (if we have old coords and haversine)
+  if (oldLoc && dist) {
+    candidates.sort((a, b) => {
+      const la = getLatLon(a), lb = getLatLon(b);
+      const da = dist(oldLoc.lat, oldLoc.lon, la.lat, la.lon);
+      const db = dist(oldLoc.lat, oldLoc.lon, lb.lat, lb.lon);
+      return da - db;
+    });
+  }
+
+  const replacement = candidates[0];
+  chosen.splice(idx, 1, replacement);
+
+  window.dispatchEvent(new CustomEvent("planner:screen-replaced", {
+    detail: { removed: old, added: replacement }
+  }));
+
+  return replacement;
+}
+
+// Remove a chosen screen (no replacement)
+function removeScreen(screenId) {
+  const chosen = state.lastChosen;
+  if (!chosen || !chosen.length) return false;
+  const idx = chosen.findIndex(s => _screenIdOf(s) === String(screenId));
+  if (idx < 0) return false;
+  const removed = chosen.splice(idx, 1)[0];
+  window.dispatchEvent(new CustomEvent("planner:screen-removed", {
+    detail: { removed }
+  }));
+  return true;
 }
 
 function pickScreensByMinBid(screens, n) {
@@ -2951,6 +3096,42 @@ async function onCalcClick() {
       setStatus(`Экраны у маршрута: ${pool.length} из ${before} (радиус: ${screenRadius}м)`);
     }
 
+    // HIGHWAY mode
+    if (brief.selection?.mode === "highway") {
+      const hwName = String(brief.selection.highway_name || "").trim();
+      const screenRadius = Number(brief.selection.radius_m || 500);
+
+      if (!hwName) {
+        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задана магистраль" });
+        continue;
+      }
+
+      setStatus(`Ищу дорогу «${hwName}» для региона «${region}»…`);
+
+      let hwLine = null;
+      try {
+        hwLine = await fetchHighwayGeometry(hwName, region);
+      } catch (e) {
+        console.error("[highway] error:", e);
+      }
+
+      if (!Array.isArray(hwLine) || hwLine.length < 2) {
+        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "дорога не найдена" });
+        warnings.push(`⚠️ Регион «${region}»: не удалось найти дорогу «${hwName}» через OpenStreetMap.`);
+        continue;
+      }
+
+      const before = pool.length;
+      pool = pickScreensNearPolyline(pool, hwLine, screenRadius);
+
+      if (!pool.length) {
+        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у магистрали" });
+        continue;
+      }
+
+      setStatus(`Экраны у «${hwName}»: ${pool.length} из ${before} (радиус: ${screenRadius}м)`);
+    }
+
     // Prefer screens with valid minBid: exclude no-bid screens if any bid screens exist
     const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
     if (hasBidScreens) {
@@ -4316,6 +4497,7 @@ async function dspFetchAllInventories() {
   const first = await dspFetchInventoriesPage(0);
   const totalElements = first.totalElements || 0;
   const totalPages = first.totalPages || Math.ceil(totalElements / DSP_PAGE_SIZE) || 1;
+  state.dspInventoryTotal = totalElements;
   const cityCache = dspBuildCityCache(first.items || [], {});
 
   setStatus(`Загружаю экраны… ${first.items?.length || 0} из ${totalElements || "?"}`);
@@ -4601,6 +4783,7 @@ async function loadScreensFromDSP() {
   if (cityCache) {
     const total = Object.values(cityCache).reduce((s, a) => s + a.length, 0);
     console.log(`[DSP] loaded from IndexedDB: ${total} screens, ${Object.keys(cityCache).length} cities`);
+    state.dspInventoryTotal = total;
     state.dspInventoryWarmupPromise = null;
     state.dspInventoryWarmupDone = true;
   } else {
@@ -4693,4 +4876,6 @@ Object.assign(window.PLANNER, {
   renderOwners,
   pointInPolygon,
   countScreensInPolygon,
+  replaceScreen,
+  removeScreen,
 });
