@@ -2114,6 +2114,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   let layer = null;
   let markersByGid = {};
 
+  // История замен: gid текущего экрана → Set gid-ов, которые уже были показаны
+  // (чтобы каждый клик «Заменить» давал новый экран, не возвращаясь к старым)
+  const _replaceTried = new Map();
+
+  // Сбрасываем историю при новом расчёте
+  window.addEventListener("planner:calc-done", () => _replaceTried.clear());
+
   function el(id){ return document.getElementById(id); }
 
   function getGid(s){ return (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim(); }
@@ -2162,7 +2169,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
-  // Находит ближайший экран того же формата, не выбранный ещё, и подставляет его
+  // Находит ближайший ещё-не-показанный экран того же формата и подставляет его.
+  // При повторных кликах каждый раз выдаёт новый вариант (исключает уже попробованные).
   function replaceScreenInChosen(screenToReplace) {
     const planner = window.PLANNER;
     if (!planner?.state) return;
@@ -2177,21 +2185,37 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const lon0 = Number(screenToReplace.lon);
     const fmt  = screenToReplace.format;
 
-    // Кандидаты: тот же формат, не выбранные, с координатами
-    const candidates = allScreens.filter(s =>
+    // GID-ы, которые уже предлагались для этого «слота»
+    const triedGids = _replaceTried.get(gid) || new Set();
+
+    // Кандидаты: тот же формат, не выбранные, с координатами, ещё не пробованные
+    let candidates = allScreens.filter(s =>
       getGid(s) !== gid &&
       !chosenGids.has(getGid(s)) &&
+      !triedGids.has(getGid(s)) &&
       s.format === fmt &&
       Number.isFinite(Number(s.lat)) &&
       Number.isFinite(Number(s.lon))
     );
+
+    // Если все варианты исчерпаны — сбрасываем историю и начинаем заново
+    if (!candidates.length) {
+      _replaceTried.delete(gid);
+      candidates = allScreens.filter(s =>
+        getGid(s) !== gid &&
+        !chosenGids.has(getGid(s)) &&
+        s.format === fmt &&
+        Number.isFinite(Number(s.lat)) &&
+        Number.isFinite(Number(s.lon))
+      );
+    }
 
     if (!candidates.length) {
       alert("Нет доступных экранов того же формата для замены.");
       return;
     }
 
-    // Выбираем ближайший
+    // Выбираем ближайший из оставшихся кандидатов
     const haversine = window.GeoUtils?.haversineMeters;
     let best = null, bestDist = Infinity;
     for (const c of candidates) {
@@ -2202,9 +2226,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
     if (!best) return;
 
+    const bestGid = getGid(best);
     const idx = chosen.findIndex(s => getGid(s) === gid);
     if (idx >= 0) chosen[idx] = best;
     else chosen.push(best);
+
+    // Передаём историю попыток на новый экран: следующий Replace на bestGid
+    // не вернётся ни к gid, ни к ранее показанным вариантам
+    _replaceTried.set(bestGid, new Set([...triedGids, gid]));
+    _replaceTried.delete(gid);
 
     renderChosenOnMap(chosen);
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
