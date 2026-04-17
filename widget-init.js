@@ -665,7 +665,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@1f17f2e/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@c8e3421/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -732,11 +732,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         Очистить регионы
       </button>
       <!-- DSP loading progress (shown only while inventory loads) -->
-      <div id="dsp-load-progress" style="display:none; align-items:center; gap:10px; margin-top:12px;
+      <div id="dsp-load-progress" style="display:none; margin-top:12px;
            padding:10px 14px; background:#F4F1FF; border-radius:10px; font-size:13px; color:#5B3EF5;">
-        <div style="width:16px; height:16px; border:2px solid #5B3EF5; border-top-color:transparent;
-             border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
-        <span id="dsp-load-status-text">Загружаю инвентарь…</span>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:16px; height:16px; border:2px solid #5B3EF5; border-top-color:transparent;
+               border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
+          <span id="dsp-load-status-text">Загружаю инвентарь…</span>
+        </div>
+        <div style="margin-top:8px; height:4px; background:rgba(91,62,245,0.15); border-radius:2px; overflow:hidden;">
+          <div id="dsp-load-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:2px; transition:width 0.3s;"></div>
+        </div>
       </div>
       <div class="wiz-nav">
         <button type="button" class="wiz-btn" id="wiz-next-1">Дальше</button>
@@ -950,6 +955,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <option value="city_even">Равномерно по региону</option>
       <option value="poi">Рядом с POI</option>
       <option value="near_address">Рядом с адресом</option>
+      <option value="highway">Вдоль магистрали / шоссе</option>
       <option value="route">Вдоль маршрута</option>
     </select>
     <div id="selection-extra" style="margin-top:10px;"></div>
@@ -1270,6 +1276,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       city_even: "Равномерно по региону",
       near_address: "Рядом с адресом",
       poi: "Рядом с POI",
+      highway: "Вдоль магистрали",
       route: "Вдоль маршрута"
     };
     return map[m] || m;
@@ -1440,14 +1447,26 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if(!bar) return;
     const done = window.PLANNER?.state?.dspInventoryWarmupDone;
     const statusText = el("dsp-load-status-text");
+    const progressBar = el("dsp-load-bar");
     if(done){
       bar.style.display = "none";
     } else if(window.DSP_AUTH_ENABLED){
-      bar.style.display = "flex";
-      const total   = window.PLANNER?.state?.screensAll?.length || 0;
-      if(statusText) statusText.textContent = total > 0
-        ? \`Загружаю инвентарь… \${total.toLocaleString("ru-RU")} экранов\`
-        : "Загружаю инвентарь…";
+      bar.style.display = "block";
+      const loaded = window.PLANNER?.state?.screensAll?.length || 0;
+      const total  = window.PLANNER?.state?.dspInventoryTotal || 0;
+      if(statusText){
+        if(loaded > 0 && total > 0){
+          statusText.textContent = \`Загружаю инвентарь… \${loaded.toLocaleString("ru-RU")} из \${total.toLocaleString("ru-RU")} экранов\`;
+        } else if(loaded > 0){
+          statusText.textContent = \`Загружаю инвентарь… \${loaded.toLocaleString("ru-RU")} экранов\`;
+        } else {
+          statusText.textContent = "Загружаю инвентарь…";
+        }
+      }
+      if(progressBar){
+        const pct = (total > 0 && loaded > 0) ? Math.min(100, Math.round(loaded / total * 100)) : 0;
+        progressBar.style.width = pct + "%";
+      }
     } else {
       bar.style.display = "none";
     }
@@ -1862,13 +1881,49 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <div style="padding:12px 14px;">
           <div style="font-size:13px;"><b>Оператор:</b> \${escapeHtml(getOwner(s) || "—")}</div>
           <div style="font-size:13px; margin-top:6px; color:#444;"><b>Адрес:</b> \${escapeHtml(getAddr(s) || "—")}</div>
-          <div style="font-size:12px; margin-top:8px; color:#777;">\${idx+1}/\${items.length}</div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+            <div style="font-size:12px; color:#777;">\${idx+1}/\${items.length}</div>
+            <div style="margin-left:auto; display:flex; gap:6px;">
+              <button type="button" id="lb-remove" style="padding:6px 14px; border-radius:8px; border:1px solid #e04444; background:#fff5f5; color:#e04444; font-size:12px; cursor:pointer; font-weight:500;">Убрать</button>
+              <button type="button" id="lb-replace" style="padding:6px 14px; border-radius:8px; border:1px solid #5B3EF5; background:#F4F1FF; color:#5B3EF5; font-size:12px; cursor:pointer; font-weight:500;">Заменить на похожий</button>
+            </div>
+          </div>
         </div>
       \`;
 
       modal.querySelector("#lb-prev").onclick = () => { idx = (idx - 1 + items.length) % items.length; render(); };
       modal.querySelector("#lb-next").onclick = () => { idx = (idx + 1) % items.length; render(); };
       modal.querySelector("#lb-close").onclick = close;
+
+      const removeBtn = modal.querySelector("#lb-remove");
+      if (removeBtn) removeBtn.onclick = () => {
+        const sCur = items[idx];
+        const sid = getGid(sCur);
+        if (window.PLANNER?.removeScreen) window.PLANNER.removeScreen(sid);
+        items.splice(idx, 1);
+        window.dispatchEvent(new CustomEvent("planner:screens-edited"));
+        if (!items.length) { close(); return; }
+        if (idx >= items.length) idx = items.length - 1;
+        render();
+      };
+
+      const replaceBtn = modal.querySelector("#lb-replace");
+      if (replaceBtn) replaceBtn.onclick = () => {
+        const sCur = items[idx];
+        const sid = getGid(sCur);
+        if (window.PLANNER?.replaceScreen) {
+          const newScreen = window.PLANNER.replaceScreen(sid);
+          if (newScreen) {
+            items[idx] = newScreen;
+            window.dispatchEvent(new CustomEvent("planner:screens-edited"));
+            render();
+          } else {
+            replaceBtn.textContent = "Нет замены";
+            replaceBtn.disabled = true;
+            replaceBtn.style.opacity = "0.5";
+          }
+        }
+      };
     }
 
     overlay.addEventListener("click", (e) => { if(e.target === overlay) close(); });
@@ -1935,7 +1990,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const addr = escapeHtml(getAddr(s));
 
         return \`
-          <div class="img-card" data-region="\${escapeHtml(regionName)}" data-idx="\${idx}"
+          <div class="img-card" data-region="\${escapeHtml(regionName)}" data-idx="\${idx}" data-gid="\${gid}"
                style="min-width:220px; max-width:220px; border:1px solid rgba(15,23,42,.10); border-radius:14px; overflow:hidden; background:#fff; cursor:pointer;">
             <div style="height:140px; background:#f2f4f8; display:flex; align-items:center; justify-content:center;">
               <img src="\${url}" alt="\${gid}" loading="lazy" style="width:100%; height:100%; object-fit:cover;">
@@ -1944,6 +1999,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
               <div style="font-weight:800; font-size:13px; line-height:1.2;">\${gid || "—"}</div>
               <div style="font-size:12px; color:#555; margin-top:4px;">\${own || "—"}</div>
               <div style="font-size:12px; color:#777; margin-top:4px; line-height:1.25; max-height:2.5em; overflow:hidden;">\${addr || ""}</div>
+              <div style="display:flex; gap:6px; margin-top:8px;">
+                <button type="button" class="card-remove-btn" data-gid="\${gid}" style="flex:1; padding:4px 6px; border-radius:6px; border:1px solid #e04444; background:#fff5f5; color:#e04444; font-size:11px; cursor:pointer; font-weight:500;">Убрать</button>
+                <button type="button" class="card-replace-btn" data-gid="\${gid}" style="flex:1; padding:4px 6px; border-radius:6px; border:1px solid #5B3EF5; background:#F4F1FF; color:#5B3EF5; font-size:11px; cursor:pointer; font-weight:500;">Заменить</button>
+              </div>
             </div>
           </div>
         \`;
@@ -1975,7 +2034,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
       section.querySelectorAll(".img-card").forEach(card => {
         card.style.scrollSnapAlign = "start";
-        card.addEventListener("click", () => {
+        card.addEventListener("click", (e) => {
+          if (e.target.closest("button")) return;
           const idx = Number(card.dataset.idx || 0);
           const s = regItems[idx];
 
@@ -1983,6 +2043,38 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           window.dispatchEvent(new CustomEvent("planner:focus-screen", { detail: { screen: s } }));
 
           openLightbox(regItems, idx);
+        });
+      });
+
+      section.querySelectorAll(".card-remove-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const gid = btn.dataset.gid;
+          if (window.PLANNER?.removeScreen) window.PLANNER.removeScreen(gid);
+          const chosen = window.PLANNER?.state?.lastChosen || [];
+          lastItems = chosen;
+          renderPerRegion(chosen);
+          window.dispatchEvent(new CustomEvent("planner:screens-edited"));
+        });
+      });
+
+      section.querySelectorAll(".card-replace-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const gid = btn.dataset.gid;
+          if (window.PLANNER?.replaceScreen) {
+            const newScreen = window.PLANNER.replaceScreen(gid);
+            if (newScreen) {
+              const chosen = window.PLANNER?.state?.lastChosen || [];
+              lastItems = chosen;
+              renderPerRegion(chosen);
+              window.dispatchEvent(new CustomEvent("planner:screens-edited"));
+            } else {
+              btn.textContent = "Нет замены";
+              btn.disabled = true;
+              btn.style.opacity = "0.5";
+            }
+          }
         });
       });
     });
@@ -2001,6 +2093,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.addEventListener("planner:filters-changed", () => {
       if(!allowed) return;
       renderPerRegion(lastItems);
+    });
+
+    window.addEventListener("planner:screens-edited", () => {
+      if(!allowed) return;
+      const chosen = window.PLANNER?.state?.lastChosen || [];
+      lastItems = chosen;
     });
   }
 
