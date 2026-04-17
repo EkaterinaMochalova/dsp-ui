@@ -665,7 +665,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@3d7a2dd/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@0bf1099/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -2152,6 +2152,64 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     return map;
   }
 
+  // Убирает экран из выборки и перерисовывает карту
+  function removeScreenFromChosen(gid) {
+    const planner = window.PLANNER;
+    if (!planner?.state) return;
+    planner.state.lastChosen = (planner.state.lastChosen || []).filter(s => getGid(s) !== gid);
+    renderChosenOnMap(planner.state.lastChosen);
+    // показываем кнопку «Пересчитать» чтобы обновить статистику
+    window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+  }
+
+  // Находит ближайший экран того же формата, не выбранный ещё, и подставляет его
+  function replaceScreenInChosen(screenToReplace) {
+    const planner = window.PLANNER;
+    if (!planner?.state) return;
+    const chosen = planner.state.lastChosen || [];
+    const gid = getGid(screenToReplace);
+
+    // Пул: все загруженные экраны
+    const allScreens = planner.state.screens || planner.state.screensAll || [];
+    const chosenGids = new Set(chosen.map(s => getGid(s)));
+
+    const lat0 = Number(screenToReplace.lat);
+    const lon0 = Number(screenToReplace.lon);
+    const fmt  = screenToReplace.format;
+
+    // Кандидаты: тот же формат, не выбранные, с координатами
+    const candidates = allScreens.filter(s =>
+      getGid(s) !== gid &&
+      !chosenGids.has(getGid(s)) &&
+      s.format === fmt &&
+      Number.isFinite(Number(s.lat)) &&
+      Number.isFinite(Number(s.lon))
+    );
+
+    if (!candidates.length) {
+      alert("Нет доступных экранов того же формата для замены.");
+      return;
+    }
+
+    // Выбираем ближайший
+    const haversine = window.GeoUtils?.haversineMeters;
+    let best = null, bestDist = Infinity;
+    for (const c of candidates) {
+      const d = haversine
+        ? haversine(lat0, lon0, Number(c.lat), Number(c.lon))
+        : Math.hypot(lat0 - Number(c.lat), lon0 - Number(c.lon));
+      if (d < bestDist) { bestDist = d; best = c; }
+    }
+    if (!best) return;
+
+    const idx = chosen.findIndex(s => getGid(s) === gid);
+    if (idx >= 0) chosen[idx] = best;
+    else chosen.push(best);
+
+    renderChosenOnMap(chosen);
+    window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+  }
+
   function renderChosenOnMap(chosen){
     const m = ensureMap();
     if(!m || !layer) return;
@@ -2166,17 +2224,41 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if(!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
       pts.push([lat, lon]);
+      const gid = getGid(s) || \`\${lat},\${lon}\`;
 
       const html = \`
-        <div style="font-size:13px;">
-          <div style="font-weight:800;">\${esc(getGid(s) || "Экран")}</div>
+        <div style="font-size:13px; min-width:220px;">
+          <div style="font-weight:700;">\${esc(getGid(s) || "Экран")}</div>
+          <div style="margin-top:4px;color:#555;">\${esc(s?.format || "")}</div>
           <div style="margin-top:4px;"><b>Оператор:</b> \${esc(getOwner(s) || "—")}</div>
           <div style="margin-top:4px;"><b>Адрес:</b> \${esc(getAddr(s) || "—")}</div>
+          <div style="margin-top:10px;display:flex;gap:6px;">
+            <button id="btn-remove-\${esc(gid)}"
+              style="flex:1;padding:6px 8px;background:#fee2e2;border:none;border-radius:8px;cursor:pointer;font-size:12px;color:#991b1b;font-weight:600;">
+              ✕ Убрать
+            </button>
+            <button id="btn-replace-\${esc(gid)}"
+              style="flex:1;padding:6px 8px;background:#ede9fe;border:none;border-radius:8px;cursor:pointer;font-size:12px;color:#5b3ef5;font-weight:600;">
+              ⇄ Заменить
+            </button>
+          </div>
         </div>
       \`;
 
-      const gid = getGid(s) || \`\${lat},\${lon}\`;
-      const marker = L.marker([lat, lon]).addTo(layer).bindPopup(html);
+      const marker = L.marker([lat, lon]).addTo(layer).bindPopup(html, { maxWidth: 300 });
+      // Вешаем обработчики после открытия попапа
+      marker.on("popupopen", () => {
+        const sc = s; // capture screen object
+        document.getElementById(\`btn-remove-\${gid}\`)?.addEventListener("click", () => {
+          marker.closePopup();
+          removeScreenFromChosen(gid);
+        });
+        document.getElementById(\`btn-replace-\${gid}\`)?.addEventListener("click", () => {
+          marker.closePopup();
+          replaceScreenInChosen(sc);
+        });
+      });
+
       markersByGid[gid] = marker;
     });
 
