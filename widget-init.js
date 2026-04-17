@@ -957,6 +957,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <option value="near_address">Рядом с адресом</option>
       <option value="highway">Вдоль магистрали / шоссе</option>
       <option value="route">Вдоль маршрута</option>
+      <option value="manual_screens">Конкретные экраны (по GID)</option>
     </select>
     <div id="selection-extra" style="margin-top:10px;"></div>
   </div>
@@ -1277,7 +1278,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       near_address: "Рядом с адресом",
       poi: "Рядом с POI",
       highway: "Вдоль магистрали",
-      route: "Вдоль маршрута"
+      route: "Вдоль маршрута",
+      manual_screens: "По GID-списку"
     };
     return map[m] || m;
   }

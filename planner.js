@@ -792,6 +792,44 @@ function renderSelectionExtra() {
     `;
     return;
   }
+
+  if (mode === "manual_screens") {
+    extra.innerHTML = `
+      <textarea id="manual-gids"
+        placeholder="Вставьте GID-ы экранов — по одному на строку или через запятую/пробел/таб.&#10;&#10;Пример:&#10;GID-12345&#10;GID-67890, GID-11111"
+        style="width:100%; height:130px; padding:10px; border:1px solid #ddd; border-radius:10px;
+               font-size:13px; resize:vertical; box-sizing:border-box; font-family:monospace;"></textarea>
+      <div id="manual-gids-status" style="font-size:12px; color:#666; margin-top:6px;">
+        Введите GID-ы — после расчёта будут использованы только эти экраны.
+      </div>
+    `;
+
+    // Живой счётчик совпадений при вводе
+    const ta = el("manual-gids");
+    const statusEl = el("manual-gids-status");
+    if (ta && statusEl) {
+      ta.addEventListener("input", () => {
+        const ids = _parseManualGids(ta.value);
+        if (!ids.length) {
+          statusEl.textContent = "Введите GID-ы — после расчёта будут использованы только эти экраны.";
+          statusEl.style.color = "#666";
+          return;
+        }
+        const allScreens = state.screens || [];
+        const matched = allScreens.filter(s => ids.has(_screenIdOf(s)));
+        statusEl.textContent = `Найдено в инвентаре: ${matched.length} из ${ids.size} указанных GID-ов`;
+        statusEl.style.color = matched.length > 0 ? "#5b3ef5" : "#dc2626";
+      });
+    }
+    return;
+  }
+}
+
+// Парсит текст с GID-ами → Set строк
+function _parseManualGids(text) {
+  const raw = String(text || "");
+  const tokens = raw.split(/[\n,\r\t ]+/).map(t => t.trim()).filter(Boolean);
+  return new Set(tokens);
 }
 
 // ===== City -> Region loader =====
@@ -1267,6 +1305,9 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
   if (selectionMode === "highway") {
     brief.selection.highway_name = el("highway-name")?.value || "";
     brief.selection.radius_m = pickAnyNum(500, "#planner-radius", "#radius");
+  }
+  if (selectionMode === "manual_screens") {
+    brief.selection.manual_gids = _parseManualGids(el("manual-gids")?.value || "");
   }
 
   if (!Number.isFinite(brief.grp.min)) brief.grp.min = 0;
@@ -3203,6 +3244,21 @@ async function onCalcClick() {
       }
 
       setStatus(`Экраны у «${hwName}»: ${pool.length} из ${before} (радиус: ${screenRadius}м)`);
+    }
+
+    // Manual GID filter — используем только указанные экраны
+    if (brief.selection?.mode === "manual_screens") {
+      const gidSet = brief.selection.manual_gids;
+      if (gidSet && gidSet.size > 0) {
+        const before = pool.length;
+        pool = pool.filter(s => gidSet.has(_screenIdOf(s)));
+        if (!pool.length) {
+          perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null,
+            note: `ни один из ${gidSet.size} GID-ов не найден в регионе` });
+          continue;
+        }
+        setStatus(`GID-фильтр: ${pool.length} из ${before} в регионе «${region}»`);
+      }
     }
 
     // Prefer screens with valid minBid: exclude no-bid screens if any bid screens exist
