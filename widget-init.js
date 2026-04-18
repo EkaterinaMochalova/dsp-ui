@@ -529,18 +529,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     text-align: right;
   }
 
-  /* ===== LIVE SUMMARY STRIP ===== */
-  #planner-widget .wiz-summary{
-    background: rgba(255,255,255,.55);
-    border: 1px solid rgba(15,23,42,.09);
-    border-radius: 12px;
-    padding: 10px 14px;
-    font-size: 13px;
-    color: rgba(11,18,32,.58);
-    margin-bottom: 16px;
-    min-height: 36px;
-  }
-
   /* ===== NAV ROW ===== */
   #planner-widget .wiz-nav{
     display: flex;
@@ -690,7 +678,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     <div class="meta" id="wiz-meta">0/4</div>
   </div>
   <div id="progress-checklist" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;"></div>
-  <div class="wiz-summary" id="wiz-live-summary">Заполните шаги — тут будет краткая сводка.</div>
   <div class="planner-grid">
   <!-- Left -->
   <div class="ux-panel planner-left">
@@ -1350,32 +1337,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const meta = el("wiz-meta");
     if(bar) bar.style.width = pct + "%";
     if(meta) meta.textContent = \`\${p.done}/4\`;
-
-    const box = el("wiz-live-summary");
-    if(box){
-      const formats = getFormatsSummary();
-      const schedule = getScheduleSummary();
-      const budget = getBudgetSummary();
-      const selection = getSelectionSummary();
-
-      box.innerHTML = \`
-        <div class="wiz-inline-row">
-          <div><b>Регион:</b> \${p.regionsLabel || "—"}</div>
-          <div><b>Даты:</b> \${(p.dates.start && p.dates.end) ? \`\${p.dates.start} → \${p.dates.end}\` : "—"}</div>
-        </div>
-        <div class="wiz-inline-row" style="margin-top:6px;">
-          <div><b>Бюджет:</b> \${budget}</div>
-          <div><b>Расписание:</b> \${schedule}</div>
-        </div>
-        <div class="wiz-inline-row" style="margin-top:6px;">
-          <div><b>Форматы:</b> \${formats}</div>
-          <div><b>Подбор:</b> \${selection}</div>
-        </div>
-        <div class="wiz-hint">
-          \${p.done === 4 ? "Можно нажимать «Рассчитать»." : "Заполните оставшиеся шаги — и кнопка «Рассчитать» станет активной."}
-        </div>
-      \`;
-    }
 
     // --- Прогресс-чеклист ---
     const chkEl = el("progress-checklist");
