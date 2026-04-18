@@ -1025,8 +1025,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <div class="planner-kicker" style="margin-bottom:10px;">Сводка</div>
       <!-- raw summary from planner.js (оставляем как источник истины) -->
 <pre id="summary" class="summary-pre"></pre>
-<!-- Превью до расчёта -->
-<div id="brief-preview-panel" style="margin-bottom:12px;"></div>
 <!-- КРАСИВАЯ СВОДКА (карточки) -->
 <div id="pretty-summary" style="margin-top:12px;"></div>
 <!-- CHARTS -->
@@ -1404,38 +1402,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const s = chip.dataset.step;
       chip.classList.toggle("done", !!stepDoneMap[s]);
     });
-
-    // --- Живой превью параметров в правой колонке (до расчёта) ---
-    const previewPanel = el("brief-preview-panel");
-    const hasResults = !!(el("pretty-summary")?.querySelector(".ps-card"));
-    if(previewPanel){
-      if(hasResults){
-        previewPanel.innerHTML = "";
-        previewPanel.style.display = "none";
-      } else {
-        previewPanel.style.display = "block";
-        const pPool = window.PLANNER?.computePoolPreview?.();
-        const poolLine = pPool
-          ? \`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;"><span style="color:#9ca3af;font-size:12px;">Пул экранов</span><span style="font-weight:700;color:\${pPool.countFinal>0?"#5b3ef5":"#e84444"};">\${pPool.countFinal.toLocaleString("ru-RU")} экр.</span></div>\`
-          : "";
-        const row = (label, val, ok) => \`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f8f8f8;"><span style="color:#9ca3af;font-size:12px;">\${label}</span><span style="font-size:13px;font-weight:600;color:\${ok?"#111":"#d1d5db"};max-width:55%;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${val||"—"}</span></div>\`;
-        previewPanel.innerHTML = \`
-          <div style="background:#faf9ff;border:1px solid #ede9fe;border-radius:14px;padding:14px 16px;">
-            <div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:#a78bfa;text-transform:uppercase;margin-bottom:8px;">Параметры кампании</div>
-            \${row("Регион", p.regionsLabel, !!p.regionsLabel)}
-            \${row("Период", (p.dates.start&&p.dates.end) ? p.dates.start+" → "+p.dates.end : null, !!(p.dates.start&&p.dates.end))}
-            \${row("Бюджет", getBudgetSummary().replace("не задан",""), getBudgetSummary()!=="не задан")}
-            \${row("Форматы", getFormatsSummary(), getFormatsSummary()!=="—")}
-            \${row("Подбор", getSelectionSummary(), getSelectionSummary()!=="—")}
-            \${poolLine}
-            \${p.done===4
-              ? \`<div style="margin-top:10px;text-align:center;font-size:13px;font-weight:600;color:#5b3ef5;padding:8px;background:#ede9fe;border-radius:10px;">✓ Готово к расчёту</div>\`
-              : \`<div style="margin-top:10px;text-align:center;font-size:12px;color:#9ca3af;">Заполнено \${p.done}/4 шага</div>\`
-            }
-          </div>
-        \`;
-      }
-    }
 
     const calcBtn = el("calc-btn");
     const hint    = el("calc-blocked-hint");
