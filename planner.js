@@ -3555,11 +3555,9 @@ async function onCalcClick() {
       // Бюджет = N конструкций × pphTarget выходов/ч × реальных часов кампании × avg рекомендованная ставка
       // (вне зависимости от города — используем среднюю ставку по всем экранам пула)
       const N = brief.constructions.count;
-      const allBids = prepared.flatMap(r => r.pool.map(s => s.minBid))
-        .filter(v => Number.isFinite(v) && v > 0);
-      const overallAvgBid = allBids.length > 0
-        ? allBids.reduce((a, b) => a + b, 0) / allBids.length : 1;
-      const recoBid = overallAvgBid * BID_MULTIPLIER;
+      const allPoolScreens0 = prepared.flatMap(r => r.pool);
+      // Используем уже загруженный recoBid (если DSP-режим) или minBid×BID_MULTIPLIER
+      const recoBid = avgEffectiveBid(allPoolScreens0, brief.bidMode, 1);
       const totalBudget = Math.round(N * pphTarget * days * hpdFixed * recoBid);
 
       const alloc = allocateBudgetAcrossRegions(
@@ -3659,6 +3657,50 @@ async function onCalcClick() {
   }
 
   // =========================
+  // 3.5) FETCH REAL RECO BIDS (DSP only)
+  // =========================
+  if (window.DSP_AUTH_ENABLED && getDspToken()) {
+    try {
+      setStatus("Загружаю прогноз ставок…");
+      const allPoolScreens = prepared.flatMap(r => r.pool);
+      await dspFetchForecastBids(allPoolScreens, brief);
+
+      // Пересчитываем bidPlus20 по реальным recoBid для каждого региона
+      for (const pr of prepared) {
+        const recos = pr.pool.map(s => s.recoBid).filter(v => Number.isFinite(v) && v > 0);
+        if (recos.length > 0) {
+          pr.bidPlus20 = recos.reduce((a, b) => a + b, 0) / recos.length;
+          pr.capBudgetAbs = Math.floor(pr.capPlaysAbs * pr.bidPlus20);
+        }
+      }
+
+      // Если режим constructions — пересчитываем бюджет с реальными recoBid
+      if (brief.constructions?.enabled && brief.constructions.count > 0) {
+        const allRecos = prepared.flatMap(r => r.pool.map(s => s.recoBid))
+          .filter(v => Number.isFinite(v) && v > 0);
+        if (allRecos.length > 0) {
+          const N = brief.constructions.count;
+          const overallAvgReco = allRecos.reduce((a, b) => a + b, 0) / allRecos.length;
+          const totalBudget = Math.round(N * pphTarget * days * hpdFixed * overallAvgReco);
+          const alloc = allocateBudgetAcrossRegions(
+            totalBudget,
+            prepared.map(r => ({ key: r.region, tier: getTierForGeo(r.region) })),
+            { minShare: 0.10, maxShare: 0.70 }
+          );
+          for (const r of prepared) {
+            const found = alloc?.find(x => x.region === r.region);
+            budgets[r.region] = found ? Number(found.budget) : 0;
+          }
+        }
+      }
+      setStatus("");
+    } catch (e) {
+      console.warn("[DSP] forecast-price fetch failed, using minBid×1.8 fallback", e);
+      setStatus("");
+    }
+  }
+
+  // =========================
   // 4) MAIN CALC PER REGION
   // =========================
   for (const pr of prepared) {
@@ -3724,7 +3766,7 @@ async function onCalcClick() {
       );
 
       avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
-      effectiveChosenBid = brief.bidMode === "min" ? avgChosenBid : avgChosenBid * BID_MULTIPLIER;
+      effectiveChosenBid = avgEffectiveBid(chosen, brief.bidMode, avgChosenBid * BID_MULTIPLIER);
 
       if (constructionsTarget !== null || !(Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0)) {
         break;
@@ -3804,7 +3846,7 @@ async function onCalcClick() {
         chosen = [...chosen, ...toAdd];
 
         avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
-        effectiveChosenBid = brief.bidMode === "min" ? avgChosenBid : avgChosenBid * BID_MULTIPLIER;
+        effectiveChosenBid = avgEffectiveBid(chosen, brief.bidMode, avgChosenBid * BID_MULTIPLIER);
 
         capPlaysByChosen = Math.floor(SC_MAX * chosen.length * days * hpd);
         const budgetCap = (effectiveChosenBid > 0) ? Math.floor(budget / effectiveChosenBid) : Infinity;
@@ -4660,6 +4702,141 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   renderProgress();
   renderBudgetHints();
   renderSelectionExtra();
+}
+
+// ===== DSP FORECAST BIDS =====
+
+// In-memory cache: Map<dspId (number), { recoBid, ts }>
+const _recoBidCache = new Map();
+const RECO_BID_CACHE_TTL = 60 * 60 * 1000; // 1 час
+
+/**
+ * Конвертирует brief.schedule в формат timeSettings для API прогноза ставки.
+ * dayOfWeek: 1=Пн … 7=Вс (ISO).  relativeStartTime/End — секунды от начала дня.
+ */
+function scheduleToTimeSettings(schedule) {
+  const DOW = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7 };
+  const toSec = (timeStr) => {
+    const m = _timeToMin(timeStr);
+    return m == null ? null : m * 60;
+  };
+
+  if (schedule?.type === "weekly") {
+    const weekly = schedule.weekly || {};
+    const result = [];
+    for (const [key, intervals] of Object.entries(weekly)) {
+      const dow = DOW[key];
+      if (!dow || !Array.isArray(intervals)) continue;
+      for (const iv of intervals) {
+        const s = toSec(iv?.from), e = toSec(iv?.to);
+        if (s == null || e == null) continue;
+        result.push({ dayOfWeek: dow, relativeStartTime: s, relativeEndTime: e });
+      }
+    }
+    return result;
+  }
+
+  // all_day / peak / custom — одно расписание на все дни
+  let fromSec, toSec2;
+  if (schedule?.type === "all_day") {
+    fromSec = 7 * 3600; toSec2 = 22 * 3600;
+  } else if (schedule?.type === "peak") {
+    fromSec = 7 * 3600; toSec2 = 14 * 3600;
+  } else if (schedule?.type === "custom") {
+    fromSec = toSec(schedule.from || "07:00") ?? 7 * 3600;
+    toSec2  = toSec(schedule.to   || "22:00") ?? 22 * 3600;
+  } else {
+    fromSec = 7 * 3600; toSec2 = 22 * 3600;
+  }
+
+  const result = [];
+  for (let dow = 1; dow <= 7; dow++) {
+    result.push({ dayOfWeek: dow, relativeStartTime: fromSec, relativeEndTime: toSec2 });
+  }
+  return result;
+}
+
+/**
+ * Загружает реальные рекомендованные ставки из API прогноза.
+ * Патчит s.recoBid на каждом экране из массива screens.
+ * Кэшируется на 1 час в памяти.
+ */
+async function dspFetchForecastBids(screens, brief) {
+  if (!window.DSP_AUTH_ENABLED || !getDspToken()) return;
+
+  const token = getDspToken();
+  const now = Date.now();
+
+  // Применяем кэш, отбираем экраны которые нужно дозапросить
+  const toFetch = [];
+  for (const s of screens) {
+    if (!Number.isFinite(s._dspId)) continue;
+    const cached = _recoBidCache.get(s._dspId);
+    if (cached && (now - cached.ts) < RECO_BID_CACHE_TTL) {
+      s.recoBid = cached.recoBid;
+    } else {
+      toFetch.push(s);
+    }
+  }
+  if (!toFetch.length) return;
+
+  const timeSettings = scheduleToTimeSettings(brief.schedule);
+  if (!timeSettings.length) return;
+
+  const dateStart = brief.dates?.start ? brief.dates.start + " 00:00:00" : null;
+  const dateEnd   = brief.dates?.end   ? brief.dates.end   + " 23:59:59" : null;
+  if (!dateStart || !dateEnd) return;
+
+  const markup = getDspAgencyMarkup();
+  const additionalCharge = markup.additionalCharge ?? 0;
+
+  const BATCH = 50;
+  const batches = [];
+  for (let i = 0; i < toFetch.length; i += BATCH) batches.push(toFetch.slice(i, i + BATCH));
+
+  const results = await Promise.allSettled(batches.map(async batch => {
+    const body = {
+      inventoryList: batch.map(s => ({ inventory: s._dspId, timeSettings })),
+      statisticPeriod: { start: dateStart, end: dateEnd },
+      additionalCharge,
+    };
+    const r = await fetch(`${DSP_API}/api/v1.0/clients/analytics/forecast-price-by-inventory`, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`forecast-price HTTP ${r.status}`);
+    return r.json();
+  }));
+
+  // Записываем в кэш и на экраны
+  const idToScreen = new Map(toFetch.map(s => [s._dspId, s]));
+  for (const res of results) {
+    if (res.status !== "fulfilled" || !res.value?.elements) continue;
+    for (const [idStr, elem] of Object.entries(res.value.elements)) {
+      const dspId = Number(idStr);
+      const price = elem?.statistic?.averagePrice;
+      if (!Number.isFinite(price) || price <= 0) continue;
+      _recoBidCache.set(dspId, { recoBid: price, ts: now });
+      const s = idToScreen.get(dspId);
+      if (s) s.recoBid = price;
+    }
+  }
+}
+
+/**
+ * Средняя эффективная ставка для набора экранов:
+ * - bidMode "min"  → avg(minBid)
+ * - bidMode "recommended" → avg(recoBid) если есть, иначе avg(minBid) × BID_MULTIPLIER
+ */
+function avgEffectiveBid(screens, bidMode, fallback) {
+  if (bidMode === "min") {
+    return avgNumber(screens.map(s => s.minBid)) ?? fallback;
+  }
+  const recos = screens.map(s => s.recoBid).filter(v => Number.isFinite(v) && v > 0);
+  if (recos.length > 0) return recos.reduce((a, b) => a + b, 0) / recos.length;
+  const mins = screens.map(s => s.minBid).filter(v => Number.isFinite(v) && v > 0);
+  return mins.length > 0 ? (mins.reduce((a, b) => a + b, 0) / mins.length) * BID_MULTIPLIER : fallback;
 }
 
 // ===== DSP API AUTH + INVENTORY =====
