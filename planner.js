@@ -4783,9 +4783,12 @@ async function dspFetchForecastBids(screens, brief) {
   const timeSettings = scheduleToTimeSettings(brief.schedule);
   if (!timeSettings.length) return;
 
-  const dateStart = brief.dates?.start ? brief.dates.start + "T00:00:00" : null;
-  const dateEnd   = brief.dates?.end   ? brief.dates.end   + "T23:59:59" : null;
-  if (!dateStart || !dateEnd) return;
+  // Используем последние 90 дней (исторические данные) — на будущих датах API возвращает MIN_BID
+  const _today = new Date();
+  const _d90 = new Date(_today); _d90.setDate(_today.getDate() - 90);
+  const _fmtDate = d => d.toISOString().slice(0, 10);
+  const dateStart = _fmtDate(_d90) + "T00:00:00";
+  const dateEnd   = _fmtDate(new Date(_today.getTime() - 86400000)) + "T23:59:59";
 
   const markup = getDspAgencyMarkup();
   const additionalCharge = markup.additionalCharge ?? 0;
@@ -4817,8 +4820,10 @@ async function dspFetchForecastBids(screens, brief) {
       const dspId = Number(idStr);
       let price = elem?.statistic?.averagePrice;
       if (!Number.isFinite(price) || price <= 0) continue;
-      // MIN_BID означает отсутствие реальных аукционов — применяем коэффициент
-      if (elem?.referenceData?.method === "MIN_BID") price = price * BID_MULTIPLIER;
+      // MIN_BID — нет реальных аукционов, это просто minBid → применяем коэффициент
+      // INVENTORY и FORMAT_CITY — реальные/статистические данные, берём как есть
+      const method = elem?.referenceData?.method;
+      if (method === "MIN_BID") price = price * BID_MULTIPLIER;
       _recoBidCache.set(dspId, { recoBid: price, ts: now });
       const s = idToScreen.get(dspId);
       if (s) s.recoBid = price;
