@@ -1298,6 +1298,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Делаем setStep доступным глобально
   window.setStep = setStep;
 
+  // Отмечаем посещение шага 4 — чтобы чип не был зелёным до первого визита
+  const _origSetStep = setStep;
+  window.setStep = function(step) {
+    if (step === 4) window._plannerStep4Visited = true;
+    _origSetStep(step);
+    if (typeof window.renderProgress === "function") window.renderProgress();
+  };
+
   function hasDates(){
     const s = el("date-start")?.value;
     const e = el("date-end")?.value;
@@ -1307,7 +1315,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Используем делегирование событий — работает даже после перерисовки
   document.getElementById("wiz-steps")?.addEventListener("click", e => {
     const chip = e.target.closest(".wiz-chip");
-    if (chip) setStep(Number(chip.dataset.step || 1));
+    if (chip) window.setStep(Number(chip.dataset.step || 1));
   });
 
   function updateNext1Btn(){
@@ -1327,27 +1335,24 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if(window.DSP_AUTH_ENABLED && !window.PLANNER?.state?.dspInventoryWarmupDone){
       return alert("Инвентарь ещё загружается, подождите немного.");
     }
-    setStep(2);
+    window.setStep(2);
   });
 
   el("wiz-next-2")?.addEventListener("click", () => {
-  if(!hasDates()) return alert("Выберите даты начала и окончания.");
+    if(!hasDates()) return alert("Выберите даты начала и окончания.");
+    if(window.PLANNER_UI?.validateStep2Schedule && !window.PLANNER_UI.validateStep2Schedule()){
+      return alert("Проверьте рваный график: включите хотя бы один день и задайте корректные интервалы времени.");
+    }
+    window.setStep(3);
+  });
 
-  // weekly validation
-  if(window.PLANNER_UI?.validateStep2Schedule && !window.PLANNER_UI.validateStep2Schedule()){
-    return alert("Проверьте рваный график: включите хотя бы один день и задайте корректные интервалы времени.");
-  }
+  el("wiz-next-3")?.addEventListener("click", () => window.setStep(4));
 
-  setStep(3);
-});
+  el("wiz-back-2")?.addEventListener("click", () => window.setStep(1));
+  el("wiz-back-3")?.addEventListener("click", () => window.setStep(2));
+  el("wiz-back-4")?.addEventListener("click", () => window.setStep(3));
 
-  el("wiz-next-3")?.addEventListener("click", () => setStep(4));
-
-  el("wiz-back-2")?.addEventListener("click", () => setStep(1));
-  el("wiz-back-3")?.addEventListener("click", () => setStep(2));
-  el("wiz-back-4")?.addEventListener("click", () => setStep(3));
-
-  setStep(1);
+  window.setStep(1);
 })();
 `);
 
@@ -1645,7 +1650,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
 
     // --- Обновляем состояние чипов шагов (done / active) ---
-    const stepDoneMap = { "1": !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length), "2": !!(p.dates.start && p.dates.end), "3": p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })(), "4": true };
+    // Шаг 4 "выполнен" только если пользователь его посещал или уже был расчёт
+    const step4Done = !!(window._plannerStep4Visited || window.PLANNER?.lastCalc);
+    const stepDoneMap = { "1": !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length), "2": !!(p.dates.start && p.dates.end), "3": p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })(), "4": step4Done };
     document.querySelectorAll("#wiz-steps .wiz-chip").forEach(chip => {
       const s = chip.dataset.step;
       chip.classList.toggle("done", !!stepDoneMap[s]);
