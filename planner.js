@@ -3474,15 +3474,38 @@ async function onCalcClick() {
     }
 
   } else {
-    for (const r of prepared) {
-      const BASE_MONTHLY_BY_TIER = { M: 2000000, SP: 1500000, A: 1000000, B: 500000, C: 300000, D: 100000 };
-      const baseMonthly = BASE_MONTHLY_BY_TIER[r.tier] ?? BASE_MONTHLY_BY_TIER.C;
-      const baseBudgetForPeriod = Math.floor(baseMonthly * (days / 30));
+    // Recommendation mode
+    if (brief.constructions?.enabled && brief.constructions.count > 0) {
+      // Бюджет = N конструкций × 50 выходов/ч × реальных часов кампании × avg рекомендованная ставка
+      // (вне зависимости от города — используем среднюю ставку по всем экранам пула)
+      const N = brief.constructions.count;
+      const allBids = prepared.flatMap(r => r.pool.map(s => s.minBid))
+        .filter(v => Number.isFinite(v) && v > 0);
+      const overallAvgBid = allBids.length > 0
+        ? allBids.reduce((a, b) => a + b, 0) / allBids.length : 1;
+      const recoBid = overallAvgBid * BID_MULTIPLIER;
+      const totalBudget = Math.round(N * 50 * days * hpdFixed * recoBid);
 
-      const maxPlays = Math.floor(SC_MAX * RECO_HOURS_PER_DAY * r.pool.length * days);
-      const maxBudget = maxPlays * r.bidPlus20;
+      const alloc = allocateBudgetAcrossRegions(
+        totalBudget,
+        prepared.map(r => ({ key: r.region, tier: getTierForGeo(r.region) })),
+        { minShare: 0.10, maxShare: 0.70 }
+      );
+      for (const r of prepared) {
+        const found = alloc?.find(x => x.region === r.region);
+        budgets[r.region] = found ? Number(found.budget) : 0;
+      }
+    } else {
+      for (const r of prepared) {
+        const BASE_MONTHLY_BY_TIER = { M: 2000000, SP: 1500000, A: 1000000, B: 500000, C: 300000, D: 100000 };
+        const baseMonthly = BASE_MONTHLY_BY_TIER[r.tier] ?? BASE_MONTHLY_BY_TIER.C;
+        const baseBudgetForPeriod = Math.floor(baseMonthly * (days / 30));
 
-      budgets[r.region] = Math.floor(Math.min(baseBudgetForPeriod, maxBudget));
+        const maxPlays = Math.floor(SC_MAX * RECO_HOURS_PER_DAY * r.pool.length * days);
+        const maxBudget = maxPlays * r.bidPlus20;
+
+        budgets[r.region] = Math.floor(Math.min(baseBudgetForPeriod, maxBudget));
+      }
     }
   }
 
