@@ -1,3 +1,10 @@
+const PLANNER_CDN_BASE = (() => {
+  try {
+    const src = document.currentScript?.src || '';
+    return src.replace(/\/planner\.js.*$/, '/');
+  } catch(e) { return ''; }
+})();
+
 console.log("planner.js loaded");
 
 /**
@@ -173,6 +180,7 @@ const state = {
 
   // VK Affinity data: Map<GID, {segmentName: affinityValue}>
   affinityMap: null,
+  affinityStats: null,
 };
 
 window.PLANNER.state = state;
@@ -195,34 +203,48 @@ const AFFINITY_GROUPS = {
 };
 window.PLANNER.AFFINITY_GROUPS = AFFINITY_GROUPS;
 
-async function loadAffinityXLSX(arrayBuffer) {
-  const ExcelJS = window.ExcelJS;
-  if (!ExcelJS) throw new Error("ExcelJS не загружен");
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(arrayBuffer);
-  const ws = wb.worksheets[0];
-  if (!ws) throw new Error("Пустой файл");
+async function loadAffinityJSON(urlOverride) {
+  const url = urlOverride || (PLANNER_CDN_BASE ? PLANNER_CDN_BASE + 'affinity_data.json' : null);
+  if (!url) throw new Error("CDN base URL not detected");
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  const json = await resp.json();
+  // json = { h: [colName, ...], d: { GID: [v0, v1, ...], ... } }
+  const headers = json.h;
+  const rawData = json.d;
   const map = new Map();
-  let headers = null;
-  ws.eachRow((row, rowNum) => {
-    if (rowNum === 1) { headers = row.values; return; } // 1-indexed: [undefined, 'GID', 'source_file', ...]
-    const vals = row.values;
-    const gid = String(vals[1] ?? "").trim();
-    if (!gid) return;
+  for (const [gid, vals] of Object.entries(rawData)) {
     const rec = {};
-    for (let i = 3; i < headers.length; i++) {
-      const col = String(headers[i] ?? "").trim();
-      if (!col || AFFINITY_SKIP_COLS.has(col)) continue;
+    for (let i = 0; i < headers.length; i++) {
       const v = vals[i];
-      if (v !== null && v !== undefined) rec[col] = typeof v === "number" ? v : parseFloat(v) || 0;
+      if (v !== null && v !== undefined && v !== 0) rec[headers[i]] = v;
     }
     map.set(gid, rec);
-  });
+  }
   state.affinityMap = map;
+
+  // Precompute per-segment stats: coverage at thresholds 1.0, 1.3, 1.5, 2.0
+  const stats = {};
+  const total = map.size;
+  for (const seg of headers) {
+    if (AFFINITY_SKIP_COLS.has(seg)) continue;
+    let sum = 0, n = 0, c10 = 0, c13 = 0, c15 = 0, c20 = 0;
+    for (const rec of map.values()) {
+      const v = rec[seg] ?? 0;
+      if (v > 0) { sum += v; n++; }
+      if (v >= 1.0) c10++;
+      if (v >= 1.3) c13++;
+      if (v >= 1.5) c15++;
+      if (v >= 2.0) c20++;
+    }
+    stats[seg] = { mean: n > 0 ? Math.round(sum / n * 10) / 10 : 0, total, c10, c13, c15, c20 };
+  }
+  state.affinityStats = stats;
+
   window.dispatchEvent(new CustomEvent("planner:affinity-loaded", { detail: { count: map.size } }));
   return map.size;
 }
-window.PLANNER.loadAffinityXLSX = loadAffinityXLSX;
+window.PLANNER.loadAffinityJSON = loadAffinityJSON;
 
 function getReachModeFromUI() {
   return document.querySelector('input[name="reach_mode"]:checked')?.value || "balanced";
@@ -5084,6 +5106,20 @@ function bootPlanner() {
 
 // Автозапуск намеренно отключён: bootPlanner() вызывается внешним kick() из HTML-страницы.
 // Это предотвращает двойной вызов (и двойной запрос логина).
+
+// Auto-load affinity data from CDN
+(function autoLoadAffinity() {
+  function tryLoad() {
+    if (PLANNER_CDN_BASE) {
+      loadAffinityJSON().catch(err => console.warn("Affinity auto-load failed:", err));
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', tryLoad);
+  } else {
+    setTimeout(tryLoad, 0);
+  }
+})();
 
 // ===== EXPORTS =====
 Object.assign(window.PLANNER, {

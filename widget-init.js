@@ -979,27 +979,24 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     <div class="planner-block" id="audience-block">
       <label class="check-row"><input type="checkbox" id="audience-enabled"> Фильтр по аудитории (VK affinity)</label>
       <div id="audience-wrap" style="display:none; margin-top:12px;">
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-          <label style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
-                 border:1.5px dashed #c4b5fd; border-radius:10px; background:#faf8ff;
-                 color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:500;">
-            ↑ Загрузить affinity.xlsx
-            <input type="file" id="audience-file-input" accept=".xlsx" style="display:none;">
-          </label>
-          <span id="audience-file-status" style="font-size:12px; color:#667085;">файл не загружен</span>
-        </div>
-        <div id="audience-segment-wrap">
-          <!-- groups rendered by JS -->
-        </div>
-        <div style="margin-top:10px;">
-          <div style="font-size:12px; font-weight:600; margin-bottom:6px; color:#0b1220;">
-            Минимальный аффинити: <span id="audience-aff-val" style="color:#5b3ef5;">1.5</span>
+        <div id="audience-load-status" style="font-size:12px; color:#667085; margin-bottom:10px;">⏳ Загрузка данных…</div>
+        <div id="audience-ui" style="display:none;">
+          <!-- Сегменты -->
+          <div id="audience-segment-wrap"></div>
+          <!-- Порог -->
+          <div style="margin-top:12px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+              <span style="font-size:12px; font-weight:600; color:#0b1220;">Порог аффинити</span>
+              <span style="font-size:13px; font-weight:700; color:#5b3ef5;" id="audience-aff-val">1.5</span>
+            </div>
+            <input type="range" id="audience-min-affinity" min="1.0" max="3.0" step="0.1" value="1.5"
+                   style="width:100%; accent-color:#5b3ef5;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
+              <span>1.0 слабый</span><span>1.5 средний</span><span>2.0 сильный</span><span>3.0</span>
+            </div>
           </div>
-          <input type="range" id="audience-min-affinity" min="1.0" max="5.0" step="0.1" value="1.5"
-                 style="width:100%; accent-color:#5b3ef5;">
-          <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
-            <span>1.0 (слабый)</span><span>2.0 (средний)</span><span>5.0 (сильный)</span>
-          </div>
+          <!-- Coverage result -->
+          <div id="audience-coverage" style="margin-top:10px;"></div>
         </div>
       </div>
     </div>
@@ -1348,42 +1345,120 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   function renderAudienceSegments() {
     const wrap = el("audience-segment-wrap");
-    if (!wrap) return;
+    const coverageEl = el("audience-coverage");
+    const uiEl = el("audience-ui");
+    const statusEl = el("audience-load-status");
     const groups = window.PLANNER?.AFFINITY_GROUPS;
-    if (!groups) return;
-    const affinityMap = window.PLANNER?.state?.affinityMap;
-    // Collect all interest columns (not in named groups)
-    const namedCols = new Set(Object.values(groups).flat());
-    let interestCols = [];
-    if (affinityMap?.size > 0) {
-      const sample = affinityMap.values().next().value;
-      interestCols = Object.keys(sample || {}).filter(k => !namedCols.has(k)).sort();
+    const stats = window.PLANNER?.state?.affinityStats;
+    if (!wrap) return;
+    if (!groups || !stats) {
+      if (statusEl) statusEl.style.display = "block";
+      if (uiEl) uiEl.style.display = "none";
+      return;
     }
+    if (statusEl) statusEl.style.display = "none";
+    if (uiEl) uiEl.style.display = "block";
+
+    const threshold = parseFloat(el("audience-min-affinity")?.value || "1.5");
+    const total = Object.values(stats)[0]?.total || 1;
+
+    // Build grouped chips colored by coverage
+    const namedCols = new Set(Object.values(groups).flat());
+    const interestCols = Object.keys(stats).filter(k => !namedCols.has(k)).sort();
     const groupDefs = { ...groups };
     if (interestCols.length) groupDefs["Интересы"] = interestCols;
+
+    function chipColor(seg) {
+      const s = stats[seg];
+      if (!s) return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#374151' };
+      const cov = threshold <= 1.3 ? s.c13 : threshold <= 1.5 ? s.c15 : threshold <= 2.0 ? s.c20 : s.c20;
+      const pct = cov / total;
+      if (pct >= 0.4) return { bg: '#f0fdf4', border: '#86efac', text: '#166534' };
+      if (pct >= 0.2) return { bg: '#fefce8', border: '#fde047', text: '#854d0e' };
+      return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#6b7280' };
+    }
 
     wrap.innerHTML = Object.entries(groupDefs).map(([gname, cols]) => \`
       <div style="margin-bottom:10px;">
         <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#9ca3af;margin-bottom:6px;">\${gname}</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
-          \${cols.map(col => \`
-            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+          \${cols.map(col => {
+            const c = chipColor(col);
+            const s = stats[col];
+            const covPct = s ? Math.round((threshold <= 1.5 ? s.c15 : s.c20) / total * 100) : 0;
+            return \`<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;
               padding:4px 10px;border-radius:999px;font-size:12px;
-              border:1px solid rgba(15,23,42,.14);background:#f8f9fb;color:#374151;
-              transition:border-color .12s,background .12s;">
-              <input type="checkbox" value="\${col.replace(/"/g,'&quot;')}"
+              border:1px solid \${c.border};background:\${c.bg};color:\${c.text};
+              transition:border-color .1s,background .1s;">
+              <input type="checkbox" value="\${col.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"
                 style="accent-color:#5b3ef5;width:12px;height:12px;margin:0;">
-              \${col}
-            </label>
-          \`).join("")}
+              \${col}\${s ? \` <span style="font-size:10px;opacity:.7;">\${covPct}%</span>\` : ''}
+            </label>\`;
+          }).join('')}
         </div>
       </div>
-    \`).join("");
+    \`).join('');
 
-    // Re-attach change listeners for renderProgress
+    // Re-attach listeners
     wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-      cb.addEventListener("change", () => renderProgress());
+      cb.addEventListener("change", () => { updateAudienceCoverage(); renderProgress(); });
     });
+
+    updateAudienceCoverage();
+  }
+
+  function updateAudienceCoverage() {
+    const coverageEl = el("audience-coverage");
+    if (!coverageEl) return;
+    const stats = window.PLANNER?.state?.affinityStats;
+    const affinityMap = window.PLANNER?.state?.affinityMap;
+    if (!stats || !affinityMap) return;
+
+    const threshold = parseFloat(el("audience-min-affinity")?.value || "1.5");
+    const total = affinityMap.size;
+
+    const selected = [];
+    document.querySelectorAll('#audience-segment-wrap input[type="checkbox"]:checked')
+      .forEach(cb => selected.push(cb.value));
+
+    if (!selected.length) {
+      coverageEl.innerHTML = "";
+      return;
+    }
+
+    // Count screens passing AND filter
+    let passing = 0;
+    for (const rec of affinityMap.values()) {
+      if (selected.every(seg => (rec[seg] ?? 0) >= threshold)) passing++;
+    }
+    const pct = total > 0 ? Math.round(passing / total * 100) : 0;
+    const color = pct >= 20 ? '#166534' : pct >= 5 ? '#854d0e' : '#e04444';
+
+    // Per-segment bars
+    const segBars = selected.map(seg => {
+      const s = stats[seg];
+      if (!s) return '';
+      const cnt = threshold <= 1.3 ? s.c13 : threshold <= 1.5 ? s.c15 : s.c20;
+      const p = Math.round(cnt / total * 100);
+      const barW = Math.max(2, p);
+      return \`<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+        <span style="font-size:11px;color:#667085;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${seg}</span>
+        <div style="flex:1;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden;">
+          <div style="width:\${barW}%;height:100%;background:#a78bfa;border-radius:3px;"></div>
+        </div>
+        <span style="font-size:11px;color:#6b7280;min-width:36px;text-align:right;">\${p}%</span>
+      </div>\`;
+    }).join('');
+
+    coverageEl.innerHTML = \`
+      <div style="padding:10px 12px;background:#f8f7ff;border:1px solid #ede9fe;border-radius:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:\${segBars ? '8px' : '0'};">
+          <span style="font-size:12px;color:#667085;">Подходящих экранов</span>
+          <span style="font-size:16px;font-weight:700;color:\${color};">\${passing.toLocaleString('ru-RU')} <span style="font-size:12px;font-weight:500;">(\${pct}%)</span></span>
+        </div>
+        \${segBars ? \`<div style="border-top:1px solid #ede9fe;padding-top:8px;">\${segBars}</div>\` : ''}
+      </div>
+    \`;
   }
 
   function getSelectionSummary(){
@@ -1575,38 +1650,19 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     });
   }
 
-  // Affinity slider label sync
   const affSlider = el("audience-min-affinity");
   if (affSlider) {
     affSlider.addEventListener("input", e => {
       const lbl = el("audience-aff-val");
       if (lbl) lbl.textContent = parseFloat(e.target.value).toFixed(1);
+      renderAudienceSegments();
       renderProgress();
     });
   }
 
-  // File upload handler
-  const audienceFileInput = el("audience-file-input");
-  if (audienceFileInput) {
-    audienceFileInput.addEventListener("change", async e => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const statusEl = el("audience-file-status");
-      if (statusEl) statusEl.textContent = "⏳ Загружаю…";
-      try {
-        const ab = await file.arrayBuffer();
-        const count = await window.PLANNER.loadAffinityXLSX(ab);
-        if (statusEl) statusEl.textContent = "✓ " + count.toLocaleString("ru-RU") + " экранов";
-        renderAudienceSegments();
-        renderProgress();
-      } catch (err) {
-        console.error("Affinity load error:", err);
-        if (statusEl) statusEl.textContent = "⚠ Ошибка: " + err.message;
-      }
-    });
-  }
-
   window.addEventListener("planner:affinity-loaded", () => {
+    const statusEl = el("audience-load-status");
+    if (statusEl) statusEl.textContent = "✓ Данные загружены (" + (window.PLANNER?.state?.affinityMap?.size || 0).toLocaleString("ru-RU") + " экранов)";
     renderAudienceSegments();
     renderProgress();
   });
