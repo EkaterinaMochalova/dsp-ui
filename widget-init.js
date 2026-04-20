@@ -993,16 +993,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <div id="audience-segment-wrap"></div>
           <!-- Глубина отбора по аффинити -->
           <div style="margin-top:12px;">
-            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:8px;">Глубина отбора</div>
-            <div id="top-pct-chips" style="display:flex; gap:6px; flex-wrap:wrap;">
-              <button type="button" class="pct-chip" data-pct="0.05">Топ 5%</button>
-              <button type="button" class="pct-chip active" data-pct="0.10">Топ 10%</button>
-              <button type="button" class="pct-chip" data-pct="0.15">Топ 15%</button>
-              <button type="button" class="pct-chip" data-pct="0.25">Топ 25%</button>
-              <button type="button" class="pct-chip" data-pct="0.50">Топ 50%</button>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+              <span style="font-size:12px; font-weight:600; color:#0b1220;">Глубина отбора</span>
+              <span style="font-size:13px; font-weight:700; color:#5b3ef5;" id="audience-top-pct-val">10%</span>
             </div>
-            <input type="hidden" id="audience-top-pct" value="0.10">
-            <div style="font-size:11px; color:#9ca3af; margin-top:6px;">По среднему аффинити-скору среди выбранных сегментов</div>
+            <input type="range" id="audience-top-pct" min="5" max="100" step="5" value="10"
+                   style="width:100%; accent-color:#5b3ef5;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
+              <span>5%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+            </div>
           </div>
           <!-- Coverage result -->
           <div id="audience-coverage" style="margin-top:10px;"></div>
@@ -1367,13 +1366,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (statusEl) statusEl.style.display = "none";
     if (uiEl) uiEl.style.display = "block";
 
-    // Color by mean affinity: ≥1.5 green, ≥1.2 yellow, else neutral
-    function chipColor(seg) {
-      const s = stats[seg];
-      if (!s || s.mean === 0) return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#6b7280' };
-      if (s.mean >= 1.5) return { bg: '#f0fdf4', border: '#86efac', text: '#166534' };
-      if (s.mean >= 1.2) return { bg: '#fefce8', border: '#fde047', text: '#854d0e' };
-      return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#6b7280' };
+    // Все чипы нейтральные — без цветового кодирования
+    function chipColor() {
+      return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#374151' };
     }
 
     function makeChips(cols) {
@@ -1467,7 +1462,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const affinityMap = window.PLANNER?.state?.affinityMap;
     if (!stats || !affinityMap) return;
 
-    const topPct = parseFloat(el("audience-top-pct")?.value || "0.10");
+    const topPct = parseInt(el("audience-top-pct")?.value || "10", 10) / 100;
     const total = affinityMap.size;
 
     const selected = [];
@@ -1497,28 +1492,19 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
     const pct = total > 0 ? Math.round(passing / total * 100) : 0;
 
-    // Per-segment: mean and cutoff threshold for this segment individually
-    const segBars = selected.map(seg => {
-      const vals = [];
-      for (const rec of affinityMap.values()) vals.push(rec[seg] ?? 0);
-      vals.sort((a, b) => b - a);
-      const segCutoff = vals[keepN - 1] ?? 0;
-      const s = stats[seg];
-      const meanVal = s?.mean ?? 0;
-      return \`<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-        <span style="font-size:11px;color:#667085;min-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${seg}</span>
-        <span style="font-size:11px;color:#374151;">ср. \${meanVal.toFixed(2)}</span>
-        <span style="font-size:11px;color:#5b3ef5;margin-left:auto;">порог \${segCutoff.toFixed(2)}</span>
-      </div>\`;
-    }).join('');
+    // Сегменты чипами
+    const segChips = selected.map(seg =>
+      \`<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;
+        background:#ede9fe;color:#4c1d95;border:1px solid #c4b5fd;">\${seg}</span>\`
+    ).join('');
 
     coverageEl.innerHTML = \`
       <div style="padding:10px 12px;background:#f8f7ff;border:1px solid #ede9fe;border-radius:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:\${segBars ? '8px' : '0'};">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:\${segChips ? '8px' : '0'};">
           <span style="font-size:12px;color:#667085;">В топ \${Math.round(topPct*100)}% по аффинити</span>
           <span style="font-size:16px;font-weight:700;color:#166534;">\${passing.toLocaleString('ru-RU')} <span style="font-size:12px;font-weight:500;">(\${pct}%)</span></span>
         </div>
-        \${segBars ? \`<div style="border-top:1px solid #ede9fe;padding-top:8px;">\${segBars}</div>\` : ''}
+        \${segChips ? \`<div style="border-top:1px solid #ede9fe;padding-top:8px;display:flex;flex-wrap:wrap;gap:4px;">\${segChips}</div>\` : ''}
       </div>
     \`;
   }
@@ -1708,16 +1694,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     });
   }
 
-  document.querySelectorAll('#top-pct-chips .pct-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('#top-pct-chips .pct-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      const inp = el("audience-top-pct");
-      if (inp) inp.value = chip.dataset.pct;
+  const topPctSlider = el("audience-top-pct");
+  if (topPctSlider) {
+    topPctSlider.addEventListener("input", e => {
+      const lbl = el("audience-top-pct-val");
+      if (lbl) lbl.textContent = e.target.value + "%";
       updateAudienceCoverage();
       renderProgress();
     });
-  });
+  }
 
   window.addEventListener("planner:affinity-loaded", () => {
     const statusEl = el("audience-load-status");

@@ -1335,7 +1335,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
           .forEach(cb => segs.push(cb.value));
         return segs;
       })(),
-      topPct: parseFloat(el("audience-top-pct")?.value || "0.10"),
+      topPct: parseInt(el("audience-top-pct")?.value || "10", 10) / 100,
     },
     bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
     reachMode: getReachModeFromUI(),
