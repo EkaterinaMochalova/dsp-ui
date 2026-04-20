@@ -1000,9 +1000,6 @@ function renderSelectedRegions() {
 
   if (clearBtn) clearBtn.style.display = regions.length ? "inline-block" : "none";
 
-  // Auto-collapse when many regions added at once
-  if (regions.length > REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = true;
-
   const visible = state._regionsCollapsed ? regions.slice(0, REGIONS_COLLAPSE_LIMIT) : regions;
 
   visible.forEach((r) => {
@@ -4307,6 +4304,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       if (!state.selectedRegions.includes(r)) { state.selectedRegions.push(r); added++; }
     }
     state.selectedRegion = state.selectedRegions[0] || null;
+    if (state.selectedRegions.length > REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = true;
     renderSelectedRegions();
     renderProgress();
     window.dispatchEvent(new CustomEvent("planner:pool-updated"));
@@ -4372,6 +4370,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
         }
         if (matched.length) {
           state.selectedRegion = state.selectedRegions[0] || null;
+          if (state.selectedRegions.length > REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = true;
           renderSelectedRegions();
           renderProgress();
           window.dispatchEvent(new CustomEvent("planner:pool-updated"));
