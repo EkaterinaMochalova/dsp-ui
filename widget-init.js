@@ -551,6 +551,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   #planner-widget .sch-chip-name{ font-size:13px; font-weight:600; }
   #planner-widget .sch-chip-time{ font-size:11px; color:rgba(11,18,32,.45); margin-top:2px; }
   #planner-widget .sch-chip.active .sch-chip-time{ color:rgba(91,62,245,.65); }
+  #planner-widget .pct-chip{
+    padding:6px 14px; font-size:13px; font-weight:600;
+    border:1.5px solid rgba(15,23,42,.14); border-radius:12px;
+    background:#fff; cursor:pointer; color:inherit;
+    transition:border-color .12s, background .12s;
+  }
+  #planner-widget .pct-chip:hover{ border-color:rgba(91,62,245,.4); background:#faf8ff; }
+  #planner-widget .pct-chip.active{ border-color:#5b3ef5; background:#f0eeff; color:#3a1dcc; }
 
   /* ===== NAV ROW ===== */
   #planner-widget .wiz-nav{
@@ -983,17 +991,18 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <div id="audience-ui" style="display:none;">
           <!-- Сегменты -->
           <div id="audience-segment-wrap"></div>
-          <!-- Порог -->
+          <!-- Глубина отбора по аффинити -->
           <div style="margin-top:12px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-              <span style="font-size:12px; font-weight:600; color:#0b1220;">Порог аффинити</span>
-              <span style="font-size:13px; font-weight:700; color:#5b3ef5;" id="audience-aff-val">1.2</span>
+            <div style="font-size:12px; font-weight:600; color:#0b1220; margin-bottom:8px;">Глубина отбора</div>
+            <div id="top-pct-chips" style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="pct-chip" data-pct="0.05">Топ 5%</button>
+              <button type="button" class="pct-chip active" data-pct="0.10">Топ 10%</button>
+              <button type="button" class="pct-chip" data-pct="0.15">Топ 15%</button>
+              <button type="button" class="pct-chip" data-pct="0.25">Топ 25%</button>
+              <button type="button" class="pct-chip" data-pct="0.50">Топ 50%</button>
             </div>
-            <input type="range" id="audience-min-affinity" min="1.0" max="2.0" step="0.1" value="1.2"
-                   style="width:100%; accent-color:#5b3ef5;">
-            <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
-              <span>1.0 нейтральный</span><span>1.2 базовый</span><span>1.5 средний</span><span>2.0 сильный</span>
-            </div>
+            <input type="hidden" id="audience-top-pct" value="0.10">
+            <div style="font-size:11px; color:#9ca3af; margin-top:6px;">По среднему аффинити-скору среди выбранных сегментов</div>
           </div>
           <!-- Coverage result -->
           <div id="audience-coverage" style="margin-top:10px;"></div>
@@ -1458,7 +1467,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const affinityMap = window.PLANNER?.state?.affinityMap;
     if (!stats || !affinityMap) return;
 
-    const threshold = parseFloat(el("audience-min-affinity")?.value || "1.2");
+    const topPct = parseFloat(el("audience-top-pct")?.value || "0.10");
     const total = affinityMap.size;
 
     const selected = [];
@@ -1470,35 +1479,44 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       return;
     }
 
-    // Count screens passing AND filter
+    // Score each screen = avg affinity across selected segments (0 if missing)
+    const scored = [];
+    for (const rec of affinityMap.values()) {
+      const score = selected.reduce((sum, seg) => sum + (rec[seg] ?? 0), 0) / selected.length;
+      scored.push(score);
+    }
+    scored.sort((a, b) => b - a);
+    const keepN = Math.max(1, Math.ceil(total * topPct));
+    const cutoff = scored[keepN - 1] ?? 0;
+
+    // Count screens meeting cutoff
     let passing = 0;
     for (const rec of affinityMap.values()) {
-      if (selected.every(seg => (rec[seg] ?? 0) >= threshold)) passing++;
+      const score = selected.reduce((sum, seg) => sum + (rec[seg] ?? 0), 0) / selected.length;
+      if (score >= cutoff) passing++;
     }
     const pct = total > 0 ? Math.round(passing / total * 100) : 0;
-    const color = pct >= 20 ? '#166534' : pct >= 5 ? '#854d0e' : '#e04444';
 
-    // Per-segment bars
+    // Per-segment: mean and cutoff threshold for this segment individually
     const segBars = selected.map(seg => {
+      const vals = [];
+      for (const rec of affinityMap.values()) vals.push(rec[seg] ?? 0);
+      vals.sort((a, b) => b - a);
+      const segCutoff = vals[keepN - 1] ?? 0;
       const s = stats[seg];
-      if (!s) return '';
-      const cnt = threshold <= 1.1 ? s.c11 : threshold <= 1.2 ? s.c12 : threshold <= 1.3 ? s.c13 : threshold <= 1.5 ? s.c15 : s.c20;
-      const p = Math.round(cnt / total * 100);
-      const barW = Math.max(2, p);
+      const meanVal = s?.mean ?? 0;
       return \`<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-        <span style="font-size:11px;color:#667085;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${seg}</span>
-        <div style="flex:1;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden;">
-          <div style="width:\${barW}%;height:100%;background:#a78bfa;border-radius:3px;"></div>
-        </div>
-        <span style="font-size:11px;color:#6b7280;min-width:36px;text-align:right;">\${p}%</span>
+        <span style="font-size:11px;color:#667085;min-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\${seg}</span>
+        <span style="font-size:11px;color:#374151;">ср. \${meanVal.toFixed(2)}</span>
+        <span style="font-size:11px;color:#5b3ef5;margin-left:auto;">порог \${segCutoff.toFixed(2)}</span>
       </div>\`;
     }).join('');
 
     coverageEl.innerHTML = \`
       <div style="padding:10px 12px;background:#f8f7ff;border:1px solid #ede9fe;border-radius:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:\${segBars ? '8px' : '0'};">
-          <span style="font-size:12px;color:#667085;">Подходящих экранов</span>
-          <span style="font-size:16px;font-weight:700;color:\${color};">\${passing.toLocaleString('ru-RU')} <span style="font-size:12px;font-weight:500;">(\${pct}%)</span></span>
+          <span style="font-size:12px;color:#667085;">В топ \${Math.round(topPct*100)}% по аффинити</span>
+          <span style="font-size:16px;font-weight:700;color:#166534;">\${passing.toLocaleString('ru-RU')} <span style="font-size:12px;font-weight:500;">(\${pct}%)</span></span>
         </div>
         \${segBars ? \`<div style="border-top:1px solid #ede9fe;padding-top:8px;">\${segBars}</div>\` : ''}
       </div>
@@ -1522,10 +1540,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const regionsLabel = window.PLANNER_UI?.getSelectedRegionsLabel?.() || null;
     const dates = getDates();
 
-    const formatsAuto = !!el("formats-auto")?.checked;
-    const formatsSet = window.PLANNER?.state?.selectedFormats;
-    const formatsOk = formatsAuto || (formatsSet && formatsSet.size > 0);
-
     const budgetMode = getBudgetMode();
     const budgetVal = Number(el("budget-input")?.value || 0);
     const goalVal   = Number(el("goal-ots")?.value || 0);
@@ -1538,7 +1552,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const step1 = !!regionsLabel;
     const step2 = !!(dates.start && dates.end);
     const step3 = !!budgetOk;
-    const step4 = !!formatsOk;
+    const step4 = true; // форматы опциональны: нет выбора = все форматы
 
     const done = [step1, step2, step3, step4].filter(Boolean).length;
     return { done, regionsLabel, dates };
@@ -1578,7 +1592,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         { label: "Регион",    ok: !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length) },
         { label: "Даты",      ok: !!(p.dates.start && p.dates.end) },
         { label: "Бюджет/цель", ok: p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })() },
-        { label: "Форматы",   ok: !!(el("formats-auto")?.checked || (window.PLANNER?.state?.selectedFormats?.size>0)) },
+        { label: "Форматы",   ok: true }, // опциональны — нет выбора = все форматы
       ];
       chkEl.innerHTML = steps.map(s => \`
         <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 9px;border-radius:999px;
@@ -1591,7 +1605,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
 
     // --- Обновляем состояние чипов шагов (done / active) ---
-    const stepDoneMap = { "1": !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length), "2": !!(p.dates.start && p.dates.end), "3": p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })(), "4": !!(el("formats-auto")?.checked || (window.PLANNER?.state?.selectedFormats?.size>0)) };
+    const stepDoneMap = { "1": !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length), "2": !!(p.dates.start && p.dates.end), "3": p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })(), "4": true };
     document.querySelectorAll("#wiz-steps .wiz-chip").forEach(chip => {
       const s = chip.dataset.step;
       chip.classList.toggle("done", !!stepDoneMap[s]);
@@ -1694,15 +1708,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     });
   }
 
-  const affSlider = el("audience-min-affinity");
-  if (affSlider) {
-    affSlider.addEventListener("input", e => {
-      const lbl = el("audience-aff-val");
-      if (lbl) lbl.textContent = parseFloat(e.target.value).toFixed(1);
-      renderAudienceSegments();
+  document.querySelectorAll('#top-pct-chips .pct-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#top-pct-chips .pct-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const inp = el("audience-top-pct");
+      if (inp) inp.value = chip.dataset.pct;
+      updateAudienceCoverage();
       renderProgress();
     });
-  }
+  });
 
   window.addEventListener("planner:affinity-loaded", () => {
     const statusEl = el("audience-load-status");

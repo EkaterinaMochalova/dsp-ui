@@ -1335,7 +1335,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
           .forEach(cb => segs.push(cb.value));
         return segs;
       })(),
-      minAffinity: toNumber(el("audience-min-affinity")?.value) || 1.5,
+      topPct: parseFloat(el("audience-top-pct")?.value || "0.10"),
     },
     bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
     reachMode: getReachModeFromUI(),
@@ -3349,21 +3349,25 @@ async function onCalcClick() {
       }
     }
 
-    // VK Affinity filter
+    // VK Affinity filter — top-X% by avg affinity score across selected segments
     if (brief.audience?.enabled && brief.audience.segments?.length > 0) {
       if (state.affinityMap?.size > 0) {
         const segs = brief.audience.segments;
-        const minAff = brief.audience.minAffinity ?? 1.5;
+        const topPct = brief.audience.topPct ?? 0.10;
         const before = pool.length;
-        pool = pool.filter(s => {
+        // Score each screen in pool
+        const withScore = pool.map(s => {
           const aff = state.affinityMap.get(_screenIdOf(s));
-          if (!aff) return false;
-          return segs.every(seg => (aff[seg] ?? 0) >= minAff);
+          const score = aff ? segs.reduce((sum, seg) => sum + (aff[seg] ?? 0), 0) / segs.length : 0;
+          return { s, score };
         });
-        setStatus(`Аудитория: ${pool.length} из ${before} (аффинити ≥${minAff})`);
+        withScore.sort((a, b) => b.score - a.score);
+        const keepN = Math.max(1, Math.ceil(before * topPct));
+        pool = withScore.slice(0, keepN).map(x => x.s);
+        setStatus(`Аудитория: топ ${Math.round(topPct * 100)}% → ${pool.length} из ${before}`);
         if (!pool.length) {
           perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null,
-            note: `аффинити-фильтр: нет экранов (из ${before}) с аффинити ≥${minAff} по [${segs.join(", ")}]` });
+            note: `аффинити-фильтр: нет экранов в топ ${Math.round(topPct * 100)}% по [${segs.join(", ")}]` });
           continue;
         }
       }
@@ -3843,7 +3847,7 @@ async function onCalcClick() {
 — Режим ставки: ${brief.bidMode === "min" ? "Минимальная (minBid)" : "Рекомендованная"}
 — GRP: ${brief.grp.enabled ? `${brief.grp.min.toFixed(2)}–${brief.grp.max.toFixed(2)}` : "не учитываем"}
 — Аудитория: ${brief.audience?.enabled && brief.audience.segments?.length > 0
-    ? `${brief.audience.segments.join(", ")} (аффинити ≥${brief.audience.minAffinity ?? 1.5})`
+    ? `${brief.audience.segments.join(", ")} (топ ${Math.round((brief.audience.topPct ?? 0.10) * 100)}%)`
     : "—"}
 — Конструкций (лимит): ${brief.constructions?.enabled && brief.constructions.count > 0 ? brief.constructions.count : "—"}
 
@@ -3992,13 +3996,8 @@ function computePoolPreview() {
     ? poolAfterGrp.filter(s => selectedOwners.includes(s.owner))
     : poolAfterGrp;
   if (brief.audience?.enabled && brief.audience.segments?.length > 0 && state.affinityMap?.size > 0) {
-    const segs = brief.audience.segments;
-    const minAff = brief.audience.minAffinity ?? 1.5;
-    countAfterAffinity = poolBeforeAff.filter(s => {
-      const aff = state.affinityMap.get(_screenIdOf(s));
-      if (!aff) return false;
-      return segs.every(seg => (aff[seg] ?? 0) >= minAff);
-    }).length;
+    const topPct = brief.audience.topPct ?? 0.10;
+    countAfterAffinity = Math.max(1, Math.ceil(poolBeforeAff.length * topPct));
   }
 
   const countFinal = countAfterAffinity !== null
