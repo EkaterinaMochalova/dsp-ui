@@ -228,16 +228,18 @@ async function loadAffinityJSON(urlOverride) {
   const total = map.size;
   for (const seg of headers) {
     if (AFFINITY_SKIP_COLS.has(seg)) continue;
-    let sum = 0, n = 0, c10 = 0, c13 = 0, c15 = 0, c20 = 0;
+    let sum = 0, n = 0, c10 = 0, c11 = 0, c12 = 0, c13 = 0, c15 = 0, c20 = 0;
     for (const rec of map.values()) {
       const v = rec[seg] ?? 0;
       if (v > 0) { sum += v; n++; }
       if (v >= 1.0) c10++;
+      if (v >= 1.1) c11++;
+      if (v >= 1.2) c12++;
       if (v >= 1.3) c13++;
       if (v >= 1.5) c15++;
       if (v >= 2.0) c20++;
     }
-    stats[seg] = { mean: n > 0 ? Math.round(sum / n * 10) / 10 : 0, total, c10, c13, c15, c20 };
+    stats[seg] = { mean: n > 0 ? Math.round(sum / n * 100) / 100 : 0, total, c10, c11, c12, c13, c15, c20 };
   }
   state.affinityStats = stats;
 
@@ -1120,8 +1122,11 @@ async function loadScreens() {
   // Interpolate missing OTS (ots=0 or NaN) using average OTS of screens
   // with the same format. This prevents zero-OTS screens from dragging
   // down the pool average when some screens simply lack measurement data.
+  // Exception: Магнит screens always keep OTS=0 (their data is unreliable).
+  const isMagnitScreen = s => String(s.owner ?? "").toLowerCase().includes("магнит");
   const otsByFormat = {};
   for (const s of state.screens) {
+    if (isMagnitScreen(s)) continue; // exclude from average computation
     if (Number.isFinite(s.ots) && s.ots > 0 && s.format) {
       if (!otsByFormat[s.format]) otsByFormat[s.format] = { sum: 0, cnt: 0 };
       otsByFormat[s.format].sum += s.ots;
@@ -1129,6 +1134,7 @@ async function loadScreens() {
     }
   }
   for (const s of state.screens) {
+    if (isMagnitScreen(s)) { s.ots = 0; continue; } // Магнит: OTS = 0, no interpolation
     if (!(Number.isFinite(s.ots) && s.ots > 0) && s.format && otsByFormat[s.format]) {
       s.ots = otsByFormat[s.format].sum / otsByFormat[s.format].cnt;
     }
@@ -3915,9 +3921,8 @@ if (brief.schedule?.type === "weekly") {
     (mode === "fixed" && Number.isFinite(budgetVal) && budgetVal > 0) ||
     (mode === "goal_ots" && Number.isFinite(goalOtsVal) && goalOtsVal > 0);
 
-  const formatsMode = brief?.formats?.mode || "auto";
-  const selected = Array.isArray(brief?.formats?.selected) ? brief.formats.selected : [];
-  const step4 = (formatsMode === "auto") || (selected.length > 0);
+  // Форматы опциональны: если ничего не выбрано — берём все
+  const step4 = true;
 
   const done = [step1, step2, step3, step4, scheduleOk].filter(Boolean).length;
   return { done, step1, step2, step3, step4, scheduleOk, mode };

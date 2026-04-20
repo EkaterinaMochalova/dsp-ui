@@ -987,12 +987,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <div style="margin-top:12px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
               <span style="font-size:12px; font-weight:600; color:#0b1220;">Порог аффинити</span>
-              <span style="font-size:13px; font-weight:700; color:#5b3ef5;" id="audience-aff-val">1.5</span>
+              <span style="font-size:13px; font-weight:700; color:#5b3ef5;" id="audience-aff-val">1.2</span>
             </div>
-            <input type="range" id="audience-min-affinity" min="1.0" max="3.0" step="0.1" value="1.5"
+            <input type="range" id="audience-min-affinity" min="1.0" max="2.0" step="0.1" value="1.2"
                    style="width:100%; accent-color:#5b3ef5;">
             <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
-              <span>1.0 слабый</span><span>1.5 средний</span><span>2.0 сильный</span><span>3.0</span>
+              <span>1.0 нейтральный</span><span>1.2 базовый</span><span>1.5 средний</span><span>2.0 сильный</span>
             </div>
           </div>
           <!-- Coverage result -->
@@ -1345,7 +1345,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   function renderAudienceSegments() {
     const wrap = el("audience-segment-wrap");
-    const coverageEl = el("audience-coverage");
     const uiEl = el("audience-ui");
     const statusEl = el("audience-load-status");
     const groups = window.PLANNER?.AFFINITY_GROUPS;
@@ -1359,47 +1358,92 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (statusEl) statusEl.style.display = "none";
     if (uiEl) uiEl.style.display = "block";
 
-    const threshold = parseFloat(el("audience-min-affinity")?.value || "1.5");
-    const total = Object.values(stats)[0]?.total || 1;
-
-    // Build grouped chips colored by coverage
-    const namedCols = new Set(Object.values(groups).flat());
-    const interestCols = Object.keys(stats).filter(k => !namedCols.has(k)).sort();
-    const groupDefs = { ...groups };
-    if (interestCols.length) groupDefs["Интересы"] = interestCols;
-
+    // Color by mean affinity: ≥1.5 green, ≥1.2 yellow, else neutral
     function chipColor(seg) {
       const s = stats[seg];
-      if (!s) return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#374151' };
-      const cov = threshold <= 1.3 ? s.c13 : threshold <= 1.5 ? s.c15 : threshold <= 2.0 ? s.c20 : s.c20;
-      const pct = cov / total;
-      if (pct >= 0.4) return { bg: '#f0fdf4', border: '#86efac', text: '#166534' };
-      if (pct >= 0.2) return { bg: '#fefce8', border: '#fde047', text: '#854d0e' };
+      if (!s || s.mean === 0) return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#6b7280' };
+      if (s.mean >= 1.5) return { bg: '#f0fdf4', border: '#86efac', text: '#166534' };
+      if (s.mean >= 1.2) return { bg: '#fefce8', border: '#fde047', text: '#854d0e' };
       return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#6b7280' };
     }
 
-    wrap.innerHTML = Object.entries(groupDefs).map(([gname, cols]) => \`
+    function makeChips(cols) {
+      return cols.map(col => {
+        const c = chipColor(col);
+        const safe = col.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+        return \`<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+          padding:4px 10px;border-radius:999px;font-size:12px;
+          border:1px solid \${c.border};background:\${c.bg};color:\${c.text};
+          transition:border-color .1s,background .1s;">
+          <input type="checkbox" value="\${safe}"
+            style="accent-color:#5b3ef5;width:12px;height:12px;margin:0;">
+          \${col}
+        </label>\`;
+      }).join('');
+    }
+
+    // Separate named groups from interests
+    const namedCols = new Set(Object.values(groups).flat());
+    const interestCols = Object.keys(stats).filter(k => !namedCols.has(k)).sort();
+
+    // Named groups
+    const namedHtml = Object.entries(groups).map(([gname, cols]) => \`
       <div style="margin-bottom:10px;">
         <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#9ca3af;margin-bottom:6px;">\${gname}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;">
-          \${cols.map(col => {
-            const c = chipColor(col);
-            const s = stats[col];
-            const covPct = s ? Math.round((threshold <= 1.5 ? s.c15 : s.c20) / total * 100) : 0;
-            return \`<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;
-              padding:4px 10px;border-radius:999px;font-size:12px;
-              border:1px solid \${c.border};background:\${c.bg};color:\${c.text};
-              transition:border-color .1s,background .1s;">
-              <input type="checkbox" value="\${col.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"
-                style="accent-color:#5b3ef5;width:12px;height:12px;margin:0;">
-              \${col}\${s ? \` <span style="font-size:10px;opacity:.7;">\${covPct}%</span>\` : ''}
-            </label>\`;
-          }).join('')}
-        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">\${makeChips(cols)}</div>
       </div>
     \`).join('');
 
-    // Re-attach listeners
+    // Интересы — collapsible accordion with search
+    const interestsHtml = interestCols.length ? \`
+      <div style="margin-bottom:10px;">
+        <button type="button" id="interests-toggle"
+          style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;
+            letter-spacing:.05em;text-transform:uppercase;color:#9ca3af;background:none;
+            border:none;cursor:pointer;padding:0;margin-bottom:0;">
+          <span>Интересы</span>
+          <span id="interests-arrow" style="font-size:10px;">▼</span>
+        </button>
+        <div id="interests-body" style="display:none;margin-top:8px;">
+          <input type="text" id="interests-search" placeholder="Поиск интереса…"
+            style="width:100%;box-sizing:border-box;padding:5px 10px;border:1px solid #e0d9ff;
+              border-radius:8px;font-size:12px;margin-bottom:8px;outline:none;">
+          <div id="interests-chips" style="display:flex;flex-wrap:wrap;gap:6px;">
+            \${makeChips(interestCols)}
+          </div>
+        </div>
+      </div>
+    \` : '';
+
+    wrap.innerHTML = namedHtml + interestsHtml;
+
+    // Interests toggle
+    const toggleBtn = wrap.querySelector('#interests-toggle');
+    const interestsBody = wrap.querySelector('#interests-body');
+    const arrow = wrap.querySelector('#interests-arrow');
+    let interestsOpen = false;
+    if (toggleBtn && interestsBody) {
+      toggleBtn.addEventListener('click', () => {
+        interestsOpen = !interestsOpen;
+        interestsBody.style.display = interestsOpen ? 'block' : 'none';
+        if (arrow) arrow.textContent = interestsOpen ? '▲' : '▼';
+      });
+    }
+
+    // Interests search/filter
+    const searchInput = wrap.querySelector('#interests-search');
+    const chipsContainer = wrap.querySelector('#interests-chips');
+    if (searchInput && chipsContainer) {
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.toLowerCase();
+        chipsContainer.querySelectorAll('label').forEach(lbl => {
+          const val = lbl.querySelector('input')?.value?.toLowerCase() || '';
+          lbl.style.display = (!q || val.includes(q)) ? '' : 'none';
+        });
+      });
+    }
+
+    // Re-attach listeners to all checkboxes
     wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener("change", () => { updateAudienceCoverage(); renderProgress(); });
     });
@@ -1414,7 +1458,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const affinityMap = window.PLANNER?.state?.affinityMap;
     if (!stats || !affinityMap) return;
 
-    const threshold = parseFloat(el("audience-min-affinity")?.value || "1.5");
+    const threshold = parseFloat(el("audience-min-affinity")?.value || "1.2");
     const total = affinityMap.size;
 
     const selected = [];
@@ -1438,7 +1482,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const segBars = selected.map(seg => {
       const s = stats[seg];
       if (!s) return '';
-      const cnt = threshold <= 1.3 ? s.c13 : threshold <= 1.5 ? s.c15 : s.c20;
+      const cnt = threshold <= 1.1 ? s.c11 : threshold <= 1.2 ? s.c12 : threshold <= 1.3 ? s.c13 : threshold <= 1.5 ? s.c15 : s.c20;
       const p = Math.round(cnt / total * 100);
       const barW = Math.max(2, p);
       return \`<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
