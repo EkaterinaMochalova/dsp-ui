@@ -4783,8 +4783,8 @@ async function dspFetchForecastBids(screens, brief) {
   const timeSettings = scheduleToTimeSettings(brief.schedule);
   if (!timeSettings.length) return;
 
-  const dateStart = brief.dates?.start ? brief.dates.start + " 00:00:00" : null;
-  const dateEnd   = brief.dates?.end   ? brief.dates.end   + " 23:59:59" : null;
+  const dateStart = brief.dates?.start ? brief.dates.start + "T00:00:00" : null;
+  const dateEnd   = brief.dates?.end   ? brief.dates.end   + "T23:59:59" : null;
   if (!dateStart || !dateEnd) return;
 
   const markup = getDspAgencyMarkup();
