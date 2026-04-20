@@ -628,6 +628,32 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   }
   #planner-widget .ux-radio input[type="radio"]{ flex-shrink: 0; }
 
+  /* ===== SELECTION MODE CHIPS ===== */
+  #planner-widget .sel-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
+  #planner-widget .sel-chip{
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:10px 12px;border:1.5px solid #e5e3f0;border-radius:12px;
+    background:#fff;cursor:pointer;font-size:12px;font-weight:500;color:#555;
+    transition:all 0.12s;min-width:76px;text-align:center;
+  }
+  #planner-widget .sel-chip:hover{border-color:#5b3ef5;background:#f5f3ff;}
+  #planner-widget .sel-chip.active{border-color:#5b3ef5;background:#ede9fd;color:#4930c7;font-weight:600;}
+  #planner-widget .sel-chip-ico{font-size:18px;line-height:1;}
+
+  /* ===== STRATEGY / BID CHIPS ===== */
+  #planner-widget .strategy-chips{display:flex;gap:8px;}
+  #planner-widget .str-chip{flex:1;cursor:pointer;display:block;}
+  #planner-widget .str-chip input[type="radio"]{display:none;}
+  #planner-widget .str-chip-body{
+    padding:10px 12px;border:1.5px solid #e5e3f0;border-radius:12px;
+    background:#fff;transition:all 0.12s;
+  }
+  #planner-widget .str-chip:hover .str-chip-body{border-color:#5b3ef5;background:#f5f3ff;}
+  #planner-widget .str-chip input:checked + .str-chip-body{border-color:#5b3ef5;background:#ede9fd;color:#4930c7;}
+  #planner-widget .str-chip-title{font-weight:600;font-size:13px;}
+  #planner-widget .str-chip-desc{font-size:11px;color:#888;margin-top:2px;}
+  #planner-widget .str-chip input:checked + .str-chip-body .str-chip-desc{color:#7059c7;}
+
   /* ===== BUDGET EXTRAS (НДС / commission) ===== */
   #planner-widget .budget-extra-row{
     display: flex;
@@ -959,26 +985,26 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <!-- Стратегия подбора -->
   <div class="planner-block reach-mode-block">
     <div class="planner-label">Стратегия подбора</div>
-    <div style="display:flex; flex-direction:column; gap:10px;">
-      <label class="ux-radio" style="align-items:flex-start;">
-        <input type="radio" name="reach_mode" value="max_reach" checked style="margin-top:2px;">
-        <div>
-          <span>Макс. охват</span>
-          <div class="planner-note" style="margin-top:2px;">Берём максимум экранов — широкий охват аудитории</div>
+    <div class="strategy-chips">
+      <label class="str-chip">
+        <input type="radio" name="reach_mode" value="max_reach" checked>
+        <div class="str-chip-body">
+          <div class="str-chip-title">↗ Охват</div>
+          <div class="str-chip-desc">Максимум экранов</div>
         </div>
       </label>
-      <label class="ux-radio" style="align-items:flex-start;">
-        <input type="radio" name="reach_mode" value="balanced" style="margin-top:2px;">
-        <div>
-          <span>Баланс</span>
-          <div class="planner-note" style="margin-top:2px;">Оптимальное сочетание охвата и частоты показа</div>
+      <label class="str-chip">
+        <input type="radio" name="reach_mode" value="balanced">
+        <div class="str-chip-body">
+          <div class="str-chip-title">⚖ Баланс</div>
+          <div class="str-chip-desc">Охват + частота</div>
         </div>
       </label>
-      <label class="ux-radio" style="align-items:flex-start;">
-        <input type="radio" name="reach_mode" value="max_freq" style="margin-top:2px;">
-        <div>
-          <span>Макс. частота</span>
-          <div class="planner-note" style="margin-top:2px;">Концентрируем бюджет на меньшем числе экранов для большей частоты</div>
+      <label class="str-chip">
+        <input type="radio" name="reach_mode" value="max_freq">
+        <div class="str-chip-body">
+          <div class="str-chip-title">🔁 Частота</div>
+          <div class="str-chip-desc">Меньше экранов</div>
         </div>
       </label>
     </div>
@@ -986,9 +1012,21 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <!-- Режим ставки -->
   <div class="planner-block">
     <div class="planner-label">Режим ставки</div>
-    <div class="radio-row" style="gap:14px;">
-      <label class="ux-radio"><input type="radio" name="bid_mode" id="bid-mode-recommended" value="recommended" checked><span>Рекомендованная</span></label>
-      <label class="ux-radio"><input type="radio" name="bid_mode" id="bid-mode-min" value="min"><span>Минимальная</span></label>
+    <div class="strategy-chips">
+      <label class="str-chip">
+        <input type="radio" name="bid_mode" id="bid-mode-recommended" value="recommended" checked>
+        <div class="str-chip-body">
+          <div class="str-chip-title">✦ Рекомендованная</div>
+          <div class="str-chip-desc">Стабильный откруг</div>
+        </div>
+      </label>
+      <label class="str-chip">
+        <input type="radio" name="bid_mode" id="bid-mode-min" value="min">
+        <div class="str-chip-body">
+          <div class="str-chip-title">↓ Минимальная</div>
+          <div class="str-chip-desc">Больше выходов</div>
+        </div>
+      </label>
     </div>
     <div class="planner-note" style="margin-top:8px;" id="bid-mode-hint-recommended">Оптимальная ставка для стабильного открута — предсказуемый результат.</div>
     <div class="planner-note" style="margin-top:8px; display:none;" id="bid-mode-hint-min">Минимальная цена из инвентаря. Больше выходов, но без гарантии полного открута.</div>
@@ -1064,7 +1102,27 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <!-- Как собираем программу -->
   <div class="planner-block">
     <div class="planner-label">Как собираем программу</div>
-    <select id="selection-mode" class="ux-input">
+    <div class="sel-chips" id="selection-mode-chips">
+      <button type="button" class="sel-chip active" data-mode="city_even">
+        <span class="sel-chip-ico">⚡</span><span>Равномерно</span>
+      </button>
+      <button type="button" class="sel-chip" data-mode="poi">
+        <span class="sel-chip-ico">📍</span><span>Рядом с POI</span>
+      </button>
+      <button type="button" class="sel-chip" data-mode="near_address">
+        <span class="sel-chip-ico">🏠</span><span>Рядом с адресом</span>
+      </button>
+      <button type="button" class="sel-chip" data-mode="highway">
+        <span class="sel-chip-ico">🛣</span><span>По магистрали</span>
+      </button>
+      <button type="button" class="sel-chip" data-mode="route">
+        <span class="sel-chip-ico">🚗</span><span>Маршрут</span>
+      </button>
+      <button type="button" class="sel-chip" data-mode="manual_screens">
+        <span class="sel-chip-ico">📋</span><span>По GID</span>
+      </button>
+    </div>
+    <select id="selection-mode" style="display:none;">
       <option value="city_even">Равномерно по региону</option>
       <option value="poi">Рядом с POI</option>
       <option value="near_address">Рядом с адресом</option>
@@ -1697,6 +1755,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       });
 
     document.querySelectorAll('input[name="budget_mode"]').forEach(r => r.addEventListener("change", renderProgress));
+    // Selection mode chips
+    document.querySelectorAll('#selection-mode-chips .sel-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#selection-mode-chips .sel-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        const sel = el('selection-mode');
+        if (sel) { sel.value = chip.dataset.mode; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+        renderProgress();
+      });
+    });
+
     // Schedule chips
     document.querySelectorAll('#schedule-chips .sch-chip').forEach(chip => {
       chip.addEventListener('click', () => {
