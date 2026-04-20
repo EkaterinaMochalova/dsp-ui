@@ -3705,16 +3705,16 @@ async function onCalcClick() {
       totalPlaysEffective = Math.min(totalPlaysEffective, budgetMaxPlays);
     }
 
-    // Если выбранные экраны упёрлись в SC_MAX и бюджет не освоен — добираем экраны из пула.
-    // Работает для всех режимов: max_freq начинает с минимума экранов, но если бюджет всё равно
-    // не освоен при SC_MAX — тоже нужно добирать.
+    // Если выбранных экранов не хватает по ЁМКОСТИ (capPlays < theory) — добираем из пула.
+    // Проверяем именно capPlaysByChosen, а не totalPlaysEffective: budget-cap не должен
+    // триггерить добор экранов (иначе при дешёвых выбранных экранах добираются все 19).
     if (constructionsTarget === null && ppmOverride === null && chosen.length < pool.length) {
       const pickedSet = new Set(chosen);
       const extraPool = pool.filter(s => !pickedSet.has(s));
       let guardCount = 0;
-      while (totalPlaysEffective < totalPlaysTheory && extraPool.length > 0 && guardCount++ < 20) {
-        const shortfall = totalPlaysTheory - totalPlaysEffective;
-        // Используем pphTarget, а не SC_MAX — это сохраняет порядок:
+      while (capPlaysByChosen < totalPlaysTheory && extraPool.length > 0 && guardCount++ < 20) {
+        const shortfall = totalPlaysTheory - capPlaysByChosen;
+        // Используем pphTarget, а не SC_MAX — это сохраняет порядок стратегий:
         // max_reach (pphTarget=10) добирает больше экранов, max_freq (pphTarget=60) — меньше
         const playsPerExtraScreen = Math.max(1, Math.floor(pphTarget * days * hpd));
         const extraNeeded = Math.ceil(shortfall / playsPerExtraScreen);
