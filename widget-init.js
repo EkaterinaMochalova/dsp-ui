@@ -534,6 +534,24 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     text-align: right;
   }
 
+  /* ===== SCHEDULE CHIPS ===== */
+  #planner-widget .sch-chip{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:8px 14px; min-width:76px; text-align:center;
+    border:1.5px solid rgba(15,23,42,.14); border-radius:12px;
+    background:#fff; cursor:pointer;
+    transition:border-color .12s, background .12s, box-shadow .12s;
+  }
+  #planner-widget .sch-chip:hover{
+    border-color:rgba(91,62,245,.4); background:#faf8ff;
+  }
+  #planner-widget .sch-chip.active{
+    border-color:#5b3ef5; background:#f0eeff; color:#3a1dcc;
+  }
+  #planner-widget .sch-chip-name{ font-size:13px; font-weight:600; }
+  #planner-widget .sch-chip-time{ font-size:11px; color:rgba(11,18,32,.45); margin-top:2px; }
+  #planner-widget .sch-chip.active .sch-chip-time{ color:rgba(91,62,245,.65); }
+
   /* ===== NAV ROW ===== */
   #planner-widget .wiz-nav{
     display: flex;
@@ -761,19 +779,42 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   </div>
   <div class="planner-block">
     <div class="planner-label">Расписание</div>
-    <label class="radio-row">
-      <input type="radio" name="schedule" value="all_day" checked />
-      Весь день (07:00–22:00)
-    </label>
-    <label class="radio-row">
-      <input type="radio" name="schedule" value="peak" />
-      Часы пик (07:00–10:00 / 17:00–21:00)
-    </label>
-    <label class="radio-row">
-      <input type="radio" name="schedule" value="weekly" />
-      Свой график
-    </label>
-    <!-- Раскрывается при выборе "Свой график" -->
+    <!-- Скрытые radio — читаются planner.js без изменений -->
+    <input type="radio" name="schedule" id="sch-r-all_day" value="all_day" checked style="display:none;">
+    <input type="radio" name="schedule" id="sch-r-peak"    value="peak"    style="display:none;">
+    <input type="radio" name="schedule" id="sch-r-custom"  value="custom"  style="display:none;">
+    <input type="radio" name="schedule" id="sch-r-weekly"  value="weekly"  style="display:none;">
+    <!-- Скрытые time-from/to для custom-пресетов -->
+    <input type="hidden" id="time-from" value="07:00">
+    <input type="hidden" id="time-to"   value="22:00">
+    <!-- Чипы-пресеты -->
+    <div id="schedule-chips" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" class="sch-chip active" data-sch="all_day">
+        <span class="sch-chip-name">Весь день</span>
+        <span class="sch-chip-time">07:00–22:00</span>
+      </button>
+      <button type="button" class="sch-chip" data-sch="custom" data-from="07:00" data-to="12:00">
+        <span class="sch-chip-name">Утро</span>
+        <span class="sch-chip-time">07:00–12:00</span>
+      </button>
+      <button type="button" class="sch-chip" data-sch="custom" data-from="12:00" data-to="18:00">
+        <span class="sch-chip-name">День</span>
+        <span class="sch-chip-time">12:00–18:00</span>
+      </button>
+      <button type="button" class="sch-chip" data-sch="custom" data-from="17:00" data-to="22:00">
+        <span class="sch-chip-name">Вечер</span>
+        <span class="sch-chip-time">17:00–22:00</span>
+      </button>
+      <button type="button" class="sch-chip" data-sch="peak">
+        <span class="sch-chip-name">Часы пик</span>
+        <span class="sch-chip-time">07–10 / 17–21</span>
+      </button>
+      <button type="button" class="sch-chip" data-sch="weekly">
+        <span class="sch-chip-name">Свой</span>
+        <span class="sch-chip-time">настроить →</span>
+      </button>
+    </div>
+    <!-- Раскрывается при выборе "Свой" -->
     <div id="weekly-wrap" style="display:none; margin-top:12px;">
       <div id="weekly-days" class="weekly-days"></div>
     </div>
@@ -1476,6 +1517,23 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       });
 
     document.querySelectorAll('input[name="budget_mode"]').forEach(r => r.addEventListener("change", renderProgress));
+    // Schedule chips
+    document.querySelectorAll('#schedule-chips .sch-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#schedule-chips .sch-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        const schVal = chip.dataset.sch;
+        const radio = document.getElementById('sch-r-' + schVal);
+        if (radio) radio.checked = true;
+        if (schVal === 'custom') {
+          const fromEl = el('time-from'), toEl = el('time-to');
+          if (fromEl) fromEl.value = chip.dataset.from || '07:00';
+          if (toEl)   toEl.value   = chip.dataset.to   || '22:00';
+        }
+        syncCustomTime();
+        renderProgress();
+      });
+    });
     document.querySelectorAll('input[name="schedule"]').forEach(r => r.addEventListener("change", () => {
       syncCustomTime();
       renderProgress();
