@@ -1137,6 +1137,25 @@ async function loadScreens() {
     }
   }
 
+  // ── OTS cap: убираем аномально высокие значения ──────────────────────────
+  // Данные по выбросам на основе анализа инвентаря (percentile 99 + запас):
+  // BILLBOARD  p99=125  → cap 150   (Russ Outdoor ЮВХ выбросы до 6061)
+  // SUPERSITE  p99=196  → cap 200
+  // OTHER               → cap 100
+  // MEDIAFACADE p99≈1645 → cap 2000  (фасады — высокий OTS норм, но 2224+ лишнее)
+  const OTS_CAPS = {
+    BILLBOARD:   150,
+    SUPERSITE:   200,
+    OTHER:       100,
+    MEDIAFACADE: 2000,
+  };
+  for (const s of state.screens) {
+    const cap = OTS_CAPS[s.format];
+    if (cap && Number.isFinite(s.ots) && s.ots > cap) {
+      s.ots = cap;
+    }
+  }
+
   state.citiesAll = [...new Set(state.screens.map(s => s.city).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, "ru"));
 
@@ -2081,9 +2100,10 @@ async function downloadMediaPlan() {
   // ── Лист 2: По регионам и форматам (иерархически) ────────────────
   const ws2 = wb.addWorksheet("По регионам");
   ws2.columns = [
-    { width: 32 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 14 }
+    { width: 32 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 14 }
   ];
-  ["Регион / Формат", "Экранов", "Выходов всего", "Выходов/день", "Бюджет, ₽", "OTS всего", "OTS/выход (ср.)"].forEach((h, i) => {
+  const bidColHdr = brief.bidMode === "min" ? "Ср. ставка (мин), ₽" : "Ср. ставка (реко), ₽";
+  ["Регион / Формат", "Экранов", "Выходов всего", "Выходов/день", "Бюджет, ₽", "OTS всего", "OTS/выход (ср.)", bidColHdr].forEach((h, i) => {
     hdr(ws2, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
   ws2.getRow(1).height = 22;
@@ -2111,7 +2131,7 @@ async function downloadMediaPlan() {
     const playsPerDay   = meta.days > 0 ? Math.round(regionPlays / meta.days) : 0;
 
     // Region header row
-    ws2.mergeCells(ws2Row, 1, ws2Row, 7);
+    ws2.mergeCells(ws2Row, 1, ws2Row, 8);
     const regionCell = ws2.getCell(ws2Row, 1);
     regionCell.value = regionName;
     regionCell.font  = { bold: true, size: 11, color: { argb: WHITE } };
@@ -2119,6 +2139,14 @@ async function downloadMediaPlan() {
     regionCell.alignment = { vertical: "middle", horizontal: "left", indent: 0 };
     ws2.getRow(ws2Row).height = 22;
     ws2Row++;
+
+    // Avg bid for region (all screens in region)
+    const regionBids = (Object.values(rfMap[regionName] || {})).flat().map(s => {
+      const b = brief.bidMode === "min" ? s.minBid : (s.recoBid || s.minBid);
+      return Number.isFinite(b) && b > 0 ? b : null;
+    }).filter(b => b != null);
+    const regionAvgBid = regionBids.length > 0
+      ? regionBids.reduce((a, b) => a + b, 0) / regionBids.length : null;
 
     // Region totals row
     [
@@ -2128,7 +2156,8 @@ async function downloadMediaPlan() {
       fmt(playsPerDay),
       Math.round(regionBudget).toLocaleString("ru-RU"),
       Number.isFinite(regionOts) && regionOts > 0 ? fmt(regionOts) : "—",
-      "—"
+      "—",
+      regionAvgBid != null ? regionAvgBid.toFixed(2) : "—",
     ].forEach((c, ci) => {
       const cell = val(ws2, ws2Row, ci + 1, c, { fill: LIGHT, border: true, right: ci >= 1 });
       cell.font = { bold: true, color: { argb: DARK }, size: 10 };
@@ -2167,6 +2196,7 @@ async function downloadMediaPlan() {
         Math.round(fmtBudget).toLocaleString("ru-RU"),
         Number.isFinite(fmtOts) && fmtOts > 0 ? fmt(Math.round(fmtOts)) : "—",
         avgOts != null ? fmt(Math.round(avgOts)) : "—",
+        avgBid != null ? avgBid.toFixed(2) : "—",
       ].forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill, border: true, right: ci >= 1 }));
       ws2.getRow(ws2Row).height = 17;
       ws2Row++;
@@ -4960,6 +4990,13 @@ function dspApplyInventories(raw) {
     if (!(Number.isFinite(s.ots) && s.ots > 0) && s.format && otsByFormat[s.format]) {
       s.ots = otsByFormat[s.format].sum / otsByFormat[s.format].cnt;
     }
+  }
+
+  // OTS cap (те же пороги, что и для CSV-инвентаря)
+  const OTS_CAPS_DSP = { BILLBOARD: 150, SUPERSITE: 200, OTHER: 100, MEDIAFACADE: 2000 };
+  for (const s of state.screens) {
+    const cap = OTS_CAPS_DSP[s.format];
+    if (cap && Number.isFinite(s.ots) && s.ots > cap) s.ots = cap;
   }
 
   state.formatsAll = [...new Set(state.screens.map(s => s.format).filter(Boolean))]
