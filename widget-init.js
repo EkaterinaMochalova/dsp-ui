@@ -1538,12 +1538,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       try {
         const ab = await file.arrayBuffer();
         const count = await window.PLANNER.loadAffinityXLSX(ab);
-        if (statusEl) statusEl.textContent = `✓ ${count.toLocaleString("ru-RU")} экранов`;
+        if (statusEl) statusEl.textContent = "✓ " + count.toLocaleString("ru-RU") + " экранов";
         renderAudienceSegments();
         renderProgress();
       } catch (err) {
         console.error("Affinity load error:", err);
-        if (statusEl) statusEl.textContent = `⚠ Ошибка: ${err.message}`;
+        if (statusEl) statusEl.textContent = "⚠ Ошибка: " + err.message;
       }
     });
   }
