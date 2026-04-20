@@ -752,11 +752,36 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             ↓ Импорт городов из файла
             <input type="file" id="region-file-input" accept=".xlsx,.csv,.txt" style="display:none;">
           </label>
+          <button type="button" id="regions-paste-btn"
+            style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
+                   background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
+            📋 Вставить список
+          </button>
           <button type="button" id="regions-select-all"
             style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
                    background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
             Выбрать все
           </button>
+        </div>
+        <!-- Paste area (скрыт до клика на кнопку) -->
+        <div id="regions-paste-wrap" style="display:none; margin-top:8px;">
+          <textarea id="regions-paste-area"
+            placeholder="Москва&#10;Санкт-Петербург&#10;Екатеринбург&#10;или через запятую: Москва, Казань, Уфа"
+            style="width:100%; height:90px; padding:8px 10px; border:1.5px solid #c4b5fd;
+                   border-radius:10px; font-size:13px; color:#0b1220; resize:vertical;
+                   font-family:inherit; box-sizing:border-box; outline:none;"></textarea>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <button type="button" id="regions-paste-go"
+              style="padding:7px 18px; background:#5B3EF5; color:#fff; border:none;
+                     border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;">
+              Добавить
+            </button>
+            <button type="button" id="regions-paste-cancel"
+              style="padding:7px 14px; background:#f3f4f6; color:#374151; border:none;
+                     border-radius:10px; font-size:13px; cursor:pointer;">
+              Отмена
+            </button>
+          </div>
         </div>
         <div id="region-import-status" style="margin-top:6px; font-size:12px; color:#667085; display:none;"></div>
         <div class="planner-note">

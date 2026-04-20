@@ -876,6 +876,11 @@ function renderSelectionExtra() {
       <div id="manual-gids-status" style="font-size:12px; color:#666; margin-top:6px;">
         Введите GID-ы — после расчёта будут использованы только эти экраны.
       </div>
+      <button id="manual-gids-download-unmatched" type="button" style="display:none; margin-top:8px;
+        padding:6px 14px; background:#fff3cd; border:1px solid #ffc107; border-radius:8px;
+        font-size:12px; color:#856404; cursor:pointer; font-weight:600;">
+        ↓ Скачать не найденные GID-ы
+      </button>
     `;
 
     // Живой счётчик совпадений при вводе
@@ -3123,6 +3128,11 @@ async function onCalcClick() {
   let anyPOIs = [];
   let perRegionRows = [];
 
+  // Трекинг ненайденных GID (для кнопки «скачать не найденные»)
+  const _isManualMode = brief.selection?.mode === "manual_screens";
+  const _manualGidSet = _isManualMode ? (brief.selection.manual_gids || new Set()) : new Set();
+  const _foundGids    = new Set(); // GID-ы, которые реально попали в расчёт
+
   const isPOI = (brief.selection?.mode === "poi");
   const isNearAddress = (brief.selection?.mode === "near_address");
 
@@ -3366,7 +3376,11 @@ async function onCalcClick() {
       const gidSet = brief.selection.manual_gids;
       if (gidSet && gidSet.size > 0) {
         const before = pool.length;
-        pool = pool.filter(s => gidSet.has(_screenIdOf(s)));
+        pool = pool.filter(s => {
+          const sid = _screenIdOf(s);
+          if (gidSet.has(sid)) { _foundGids.add(sid); return true; }
+          return false;
+        });
         if (!pool.length) {
           perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null,
             note: `ни один из ${gidSet.size} GID-ов не найден в регионе` });
@@ -3927,9 +3941,15 @@ ${perRegionText}`
   if (el("download-poi-csv"))  el("download-poi-csv").disabled  = !hasAnyPoi;
   if (el("download-poi-xlsx")) el("download-poi-xlsx").disabled = !hasAnyPoi;
 
+  // Ненайденные GID (для кнопки скачать)
+  const unmatchedGids = _isManualMode
+    ? [..._manualGidSet].filter(g => !_foundGids.has(g))
+    : [];
+  window.PLANNER.lastUnmatchedGids = unmatchedGids;
+
   window.dispatchEvent(new CustomEvent("planner:calc-done", {
     detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount,
-              formatStats, meta: window.PLANNER.lastCalc.meta }
+              formatStats, meta: window.PLANNER.lastCalc.meta, unmatchedGids }
   }));
 
   setStatus("");
@@ -4510,6 +4530,86 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       logEvent("download_poi");
     });
   }
+
+  // ===== Вставить список регионов =====
+  const pasteBtn    = el("regions-paste-btn");
+  const pasteWrap   = el("regions-paste-wrap");
+  const pasteArea   = el("regions-paste-area");
+  const pasteGo     = el("regions-paste-go");
+  const pasteCancel = el("regions-paste-cancel");
+
+  if (pasteBtn && pasteWrap) {
+    pasteBtn.addEventListener("click", () => {
+      pasteWrap.style.display = pasteWrap.style.display === "none" ? "block" : "none";
+      if (pasteWrap.style.display === "block" && pasteArea) pasteArea.focus();
+    });
+
+    if (pasteCancel) pasteCancel.addEventListener("click", () => {
+      pasteWrap.style.display = "none";
+      if (pasteArea) pasteArea.value = "";
+    });
+
+    if (pasteGo && pasteArea) {
+      const doImport = () => {
+        const text = pasteArea.value.trim();
+        if (!text) return;
+        // Разбиваем по переносам строк и запятым
+        const rawLines = text.split(/[\n,;]+/).map(l => l.trim()).filter(Boolean);
+        const rows = rawLines.map(l => ({ _val: l }));
+        const { matched, unmatched } = _extractAndMatchCities(rows);
+
+        if (!Array.isArray(state.selectedRegions)) state.selectedRegions = [];
+        let added = 0;
+        for (const r of matched) {
+          if (!state.selectedRegions.includes(r)) { state.selectedRegions.push(r); added++; }
+        }
+        if (matched.length) {
+          state.selectedRegion = state.selectedRegions[0] || null;
+          if (state.selectedRegions.length > REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = true;
+          renderSelectedRegions();
+          renderProgress();
+          window.dispatchEvent(new CustomEvent("planner:pool-updated"));
+        }
+
+        const statusEl = el("region-import-status");
+        if (statusEl) {
+          let msg = added > 0 ? `Добавлено: ${added}` : (matched.length ? `Уже выбраны все (${matched.length})` : "Не удалось распознать города");
+          if (unmatched.length) msg += `. Не найдены: ${unmatched.slice(0, 5).join(", ")}${unmatched.length > 5 ? ` и ещё ${unmatched.length - 5}` : ""}`;
+          statusEl.style.display = "block";
+          statusEl.textContent = msg;
+        }
+
+        pasteWrap.style.display = "none";
+        pasteArea.value = "";
+      };
+
+      pasteGo.addEventListener("click", doImport);
+      // Ctrl+Enter тоже запускает
+      pasteArea.addEventListener("keydown", e => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doImport(); }
+      });
+    }
+  }
+
+  // ===== Ненайденные GID: кнопка скачать =====
+  window.addEventListener("planner:calc-done", (e) => {
+    const unmatched = e?.detail?.unmatchedGids || [];
+    const btn = el("manual-gids-download-unmatched");
+    if (!btn) return;
+    if (unmatched.length > 0) {
+      btn.style.display = "inline-block";
+      btn.textContent = `↓ Скачать не найденные GID-ы (${unmatched.length})`;
+      btn.onclick = () => {
+        const blob = new Blob([unmatched.join("\n")], { type: "text/plain;charset=utf-8;" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "gids_not_found.txt";
+        a.click();
+      };
+    } else {
+      btn.style.display = "none";
+    }
+  });
 
   // ===== Calc =====
   const calcBtn = el("calc-btn");
