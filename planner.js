@@ -4815,8 +4815,10 @@ async function dspFetchForecastBids(screens, brief) {
     if (res.status !== "fulfilled" || !res.value?.elements) continue;
     for (const [idStr, elem] of Object.entries(res.value.elements)) {
       const dspId = Number(idStr);
-      const price = elem?.statistic?.averagePrice;
+      let price = elem?.statistic?.averagePrice;
       if (!Number.isFinite(price) || price <= 0) continue;
+      // MIN_BID означает отсутствие реальных аукционов — применяем коэффициент
+      if (elem?.referenceData?.method === "MIN_BID") price = price * BID_MULTIPLIER;
       _recoBidCache.set(dspId, { recoBid: price, ts: now });
       const s = idToScreen.get(dspId);
       if (s) s.recoBid = price;
