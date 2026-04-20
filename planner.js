@@ -256,9 +256,9 @@ function targetPlaysPerHourPerScreen(mode) {
   // max_reach = больше всего экранов (низкий pph → нужно больше экранов)
   // balanced   = средне
   // max_freq   = меньше всего экранов (высокий pph → концентрируем показы)
-  if (mode === "max_reach") return 10;
-  if (mode === "max_freq")  return 60;
-  return 15; // balanced
+  if (mode === "max_reach") return 5;
+  if (mode === "max_freq")  return 50;
+  return 25; // balanced
 }
 
 // ===== Utils =====
@@ -3473,7 +3473,7 @@ async function onCalcClick() {
   } else {
     // Recommendation mode
     if (brief.constructions?.enabled && brief.constructions.count > 0) {
-      // Бюджет = N конструкций × 50 выходов/ч × реальных часов кампании × avg рекомендованная ставка
+      // Бюджет = N конструкций × pphTarget выходов/ч × реальных часов кампании × avg рекомендованная ставка
       // (вне зависимости от города — используем среднюю ставку по всем экранам пула)
       const N = brief.constructions.count;
       const allBids = prepared.flatMap(r => r.pool.map(s => s.minBid))
@@ -3481,7 +3481,7 @@ async function onCalcClick() {
       const overallAvgBid = allBids.length > 0
         ? allBids.reduce((a, b) => a + b, 0) / allBids.length : 1;
       const recoBid = overallAvgBid * BID_MULTIPLIER;
-      const totalBudget = Math.round(N * 50 * days * hpdFixed * recoBid);
+      const totalBudget = Math.round(N * pphTarget * days * hpdFixed * recoBid);
 
       const alloc = allocateBudgetAcrossRegions(
         totalBudget,
@@ -3673,10 +3673,10 @@ async function onCalcClick() {
       totalPlaysTheory = adjustedTotalPlaysTheory;
     }
 
-    // Если задан pph — он полностью определяет частоту (выходов/час на экран, 1–60)
-    const ppmOverride = (constructionsTarget !== null && (brief.constructions?.playsPerHour ?? 0) > 0)
-      ? brief.constructions.playsPerHour   // уже выходов/час
-      : null;
+    // Если задано кол-во конструкций — частота определяется стратегией (pphTarget).
+    // Ручной слайдер ppm игнорируется; для рекомендованного бюджета pphTarget уже
+    // заложен в сумму бюджета. Для фиксированного — бюджет кэпит итоговую частоту.
+    const ppmOverride = (constructionsTarget !== null) ? pphTarget : null;
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
     // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу).
@@ -3874,7 +3874,9 @@ async function onCalcClick() {
 Итог (по всем регионам):
 — Выходов всего: ${nf(totalPlaysEffectiveAll)}
 — Выходов/день: ${nf(playsPerDayAll)}
-— Выходов/час (в сумме): ${nf(playsPerHourAll)}
+— Выходов/час (в сумме): ${nf(playsPerHourAll)}${chosenAll.length > 0 && hpd > 0
+    ? ` / на экран: ${(playsPerHourAll / chosenAll.length).toFixed(1)}`
+    : ""}
 — Экранов выбрано: ${chosenAll.length}
 — OTS всего: ${hasOts ? of(otsTotalAll) : "—"}
 
@@ -4168,18 +4170,45 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   }
 
   const constructionsEnabled = el("constructions-enabled");
+
+  function getPphTargetForUI() {
+    const mode = document.querySelector('input[name="reach_mode"]:checked')?.value || "max_reach";
+    return targetPlaysPerHourPerScreen(mode);
+  }
+
   function applyConstructionsState(checked) {
     const wrap = el("constructions-count-wrap");
     if (wrap) wrap.style.display = checked ? "block" : "none";
-    document.querySelectorAll('input[name="reach_mode"]').forEach(r => {
-      r.disabled = checked;
-    });
-    const reachBlock = document.querySelector(".reach-mode-block");
-    if (reachBlock) reachBlock.style.opacity = checked ? "0.4" : "";
+
+    // Когда конструкции заданы — слайдер ppm отключается, частота определяется стратегией
+    const ppmRow = el("constructions-ppm")?.closest("div[style]");
+    const ppmRange = el("constructions-ppm");
+    const ppmVal = el("constructions-ppm-val");
+    const ppmNote = el("constructions-ppm-note");
+
+    if (checked) {
+      if (ppmRange) ppmRange.disabled = true;
+      if (ppmRow) ppmRow.style.opacity = "0.4";
+      const pph = getPphTargetForUI();
+      if (ppmVal) ppmVal.textContent = pph + " (авто)";
+      if (ppmNote) ppmNote.style.display = "block";
+    } else {
+      if (ppmRange) ppmRange.disabled = false;
+      if (ppmRow) ppmRow.style.opacity = "";
+      if (ppmVal) ppmVal.textContent = ppmRange?.value || "10";
+      if (ppmNote) ppmNote.style.display = "none";
+    }
   }
+
   if (constructionsEnabled) {
     constructionsEnabled.addEventListener("change", (e) => {
       applyConstructionsState(e.target.checked);
+    });
+    // При смене стратегии — обновить отображение частоты
+    document.querySelectorAll('input[name="reach_mode"]').forEach(r => {
+      r.addEventListener("change", () => {
+        if (el("constructions-enabled")?.checked) applyConstructionsState(true);
+      });
     });
     // apply initial state on load
     applyConstructionsState(constructionsEnabled.checked);
@@ -4189,10 +4218,11 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
     r.addEventListener("change", renderProgress);
   });
 
-  // ppm range slider label sync
+  // ppm range slider label sync (only when not disabled by constructions)
   const ppmRange = el("constructions-ppm");
   if (ppmRange) {
     ppmRange.addEventListener("input", (e) => {
+      if (e.target.disabled) return;
       const lbl = el("constructions-ppm-val");
       if (lbl) lbl.textContent = e.target.value;
     });

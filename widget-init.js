@@ -486,6 +486,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     gap: 6px;
     flex-wrap: wrap;
     margin-bottom: 16px;
+    position: sticky;
+    top: 12px;
+    z-index: 20;
+    background: rgba(255,255,255,0.94);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 6px 0 8px;
+    border-radius: 10px;
   }
   #planner-widget .wiz-chip{
     padding: 6px 14px;
@@ -980,6 +988,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
           <span>1 / час</span><span>60 / час</span>
         </div>
+        <div id="constructions-ppm-note" style="display:none; margin-top:6px; font-size:12px; color:#5b3ef5;">
+          ℹ️ Частота определяется стратегией подбора. Слайдер неактивен.
+        </div>
       </div>
     </div>
   </div>
@@ -1237,14 +1248,30 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   function el(id){ return document.getElementById(id); }
 
   function setStep(step){
-    document.querySelectorAll("#planner-widget .wiz-step").forEach(s => s.classList.remove("active"));
-    el("wiz-step-" + step)?.classList.add("active");
+    // Используем и class, и inline style — чтобы CSS Tilda не перебивал display
+    document.querySelectorAll("#planner-widget .wiz-step").forEach(s => {
+      s.classList.remove("active");
+      s.style.display = "none";
+    });
+    const target = el("wiz-step-" + step);
+    if (target) {
+      target.classList.add("active");
+      target.style.display = "block";
+    }
 
     document.querySelectorAll("#planner-widget .wiz-chip").forEach(c => c.classList.remove("active"));
     document.querySelector('#planner-widget .wiz-chip[data-step="'+ step +'"]')?.classList.add("active");
 
-    el("planner-widget")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // window.scrollTo надёжнее чем scrollIntoView в Tilda (вложенные контейнеры)
+    const widget = el("planner-widget");
+    if (widget) {
+      const top = widget.getBoundingClientRect().top + window.scrollY - 20;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    }
   }
+
+  // Делаем setStep доступным глобально
+  window.setStep = setStep;
 
   function hasDates(){
     const s = el("date-start")?.value;
@@ -1252,8 +1279,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     return !!(s && e);
   }
 
-  document.querySelectorAll("#planner-widget .wiz-chip").forEach(chip => {
-    chip.addEventListener("click", () => setStep(Number(chip.dataset.step || 1)));
+  // Используем делегирование событий — работает даже после перерисовки
+  document.getElementById("wiz-steps")?.addEventListener("click", e => {
+    const chip = e.target.closest(".wiz-chip");
+    if (chip) setStep(Number(chip.dataset.step || 1));
   });
 
   function updateNext1Btn(){
