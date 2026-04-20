@@ -169,10 +169,60 @@ const state = {
   dspInventoryCache: null,
   dspInventoryWarmupPromise: null,
   dspInventoryWarmupDone: false,
-  dspRegionToCities: {}
+  dspRegionToCities: {},
+
+  // VK Affinity data: Map<GID, {segmentName: affinityValue}>
+  affinityMap: null,
 };
 
 window.PLANNER.state = state;
+
+// ===== VK AFFINITY =====
+const AFFINITY_SKIP_COLS = new Set([
+  'GID','source_file',
+  'Возраст','Занятость','Индивидуальный доход','Наличие детей',
+  'Наличие образования','Пол','Премиум','Семейное положение','Черты характера'
+]);
+
+const AFFINITY_GROUPS = {
+  "Пол":         ["Женщины", "Мужчины"],
+  "Возраст":     ["<17", "18-24", "25-34", "35-44", "45-54", ">55"],
+  "Доход":       ["Низкий", "Эконом класс", "Средний", "Средний класс", "Выше ср.", "Высокий", "Премиум базовый", "Премиум средний", "Премиум высокий", "Премиум класс"],
+  "Семья":       ["Есть дети", "Нет детей", "Женат/Замужем", "Не женат/Не замужем"],
+  "Образование": ["Есть высшее", "Нет высшего", "Среднее образование"],
+  "Занятость":   ["Работает", "Не работает"],
+  "Черты":       ["Импульсивность", "Интроверсия", "Любознательность", "Практичность", "Самоконтроль", "Сдержанность", "Творчество", "Экстраверсия", "Эмоциональность"],
+};
+window.PLANNER.AFFINITY_GROUPS = AFFINITY_GROUPS;
+
+async function loadAffinityXLSX(arrayBuffer) {
+  const ExcelJS = window.ExcelJS;
+  if (!ExcelJS) throw new Error("ExcelJS не загружен");
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(arrayBuffer);
+  const ws = wb.worksheets[0];
+  if (!ws) throw new Error("Пустой файл");
+  const map = new Map();
+  let headers = null;
+  ws.eachRow((row, rowNum) => {
+    if (rowNum === 1) { headers = row.values; return; } // 1-indexed: [undefined, 'GID', 'source_file', ...]
+    const vals = row.values;
+    const gid = String(vals[1] ?? "").trim();
+    if (!gid) return;
+    const rec = {};
+    for (let i = 3; i < headers.length; i++) {
+      const col = String(headers[i] ?? "").trim();
+      if (!col || AFFINITY_SKIP_COLS.has(col)) continue;
+      const v = vals[i];
+      if (v !== null && v !== undefined) rec[col] = typeof v === "number" ? v : parseFloat(v) || 0;
+    }
+    map.set(gid, rec);
+  });
+  state.affinityMap = map;
+  window.dispatchEvent(new CustomEvent("planner:affinity-loaded", { detail: { count: map.size } }));
+  return map.size;
+}
+window.PLANNER.loadAffinityXLSX = loadAffinityXLSX;
 
 function getReachModeFromUI() {
   return document.querySelector('input[name="reach_mode"]:checked')?.value || "balanced";
@@ -1248,6 +1298,16 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
       enabled:     !!el("constructions-enabled")?.checked,
       count:       toNumber(el("constructions-count")?.value ?? 0),
       playsPerHour: toNumber(el("constructions-ppm")?.value ?? 0) || 0,
+    },
+    audience: {
+      enabled: !!el("audience-enabled")?.checked,
+      segments: (() => {
+        const segs = [];
+        document.querySelectorAll('#audience-segment-wrap input[type="checkbox"]:checked')
+          .forEach(cb => segs.push(cb.value));
+        return segs;
+      })(),
+      minAffinity: toNumber(el("audience-min-affinity")?.value) || 1.5,
     },
     bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
     reachMode: getReachModeFromUI(),
@@ -3261,6 +3321,26 @@ async function onCalcClick() {
       }
     }
 
+    // VK Affinity filter
+    if (brief.audience?.enabled && brief.audience.segments?.length > 0) {
+      if (state.affinityMap?.size > 0) {
+        const segs = brief.audience.segments;
+        const minAff = brief.audience.minAffinity ?? 1.5;
+        const before = pool.length;
+        pool = pool.filter(s => {
+          const aff = state.affinityMap.get(_screenIdOf(s));
+          if (!aff) return false;
+          return segs.every(seg => (aff[seg] ?? 0) >= minAff);
+        });
+        setStatus(`Аудитория: ${pool.length} из ${before} (аффинити ≥${minAff})`);
+        if (!pool.length) {
+          perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null,
+            note: `аффинити-фильтр: нет экранов (из ${before}) с аффинити ≥${minAff} по [${segs.join(", ")}]` });
+          continue;
+        }
+      }
+    }
+
     // Prefer screens with valid minBid: exclude no-bid screens if any bid screens exist
     const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
     if (hasBidScreens) {
@@ -3734,6 +3814,9 @@ async function onCalcClick() {
 — Подбор: ${brief.selection.mode}
 — Режим ставки: ${brief.bidMode === "min" ? "Минимальная (minBid)" : "Рекомендованная"}
 — GRP: ${brief.grp.enabled ? `${brief.grp.min.toFixed(2)}–${brief.grp.max.toFixed(2)}` : "не учитываем"}
+— Аудитория: ${brief.audience?.enabled && brief.audience.segments?.length > 0
+    ? `${brief.audience.segments.join(", ")} (аффинити ≥${brief.audience.minAffinity ?? 1.5})`
+    : "—"}
 — Конструкций (лимит): ${brief.constructions?.enabled && brief.constructions.count > 0 ? brief.constructions.count : "—"}
 
 Итог (по всем регионам):
@@ -3876,12 +3959,28 @@ function computePoolPreview() {
     countAfterOwners = poolAfterGrp.filter(s => selectedOwners.includes(s.owner)).length;
   }
 
-  const countFinal = countAfterOwners !== null
-    ? countAfterOwners
-    : (countAfterGrp !== null ? countAfterGrp : countBase);
+  // 5. After affinity filter
+  let countAfterAffinity = null;
+  const poolBeforeAff = selectedOwners.length > 0
+    ? poolAfterGrp.filter(s => selectedOwners.includes(s.owner))
+    : poolAfterGrp;
+  if (brief.audience?.enabled && brief.audience.segments?.length > 0 && state.affinityMap?.size > 0) {
+    const segs = brief.audience.segments;
+    const minAff = brief.audience.minAffinity ?? 1.5;
+    countAfterAffinity = poolBeforeAff.filter(s => {
+      const aff = state.affinityMap.get(_screenIdOf(s));
+      if (!aff) return false;
+      return segs.every(seg => (aff[seg] ?? 0) >= minAff);
+    }).length;
+  }
 
-  return { countBase, countAfterGrp, countAfterOwners, countFinal,
-           hasGrpFilter: !!brief.grp?.enabled, hasOwnerFilter: selectedOwners.length > 0 };
+  const countFinal = countAfterAffinity !== null
+    ? countAfterAffinity
+    : (countAfterOwners !== null ? countAfterOwners : (countAfterGrp !== null ? countAfterGrp : countBase));
+
+  return { countBase, countAfterGrp, countAfterOwners, countAfterAffinity, countFinal,
+           hasGrpFilter: !!brief.grp?.enabled, hasOwnerFilter: selectedOwners.length > 0,
+           hasAffinityFilter: !!(brief.audience?.enabled && brief.audience.segments?.length > 0) };
 }
 
 window.PLANNER = window.PLANNER || {};

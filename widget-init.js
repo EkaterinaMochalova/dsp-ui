@@ -934,6 +934,34 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       </div>
     </div>
   </div>
+  <!-- ===== АУДИТОРИЯ VK ===== -->
+    <div class="planner-block" id="audience-block">
+      <label class="check-row"><input type="checkbox" id="audience-enabled"> Фильтр по аудитории (VK affinity)</label>
+      <div id="audience-wrap" style="display:none; margin-top:12px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+          <label style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
+                 border:1.5px dashed #c4b5fd; border-radius:10px; background:#faf8ff;
+                 color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:500;">
+            ↑ Загрузить affinity.xlsx
+            <input type="file" id="audience-file-input" accept=".xlsx" style="display:none;">
+          </label>
+          <span id="audience-file-status" style="font-size:12px; color:#667085;">файл не загружен</span>
+        </div>
+        <div id="audience-segment-wrap">
+          <!-- groups rendered by JS -->
+        </div>
+        <div style="margin-top:10px;">
+          <div style="font-size:12px; font-weight:600; margin-bottom:6px; color:#0b1220;">
+            Минимальный аффинити: <span id="audience-aff-val" style="color:#5b3ef5;">1.5</span>
+          </div>
+          <input type="range" id="audience-min-affinity" min="1.0" max="5.0" step="0.1" value="1.5"
+                 style="width:100%; accent-color:#5b3ef5;">
+          <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
+            <span>1.0 (слабый)</span><span>2.0 (средний)</span><span>5.0 (сильный)</span>
+          </div>
+        </div>
+      </div>
+    </div>
   <!-- Зона на карте (перед "Как собираем") -->
   <div class="planner-block">
     <div class="planner-label">Зона на карте</div>
@@ -1277,6 +1305,46 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     return v > 0 ? (Math.floor(v).toLocaleString("ru-RU") + " ₽") : "не задан";
   }
 
+  function renderAudienceSegments() {
+    const wrap = el("audience-segment-wrap");
+    if (!wrap) return;
+    const groups = window.PLANNER?.AFFINITY_GROUPS;
+    if (!groups) return;
+    const affinityMap = window.PLANNER?.state?.affinityMap;
+    // Collect all interest columns (not in named groups)
+    const namedCols = new Set(Object.values(groups).flat());
+    let interestCols = [];
+    if (affinityMap?.size > 0) {
+      const sample = affinityMap.values().next().value;
+      interestCols = Object.keys(sample || {}).filter(k => !namedCols.has(k)).sort();
+    }
+    const groupDefs = { ...groups };
+    if (interestCols.length) groupDefs["Интересы"] = interestCols;
+
+    wrap.innerHTML = Object.entries(groupDefs).map(([gname, cols]) => \`
+      <div style="margin-bottom:10px;">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#9ca3af;margin-bottom:6px;">\${gname}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          \${cols.map(col => \`
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+              padding:4px 10px;border-radius:999px;font-size:12px;
+              border:1px solid rgba(15,23,42,.14);background:#f8f9fb;color:#374151;
+              transition:border-color .12s,background .12s;">
+              <input type="checkbox" value="\${col.replace(/"/g,'&quot;')}"
+                style="accent-color:#5b3ef5;width:12px;height:12px;margin:0;">
+              \${col}
+            </label>
+          \`).join("")}
+        </div>
+      </div>
+    \`).join("");
+
+    // Re-attach change listeners for renderProgress
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener("change", () => renderProgress());
+    });
+  }
+
   function getSelectionSummary(){
     const m = el("selection-mode")?.value || "city_even";
     const map = {
@@ -1401,7 +1469,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   window.renderProgress = renderProgress;
 
   function bindLive(){
-    ["date-start","date-end","budget-input","goal-ots","formats-auto","selection-mode","time-from","time-to","grp-enabled","grp-min","grp-max"]
+    ["date-start","date-end","budget-input","goal-ots","formats-auto","selection-mode","time-from","time-to","grp-enabled","grp-min","grp-max","audience-enabled"]
       .forEach(id => {
         el(id)?.addEventListener("input", renderProgress);
         el(id)?.addEventListener("change", renderProgress);
@@ -1438,6 +1506,52 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     syncGrp();
     renderProgress();
   }
+
+  // ===== AUDIENCE VK =====
+  const audienceEnabled = el("audience-enabled");
+  if (audienceEnabled) {
+    audienceEnabled.addEventListener("change", e => {
+      const wrap = el("audience-wrap");
+      if (wrap) wrap.style.display = e.target.checked ? "block" : "none";
+      renderProgress();
+    });
+  }
+
+  // Affinity slider label sync
+  const affSlider = el("audience-min-affinity");
+  if (affSlider) {
+    affSlider.addEventListener("input", e => {
+      const lbl = el("audience-aff-val");
+      if (lbl) lbl.textContent = parseFloat(e.target.value).toFixed(1);
+      renderProgress();
+    });
+  }
+
+  // File upload handler
+  const audienceFileInput = el("audience-file-input");
+  if (audienceFileInput) {
+    audienceFileInput.addEventListener("change", async e => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const statusEl = el("audience-file-status");
+      if (statusEl) statusEl.textContent = "⏳ Загружаю…";
+      try {
+        const ab = await file.arrayBuffer();
+        const count = await window.PLANNER.loadAffinityXLSX(ab);
+        if (statusEl) statusEl.textContent = `✓ ${count.toLocaleString("ru-RU")} экранов`;
+        renderAudienceSegments();
+        renderProgress();
+      } catch (err) {
+        console.error("Affinity load error:", err);
+        if (statusEl) statusEl.textContent = `⚠ Ошибка: ${err.message}`;
+      }
+    });
+  }
+
+  window.addEventListener("planner:affinity-loaded", () => {
+    renderAudienceSegments();
+    renderProgress();
+  });
 
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindLive);
   else bindLive();
@@ -3048,7 +3162,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       return;
     }
 
-    const { countBase, countAfterGrp, countAfterOwners, countFinal, hasGrpFilter, hasOwnerFilter } = preview;
+    const { countBase, countAfterGrp, countAfterOwners, countAfterAffinity, countFinal, hasGrpFilter, hasOwnerFilter, hasAffinityFilter } = preview;
 
     let html = \`<div class="pool-preview-row">\`;
     html += \`<span class="pool-preview-base">Базовый пул: \${fmtN(countBase)} экр.</span>\`;
@@ -3068,7 +3182,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       html += \`<span class="pool-preview-filter">Операторы: <b>\${fmtN(countAfterOwners)}</b><span class="pool-preview-pct"> −\${fmtN(drop)} (\${pct}%)</span></span>\`;
     }
 
-    if(hasGrpFilter || hasOwnerFilter){
+    if(hasAffinityFilter && countAfterAffinity !== null){
+      html += \`<span class="pool-preview-arrow">→</span>\`;
+      html += \`<span class="pool-preview-filter">Аудитория (VK): <b>\${fmtN(countAfterAffinity)}</b></span>\`;
+    }
+
+    if(hasGrpFilter || hasOwnerFilter || hasAffinityFilter){
       html += \`<span class="pool-preview-arrow">→</span>\`;
       html += \`<span class="pool-preview-base">Итого: \${fmtN(countFinal)} экр.</span>\`;
     }
@@ -3091,6 +3210,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Обновлять при любом изменении фильтров
   window.addEventListener("planner:screens-ready", renderPoolPreview);
   window.addEventListener("planner:pool-updated", renderPoolPreview);
+  window.addEventListener("planner:affinity-loaded", renderPoolPreview);
 
   // Делегируем на изменения фильтров через MutationObserver + события
   document.addEventListener("change", (e) => {
@@ -3098,11 +3218,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if(!t) return;
     const id = t.id || "";
     const name = t.name || "";
-    // GRP, форматы, операторы, конструкции
+    // GRP, форматы, операторы, конструкции, аудитория
     if(id === "grp-enabled" || id === "grp-min" || id === "grp-max" ||
        id === "constructions-enabled" || id === "constructions-count" ||
+       id === "audience-enabled" || id === "audience-min-affinity" ||
        name === "reach_mode" || name === "bid_mode" ||
-       t.closest?.("#owner-wrap") || t.closest?.("#formats-wrap")){
+       t.closest?.("#owner-wrap") || t.closest?.("#formats-wrap") ||
+       t.closest?.("#audience-segment-wrap")){
       setTimeout(renderPoolPreview, 50);
     }
   });
