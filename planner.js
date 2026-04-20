@@ -252,6 +252,34 @@ function getReachModeFromUI() {
   return document.querySelector('input[name="reach_mode"]:checked')?.value || "balanced";
 }
 
+// ===== Приоритет операторов при подборе экранов =====
+// Экраны preferred-операторов идут первыми внутри каждой географической ячейки.
+// Порядок важен: чем меньше индекс, тем выше приоритет.
+const PREFERRED_OWNER_KEYWORDS = [
+  "рим",           // 1
+  "рц",            // 2  (РЦ / Рекламный центр)
+  "расверо",       // 3
+  "хэт-трик",      // 4
+  "мособлреклама", // 5
+  "инсайт медиа",  // 6
+  "аффикс",        // 7
+  "санлайт",       // 8  (СанЛайт / Sunlight)
+  "sunlight",      // 8  alias
+  "илан",          // 9
+  "аляска",        // 10
+  "rgb",           // 11
+  "postex",        // 12
+  "lume",          // 13
+];
+
+function ownerPriority(screen) {
+  const owner = String(screen.owner ?? screen.Owner ?? "").toLowerCase();
+  for (let i = 0; i < PREFERRED_OWNER_KEYWORDS.length; i++) {
+    if (owner.includes(PREFERRED_OWNER_KEYWORDS[i])) return i + 1;
+  }
+  return PREFERRED_OWNER_KEYWORDS.length + 1; // все остальные — ниже
+}
+
 function targetPlaysPerHourPerScreen(mode) {
   // max_reach = больше всего экранов (низкий pph → нужно больше экранов)
   // balanced   = средне
@@ -1741,6 +1769,8 @@ function removeScreen(screenId) {
 
 function pickScreensByMinBid(screens, n) {
   const sorted = [...screens].sort((a, b) => {
+    const pa = ownerPriority(a), pb = ownerPriority(b);
+    if (pa !== pb) return pa - pb;
     const aa = Number.isFinite(a.minBid) ? a.minBid : 1e18;
     const bb = Number.isFinite(b.minBid) ? b.minBid : 1e18;
     if (aa !== bb) return aa - bb;
@@ -1800,7 +1830,12 @@ function groupByGrid(screens, stepKm = 2) {
 function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2) {
   const cells = groupByGrid(pool, stepKm);
   for (const cell of cells) {
-    cell.sort((a, b) => (a.minBid ?? 1e18) - (b.minBid ?? 1e18));
+    // Сначала приоритетные операторы, внутри приоритета — по minBid (дешевле → выше)
+    cell.sort((a, b) => {
+      const pa = ownerPriority(a), pb = ownerPriority(b);
+      if (pa !== pb) return pa - pb;
+      return (a.minBid ?? 1e18) - (b.minBid ?? 1e18);
+    });
   }
   cells.sort(() => Math.random() - 0.5);
 
@@ -3752,6 +3787,12 @@ async function onCalcClick() {
     if (constructionsTarget === null && ppmOverride === null && chosen.length < pool.length) {
       const pickedSet = new Set(chosen);
       const extraPool = pool.filter(s => !pickedSet.has(s));
+      // Sort so preferred operators are added first during capacity expansion
+      extraPool.sort((a, b) => {
+        const pa = ownerPriority(a), pb = ownerPriority(b);
+        if (pa !== pb) return pa - pb;
+        return (a.minBid ?? 1e18) - (b.minBid ?? 1e18);
+      });
       let guardCount = 0;
       while (capPlaysByChosen < totalPlaysTheory && extraPool.length > 0 && guardCount++ < 20) {
         const shortfall = totalPlaysTheory - capPlaysByChosen;
