@@ -1910,6 +1910,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     });
 
     // Per-city budget
+    let _lastPerCityRegionsSig = "";
     function renderPerCityRows() {
       const regions = window.PLANNER?.state?.selectedRegions || [];
       const wrap = el("per-city-toggle-wrap");
@@ -1922,7 +1923,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       el("per-city-budget-wrap").style.display = "block";
       el("budget-distrib-note").style.display = "none";
       el("budget-input").style.display = "none";
-      // Build rows (keep existing values)
+      // Only rebuild rows if regions changed — avoids focus loss on interval tick
+      const sig = regions.slice().sort().join("||");
+      if (sig === _lastPerCityRegionsSig) return;
+      _lastPerCityRegionsSig = sig;
       const existing = {};
       rowsEl.querySelectorAll(".per-city-row").forEach(r => {
         existing[r.dataset.region] = r.querySelector("input")?.value || "";
