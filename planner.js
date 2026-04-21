@@ -3449,10 +3449,14 @@ async function onCalcClick() {
       }
     }
 
-    // Prefer screens with valid minBid: exclude no-bid screens if any bid screens exist
-    const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
-    if (hasBidScreens) {
-      pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+    // In constructions mode keep all screens (bid computed from those that have it).
+    // Otherwise exclude no-bid screens when bid screens exist.
+    const _constructionsMode = brief.constructions?.enabled && brief.constructions.count > 0;
+    if (!_constructionsMode) {
+      const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
+      if (hasBidScreens) {
+        pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+      }
     }
 
     // GRP filter
