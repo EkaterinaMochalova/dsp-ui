@@ -1932,8 +1932,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const row = document.createElement("div");
         row.className = "per-city-row";
         row.dataset.region = region;
-        row.innerHTML = `<span class="per-city-row-label">${region}</span>
-          <input type="number" class="ux-input" min="0" step="1000" placeholder="0" value="${existing[region] || ""}">`;
+        row.innerHTML = '<span class="per-city-row-label">' + region + '</span>'
+          + '<input type="number" class="ux-input" min="0" step="1000" placeholder="0" value="' + (existing[region] || '') + '">';
         row.querySelector("input").addEventListener("input", syncPerCityTotal);
         rowsEl.appendChild(row);
       });
