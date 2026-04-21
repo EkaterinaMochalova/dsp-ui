@@ -955,20 +955,27 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <div class="wiz-step" id="wiz-step-3">
         <div class="planner-block">
           <div class="planner-label">Бюджет</div>
-<div class="budget-modes">
-  <label class="ux-radio">
+<div class="strategy-chips" style="flex-direction:column;gap:6px;">
+  <label class="str-chip">
     <input type="radio" name="budget_mode" value="fixed" checked>
-    <span>Есть бюджет</span>
+    <div class="str-chip-body">
+      <div class="str-chip-title">💰 Есть бюджет</div>
+      <div class="str-chip-desc">Укажу сумму — подберёте программу</div>
+    </div>
   </label>
-<br>
-  <label class="ux-radio">
+  <label class="str-chip">
     <input type="radio" name="budget_mode" value="recommendation">
-    <span>Подскажите оптимальный бюджет</span>
+    <div class="str-chip-body">
+      <div class="str-chip-title">✨ Подскажите бюджет</div>
+      <div class="str-chip-desc">Планировщик рассчитает оптимальную сумму</div>
+    </div>
   </label>
-<br>
-  <label class="ux-radio">
+  <label class="str-chip">
     <input type="radio" name="budget_mode" value="goal_ots">
-    <span>Есть цель по OTS</span>
+    <div class="str-chip-body">
+      <div class="str-chip-title">👁 Цель по OTS</div>
+      <div class="str-chip-desc">Задам нужный охват — подберёте бюджет</div>
+    </div>
   </label>
 </div>
 <!-- fixed -->
