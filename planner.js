@@ -1160,7 +1160,10 @@ async function loadScreens() {
   // with the same format. This prevents zero-OTS screens from dragging
   // down the pool average when some screens simply lack measurement data.
   // Exception: Магнит screens always keep OTS=0 (their data is unreliable).
-  const isMagnitScreen = s => String(s.owner ?? "").toLowerCase().includes("магнит");
+  const isMagnitScreen = s => {
+    const o = String(s.owner ?? "").toLowerCase();
+    return o.includes("магнит") || _ZERO_OTS_OWNERS.some(k => o.includes(k));
+  };
   const otsByFormat = {};
   for (const s of state.screens) {
     if (isMagnitScreen(s)) continue; // exclude from average computation
@@ -5438,6 +5441,16 @@ async function dspLoadInventoryFromStorage() {
   }
 }
 
+// Owners whose OTS data is known-bad → always zero
+const _ZERO_OTS_OWNERS = ["sunlight indoor", "maer indoor", "spectr"];
+function _isZeroOtsOwner(s) {
+  const o = String(s.owner ?? "").toLowerCase();
+  return _ZERO_OTS_OWNERS.some(k => o.includes(k));
+}
+
+const _OTS_CAPS_DSP = { BILLBOARD: 150, SUPERSITE: 200, MEDIAFACADE: 2000 };
+const _OTS_CAP_DEFAULT = 200; // for all other formats
+
 // Применяет уже смапленные экраны (из кэша или после расчёта) в state.screens
 function dspApplyMappedScreens(screens) {
   state.screens = screens.map(s => ({
@@ -5451,17 +5464,33 @@ function dspApplyMappedScreens(screens) {
   }));
   state.screensAll = [...state.screens];
 
+  // Zero out known-bad OTS owners before computing format averages
+  for (const s of state.screens) {
+    if (_isZeroOtsOwner(s)) s.ots = 0;
+  }
+
   const otsByFormat = {};
   for (const s of state.screens) {
+    if (_isZeroOtsOwner(s)) continue;
     if (Number.isFinite(s.ots) && s.ots > 0 && s.format) {
+      const cap = _OTS_CAPS_DSP[s.format] ?? _OTS_CAP_DEFAULT;
+      if (s.ots > cap) continue; // exclude outliers from average
       if (!otsByFormat[s.format]) otsByFormat[s.format] = { sum: 0, cnt: 0 };
       otsByFormat[s.format].sum += s.ots;
       otsByFormat[s.format].cnt++;
     }
   }
   for (const s of state.screens) {
+    if (_isZeroOtsOwner(s)) continue;
     if (!(Number.isFinite(s.ots) && s.ots > 0) && s.format && otsByFormat[s.format])
       s.ots = otsByFormat[s.format].sum / otsByFormat[s.format].cnt;
+  }
+
+  // Apply OTS caps (same logic as CSV path)
+  for (const s of state.screens) {
+    if (_isZeroOtsOwner(s)) { s.ots = 0; continue; }
+    const cap = _OTS_CAPS_DSP[s.format] ?? _OTS_CAP_DEFAULT;
+    if (Number.isFinite(s.ots) && s.ots > cap) s.ots = cap;
   }
 
   state.formatsAll = [...new Set(state.screens.map(s => s.format).filter(Boolean))]
