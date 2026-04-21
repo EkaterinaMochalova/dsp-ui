@@ -1343,7 +1343,17 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
     budget: {
       mode: budgetMode,
       amount: budgetMode === "fixed" ? Number(budgetNet || 0) : null,
-      currency: "RUB"
+      currency: "RUB",
+      perCity: (() => {
+        if (budgetMode !== "fixed" || !document.getElementById("per-city-enabled")?.checked) return null;
+        const map = {};
+        document.querySelectorAll("#per-city-rows .per-city-row").forEach(row => {
+          const region = row.dataset.region;
+          const val = Number(row.querySelector("input")?.value || 0);
+          if (region && val > 0) map[region] = val;
+        });
+        return Object.keys(map).length > 0 ? map : null;
+      })()
     },
     dates: {
       start: el("date-start")?.value || null,
@@ -3523,16 +3533,22 @@ async function onCalcClick() {
   let goalPlanUnmet = 0;
 
   if (brief.budget.mode === "fixed") {
-    const totalBudget = Number(brief.budget.amount);
-    const fixedAllocation = allocateBudgetAcrossRegions(
-      totalBudget,
-      prepared.map(r => ({ key: r.region, tier: getTierForGeo(r.region) })),
-      { minShare: 0.10, maxShare: 0.70 }
-    );
-
-    for (const r of prepared) {
-      const found = fixedAllocation?.find(x => x.region === r.region);
-      budgets[r.region] = found ? Number(found.budget) : 0;
+    if (brief.budget.perCity && Object.keys(brief.budget.perCity).length > 0) {
+      // User specified per-city budgets — use directly
+      for (const r of prepared) {
+        budgets[r.region] = Number(brief.budget.perCity[r.region] || 0);
+      }
+    } else {
+      const totalBudget = Number(brief.budget.amount);
+      const fixedAllocation = allocateBudgetAcrossRegions(
+        totalBudget,
+        prepared.map(r => ({ key: r.region, tier: getTierForGeo(r.region) })),
+        { minShare: 0.10, maxShare: 0.70 }
+      );
+      for (const r of prepared) {
+        const found = fixedAllocation?.find(x => x.region === r.region);
+        budgets[r.region] = found ? Number(found.budget) : 0;
+      }
     }
 
   } else if (brief.budget.mode === "goal_ots") {
@@ -3940,7 +3956,10 @@ async function onCalcClick() {
       formatStats[fmt].otsSum += s.ots;
       formatStats[fmt].otsCnt++;
     }
-    const bidForStat = Number.isFinite(s.minBid) && s.minBid > 0 ? s.minBid : null;
+    const bidForStat = brief.bidMode === "min"
+      ? (Number.isFinite(s.minBid) && s.minBid > 0 ? s.minBid : null)
+      : (Number.isFinite(s.recoBid) && s.recoBid > 0 ? s.recoBid
+          : (Number.isFinite(s.minBid) && s.minBid > 0 ? s.minBid : null));
     if (bidForStat != null) { formatStats[fmt].bidSum += bidForStat; formatStats[fmt].bidCnt++; }
   }
 

@@ -702,6 +702,18 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   }
   #planner-widget .vk-card.active .vk-toggle::after{left:19px;}
 
+  /* ===== PER-CITY BUDGET ===== */
+  #planner-widget .per-city-row{
+    display:flex;align-items:center;gap:8px;margin-bottom:6px;
+  }
+  #planner-widget .per-city-row-label{
+    flex:1;font-size:13px;font-weight:500;color:#344054;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  #planner-widget .per-city-row .ux-input{
+    width:130px;flex-shrink:0;text-align:right;
+  }
+
   /* ===== BUDGET EXTRAS (НДС / commission) ===== */
   #planner-widget .budget-extra-row{
     display: flex;
@@ -962,8 +974,24 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <!-- fixed -->
 <div id="budget-input-wrap" style="margin-top:10px;">
   <input id="budget-input" type="number" class="ux-input" placeholder="Введите бюджет, ₽" min="0" step="1000">
-  <div class="planner-note" style="margin-top:6px;">
+  <div class="planner-note" style="margin-top:6px;" id="budget-distrib-note">
     Распределим сумму по выбранным регионам.
+  </div>
+  <!-- per-city toggle (shown when 2+ regions selected) -->
+  <div id="per-city-toggle-wrap" style="display:none; margin-top:10px;">
+    <label class="check-row" style="font-size:13px; font-weight:500; color:#344054; cursor:pointer;">
+      <input type="checkbox" id="per-city-enabled" style="width:15px;height:15px;accent-color:#5b3ef5;cursor:pointer;">
+      Задать бюджет по городам
+    </label>
+  </div>
+  <!-- per-city rows -->
+  <div id="per-city-budget-wrap" style="display:none; margin-top:10px;">
+    <div id="per-city-rows"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                border-top:1px solid #e5e3f0;padding-top:8px;margin-top:4px;">
+      <span style="font-size:13px;font-weight:600;color:#344054;">Итого</span>
+      <span style="font-size:13px;font-weight:700;color:#5b3ef5;" id="per-city-total-val">0 ₽</span>
+    </div>
   </div>
 </div>
 <!-- goal_ots -->
@@ -1587,7 +1615,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <span>Интересы</span>
           <span id="interests-arrow" style="font-size:10px;">▼</span>
         </button>
-        <div id="interests-body" style="display:none;margin-top:8px;">
+        <div id="interests-body" style="display:block;margin-top:8px;">
           <input type="text" id="interests-search" placeholder="Поиск интереса…"
             style="width:100%;box-sizing:border-box;padding:5px 10px;border:1px solid #e0d9ff;
               border-radius:8px;font-size:12px;margin-bottom:8px;outline:none;">
@@ -1604,7 +1632,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const toggleBtn = wrap.querySelector('#interests-toggle');
     const interestsBody = wrap.querySelector('#interests-body');
     const arrow = wrap.querySelector('#interests-arrow');
-    let interestsOpen = false;
+    let interestsOpen = true;
+    if (arrow) arrow.textContent = '▲';
     if (toggleBtn && interestsBody) {
       toggleBtn.addEventListener('click', () => {
         interestsOpen = !interestsOpen;
@@ -1880,6 +1909,66 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       renderProgress();
     });
 
+    // Per-city budget
+    function renderPerCityRows() {
+      const regions = window.PLANNER?.state?.selectedRegions || [];
+      const wrap = el("per-city-toggle-wrap");
+      const enabled = el("per-city-enabled");
+      const rowsEl = el("per-city-rows");
+      if (!wrap) return;
+      const isFixed = document.querySelector('input[name="budget_mode"]:checked')?.value === "fixed";
+      wrap.style.display = (isFixed && regions.length >= 2) ? "block" : "none";
+      if (!enabled?.checked) { el("per-city-budget-wrap").style.display = "none"; return; }
+      el("per-city-budget-wrap").style.display = "block";
+      el("budget-distrib-note").style.display = "none";
+      el("budget-input").style.display = "none";
+      // Build rows (keep existing values)
+      const existing = {};
+      rowsEl.querySelectorAll(".per-city-row").forEach(r => {
+        existing[r.dataset.region] = r.querySelector("input")?.value || "";
+      });
+      rowsEl.innerHTML = "";
+      regions.forEach(region => {
+        const row = document.createElement("div");
+        row.className = "per-city-row";
+        row.dataset.region = region;
+        row.innerHTML = `<span class="per-city-row-label">${region}</span>
+          <input type="number" class="ux-input" min="0" step="1000" placeholder="0" value="${existing[region] || ""}">`;
+        row.querySelector("input").addEventListener("input", syncPerCityTotal);
+        rowsEl.appendChild(row);
+      });
+      syncPerCityTotal();
+    }
+
+    function syncPerCityTotal() {
+      let sum = 0;
+      document.querySelectorAll("#per-city-rows .per-city-row input").forEach(inp => {
+        sum += Number(inp.value || 0);
+      });
+      const totalEl = el("per-city-total-val");
+      if (totalEl) totalEl.textContent = Math.floor(sum).toLocaleString("ru-RU") + " ₽";
+      const main = el("budget-input");
+      if (main) main.value = sum > 0 ? Math.floor(sum) : "";
+      renderProgress();
+    }
+
+    el("per-city-enabled")?.addEventListener("change", () => {
+      const enabled = el("per-city-enabled")?.checked;
+      if (!enabled) {
+        el("per-city-budget-wrap").style.display = "none";
+        el("budget-distrib-note").style.display = "block";
+        el("budget-input").style.display = "block";
+      }
+      renderPerCityRows();
+      renderProgress();
+    });
+
+    document.querySelectorAll('input[name="budget_mode"]').forEach(r =>
+      r.addEventListener("change", renderPerCityRows)
+    );
+
+    window._renderPerCityRows = renderPerCityRows;
+
     // poll planner state changes (regions/formats)
     let lastSig = "";
     setInterval(() => {
@@ -1897,6 +1986,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if(sig !== lastSig){
         lastSig = sig;
         renderProgress();
+        renderPerCityRows();
       }
     }, 500);
 
