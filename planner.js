@@ -989,9 +989,16 @@ async function loadCityRegions() {
   }
 }
 
+const _MUNICIPAL_PREFIXES = /^(городской\s+округ|муниципальный\s+округ|муниципальный\s+район|г\.\s*о\.\s*|г\.\s*|город\s+)/i;
+
+function normalizeGeoName(s) {
+  return normalizeKey(String(s || "").replace(_MUNICIPAL_PREFIXES, ""));
+}
+
 function getRegionForCity(city) {
-  const key = normalizeKey(city);
-  const r = window.PLANNER?.cityRegions?.[key];
+  const map = window.PLANNER?.cityRegions;
+  if (!map) return "Не назначено";
+  const r = map[normalizeKey(city)] ?? map[normalizeGeoName(city)];
   return (typeof r === "string" && r.trim()) ? r.trim() : "Не назначено";
 }
 

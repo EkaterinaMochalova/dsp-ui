@@ -654,6 +654,54 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   #planner-widget .str-chip-desc{font-size:11px;color:#888;margin-top:2px;}
   #planner-widget .str-chip input:checked + .str-chip-body .str-chip-desc{color:#7059c7;}
 
+  /* ===== CONSTRUCTIONS CHIP ===== */
+  #planner-widget .cns-chip{
+    padding:10px 14px;border:1.5px solid #e5e3f0;border-radius:12px;
+    background:#fff;cursor:pointer;transition:all 0.12s;
+    display:flex;align-items:center;gap:10px;margin-top:8px;
+  }
+  #planner-widget .cns-chip:hover{border-color:#5b3ef5;background:#f5f3ff;}
+  #planner-widget .cns-chip.active{border-color:#5b3ef5;background:#ede9fd;color:#4930c7;}
+  #planner-widget .cns-chip.active .str-chip-desc{color:#7059c7;}
+  #planner-widget .cns-chip-ico{font-size:18px;line-height:1;flex-shrink:0;}
+  #planner-widget .cns-chip-body{flex:1;}
+  #planner-widget .cns-chip-badge{
+    font-size:12px;font-weight:700;color:#5b3ef5;
+    background:#e0d9ff;border-radius:20px;padding:2px 8px;
+    display:none;
+  }
+  #planner-widget .cns-chip.active .cns-chip-badge[data-val]{display:inline;}
+
+  /* ===== VK AFFINITY CARD ===== */
+  #planner-widget .vk-card{
+    display:flex;align-items:center;gap:12px;
+    padding:12px 14px;border:1.5px solid #e5e3f0;border-radius:12px;
+    background:#fff;cursor:pointer;transition:all 0.12s;
+  }
+  #planner-widget .vk-card:hover{border-color:#5b3ef5;background:#f5f3ff;}
+  #planner-widget .vk-card.active{border-color:#5b3ef5;background:#ede9fd;}
+  #planner-widget .vk-card-icon{
+    width:38px;height:38px;border-radius:10px;
+    background:#0077ff;color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:15px;letter-spacing:-0.5px;flex-shrink:0;
+  }
+  #planner-widget .vk-card-body{flex:1;}
+  #planner-widget .vk-card-title{font-weight:600;font-size:13px;color:#0b1220;}
+  #planner-widget .vk-card-desc{font-size:11px;color:#888;margin-top:2px;}
+  #planner-widget .vk-card.active .vk-card-desc{color:#7059c7;}
+  #planner-widget .vk-toggle{
+    width:38px;height:22px;border-radius:11px;
+    background:#d0d5dd;transition:background 0.15s;flex-shrink:0;position:relative;
+  }
+  #planner-widget .vk-card.active .vk-toggle{background:#5b3ef5;}
+  #planner-widget .vk-toggle::after{
+    content:'';position:absolute;top:3px;left:3px;
+    width:16px;height:16px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left 0.15s;
+  }
+  #planner-widget .vk-card.active .vk-toggle::after{left:19px;}
+
   /* ===== BUDGET EXTRAS (НДС / commission) ===== */
   #planner-widget .budget-extra-row{
     display: flex;
@@ -1008,32 +1056,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         </div>
       </label>
     </div>
-  </div>
-  <!-- Режим ставки -->
-  <div class="planner-block">
-    <div class="planner-label">Режим ставки</div>
-    <div class="strategy-chips">
-      <label class="str-chip">
-        <input type="radio" name="bid_mode" id="bid-mode-recommended" value="recommended" checked>
-        <div class="str-chip-body">
-          <div class="str-chip-title">✦ Рекомендованная</div>
-          <div class="str-chip-desc">Стабильный откруг</div>
-        </div>
-      </label>
-      <label class="str-chip">
-        <input type="radio" name="bid_mode" id="bid-mode-min" value="min">
-        <div class="str-chip-body">
-          <div class="str-chip-title">↓ Минимальная</div>
-          <div class="str-chip-desc">Больше выходов</div>
-        </div>
-      </label>
+    <!-- Конструкции — независимый toggle-чип -->
+    <div class="cns-chip" id="constructions-chip">
+      <span class="cns-chip-ico">🏗</span>
+      <div class="cns-chip-body">
+        <div class="str-chip-title">Конструкции</div>
+        <div class="str-chip-desc">Задать точное число экранов</div>
+      </div>
+      <span class="cns-chip-badge" id="cns-chip-badge"></span>
     </div>
-    <div class="planner-note" style="margin-top:8px;" id="bid-mode-hint-recommended">Оптимальная ставка для стабильного открута — предсказуемый результат.</div>
-    <div class="planner-note" style="margin-top:8px; display:none;" id="bid-mode-hint-min">Минимальная цена из инвентаря. Больше выходов, но без гарантии полного открута.</div>
-  </div>
-  <!-- Кол-во конструкций -->
-  <div class="planner-block" style="margin-top:4px;">
-    <label class="check-row"><input type="checkbox" id="constructions-enabled"> Задать кол-во конструкций</label>
+    <input type="checkbox" id="constructions-enabled" style="display:none;">
     <div id="constructions-count-wrap" style="display:none; margin-top:8px;">
       <div style="display:flex; gap:8px; align-items:center;">
         <input type="number" id="constructions-count" min="1" step="1" placeholder="Количество конструкций" class="ux-input" style="flex:1;">
@@ -1057,9 +1089,39 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       </div>
     </div>
   </div>
+  <!-- Режим ставки -->
+  <div class="planner-block">
+    <div class="planner-label">Режим ставки</div>
+    <div class="strategy-chips">
+      <label class="str-chip">
+        <input type="radio" name="bid_mode" id="bid-mode-recommended" value="recommended" checked>
+        <div class="str-chip-body">
+          <div class="str-chip-title">✦ Рекомендованная</div>
+          <div class="str-chip-desc">Стабильный откруг</div>
+        </div>
+      </label>
+      <label class="str-chip">
+        <input type="radio" name="bid_mode" id="bid-mode-min" value="min">
+        <div class="str-chip-body">
+          <div class="str-chip-title">↓ Минимальная</div>
+          <div class="str-chip-desc">Больше выходов</div>
+        </div>
+      </label>
+    </div>
+    <div class="planner-note" style="margin-top:8px;" id="bid-mode-hint-recommended">Оптимальная ставка для стабильного открута — предсказуемый результат.</div>
+    <div class="planner-note" style="margin-top:8px; display:none;" id="bid-mode-hint-min">Минимальная цена из инвентаря. Больше выходов, но без гарантии полного открута.</div>
+  </div>
   <!-- ===== АУДИТОРИЯ VK ===== -->
     <div class="planner-block" id="audience-block">
-      <label class="check-row"><input type="checkbox" id="audience-enabled"> Фильтр по аудитории (VK affinity)</label>
+      <div class="vk-card" id="vk-affinity-card">
+        <div class="vk-card-icon">VK</div>
+        <div class="vk-card-body">
+          <div class="vk-card-title">Аудитория VK</div>
+          <div class="vk-card-desc">Фильтр по affinity-сегментам</div>
+        </div>
+        <div class="vk-toggle"></div>
+      </div>
+      <input type="checkbox" id="audience-enabled" style="display:none;">
       <div id="audience-wrap" style="display:none; margin-top:12px;">
         <div id="audience-load-status" style="font-size:12px; color:#667085; margin-bottom:10px;">⏳ Загрузка данных…</div>
         <div id="audience-ui" style="display:none;">
@@ -1788,6 +1850,35 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       renderProgress();
     }));
     el("grp-enabled")?.addEventListener("change", () => { syncGrp(); renderProgress(); });
+
+    // Constructions chip toggle
+    el("constructions-chip")?.addEventListener("click", () => {
+      const chip = el("constructions-chip");
+      const cb = el("constructions-enabled");
+      const wrap = el("constructions-count-wrap");
+      const active = chip.classList.toggle("active");
+      if (cb) { cb.checked = active; cb.dispatchEvent(new Event("change", { bubbles: true })); }
+      if (wrap) wrap.style.display = active ? "block" : "none";
+      renderProgress();
+    });
+
+    // Sync badge on constructions count input
+    el("constructions-count")?.addEventListener("input", () => {
+      const badge = el("cns-chip-badge");
+      const val = el("constructions-count")?.value;
+      if (badge) { badge.textContent = val ? val + " шт." : ""; badge.dataset.val = val || ""; }
+    });
+
+    // VK affinity card toggle
+    el("vk-affinity-card")?.addEventListener("click", () => {
+      const card = el("vk-affinity-card");
+      const cb = el("audience-enabled");
+      const wrap = el("audience-wrap");
+      const active = card.classList.toggle("active");
+      if (cb) { cb.checked = active; cb.dispatchEvent(new Event("change", { bubbles: true })); }
+      if (wrap) wrap.style.display = active ? "block" : "none";
+      renderProgress();
+    });
 
     // poll planner state changes (regions/formats)
     let lastSig = "";
