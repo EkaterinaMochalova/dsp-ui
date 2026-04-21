@@ -3449,15 +3449,8 @@ async function onCalcClick() {
       }
     }
 
-    // In constructions mode keep all screens (bid computed from those that have it).
-    // Otherwise exclude no-bid screens when bid screens exist.
-    const _constructionsMode = brief.constructions?.enabled && brief.constructions.count > 0;
-    if (!_constructionsMode) {
-      const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
-      if (hasBidScreens) {
-        pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
-      }
-    }
+    // Keep all screens regardless of minBid — avgBid is computed from those that have it.
+    // Screens without minBid get recoBid from DSP forecast or the region average as fallback.
 
     // GRP filter
     let grpDroppedNoValue = 0;
