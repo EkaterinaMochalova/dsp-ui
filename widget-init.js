@@ -978,11 +978,18 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     Распределим сумму по выбранным регионам.
   </div>
   <!-- per-city toggle (shown when 2+ regions selected) -->
-  <div id="per-city-toggle-wrap" style="display:none; margin-top:10px;">
-    <label class="check-row" style="font-size:13px; font-weight:500; color:#344054; cursor:pointer;">
-      <input type="checkbox" id="per-city-enabled" style="width:15px;height:15px;accent-color:#5b3ef5;cursor:pointer;">
-      Задать бюджет по городам
-    </label>
+  <div id="per-city-toggle-wrap" style="display:none; margin-top:12px;">
+    <div id="per-city-toggle-row" style="display:flex;align-items:center;justify-content:space-between;
+         padding:10px 12px;border:1.5px solid #e5e3f0;border-radius:12px;background:#fff;cursor:pointer;
+         transition:border-color .12s;">
+      <span style="font-size:13px;font-weight:500;color:#344054;">Задать бюджет по городам</span>
+      <div id="per-city-slider" style="width:38px;height:22px;border-radius:11px;background:#d0d5dd;
+           flex-shrink:0;position:relative;transition:background .15s;pointer-events:none;">
+        <div id="per-city-knob" style="position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;
+             background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .15s;"></div>
+      </div>
+      <input type="checkbox" id="per-city-enabled" style="display:none;">
+    </div>
   </div>
   <!-- per-city rows -->
   <div id="per-city-budget-wrap" style="display:none; margin-top:10px;">
@@ -1956,15 +1963,33 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       renderProgress();
     }
 
-    el("per-city-enabled")?.addEventListener("change", () => {
-      const enabled = el("per-city-enabled")?.checked;
+    function syncPerCitySlider(enabled) {
+      const slider = el("per-city-slider");
+      const knob   = el("per-city-knob");
+      const row    = el("per-city-toggle-row");
+      if (slider) slider.style.background = enabled ? "#5b3ef5" : "#d0d5dd";
+      if (knob)   knob.style.left = enabled ? "19px" : "3px";
+      if (row)    row.style.borderColor = enabled ? "#5b3ef5" : "#e5e3f0";
+    }
+
+    el("per-city-toggle-row")?.addEventListener("click", () => {
+      const cb = el("per-city-enabled");
+      if (!cb) return;
+      cb.checked = !cb.checked;
+      const enabled = cb.checked;
+      syncPerCitySlider(enabled);
       if (!enabled) {
         el("per-city-budget-wrap").style.display = "none";
         el("budget-distrib-note").style.display = "block";
         el("budget-input").style.display = "block";
+        _lastPerCityRegionsSig = "";
       }
       renderPerCityRows();
       renderProgress();
+    });
+
+    el("per-city-enabled")?.addEventListener("change", () => {
+      syncPerCitySlider(el("per-city-enabled")?.checked);
     });
 
     document.querySelectorAll('input[name="budget_mode"]').forEach(r =>
