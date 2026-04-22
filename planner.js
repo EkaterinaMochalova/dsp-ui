@@ -5072,6 +5072,7 @@ async function dspFetchInventoriesPage(page, size = DSP_PAGE_SIZE) {
   const token = getDspToken();
   if (!token) throw new Error("SESSION_EXPIRED");
   const headers = { "Authorization": "Bearer " + token };
+  let lastErr = null;
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -5084,8 +5085,7 @@ async function dspFetchInventoriesPage(page, size = DSP_PAGE_SIZE) {
       clearTimeout(tId);
       if (r.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
       if (!r.ok) {
-        console.warn(`[DSP] ${r.status} on page ${page}`);
-        return { items: [], totalElements: 0, totalPages: 0 };
+        throw new Error(`HTTP_${r.status}`);
       }
       const j = await r.json();
       return {
@@ -5095,12 +5095,13 @@ async function dspFetchInventoriesPage(page, size = DSP_PAGE_SIZE) {
       };
     } catch (e) {
       if (e.message === "SESSION_EXPIRED") throw e;
+      lastErr = e;
       console.warn(`[DSP] page ${page} attempt ${attempt + 1} failed:`, e.message);
       if (attempt < 2) await new Promise(res => setTimeout(res, 1000 * (attempt + 1)));
     }
   }
 
-  return { items: [], totalElements: 0, totalPages: 0 };
+  throw new Error(`PAGE_FETCH_FAILED:${page}:${lastErr?.message || "unknown"}`);
 }
 
 // Субгородские административные единицы, которые не нужны как отдельные «города»
@@ -5168,19 +5169,26 @@ function dspHydrateCityState(cityCache) {
 
 async function dspWarmupInventoryInBackground(cityCacheSeed, totalLoadedSoFar, totalElements, totalPages) {
   const cityCache = cityCacheSeed || {};
+  let hadFailures = false;
 
   for (let start = 1; start < totalPages; start += DSP_PAGE_BATCH) {
     const pages = [];
     for (let p = start; p < Math.min(start + DSP_PAGE_BATCH, totalPages); p++) pages.push(p);
 
-    const results = await Promise.allSettled(pages.map(p => dspFetchInventoriesPage(p)));
+    const results = await Promise.allSettled(
+      pages.map(async p => ({ page: p, payload: await dspFetchInventoriesPage(p) }))
+    );
 
     for (const r of results) {
       if (r.status === "fulfilled") {
-        totalLoadedSoFar += (r.value.items || []).length;
-        dspBuildCityCache(r.value.items || [], cityCache);
+        totalLoadedSoFar += (r.value.payload.items || []).length;
+        dspBuildCityCache(r.value.payload.items || [], cityCache);
       }
       if (r.status === "rejected" && r.reason?.message === "SESSION_EXPIRED") throw r.reason;
+      if (r.status === "rejected") {
+        hadFailures = true;
+        console.warn("[DSP] warmup page failed:", r.reason?.message || r.reason);
+      }
     }
 
     dspHydrateCityState(cityCache);
@@ -5188,6 +5196,7 @@ async function dspWarmupInventoryInBackground(cityCacheSeed, totalLoadedSoFar, t
     await new Promise(res => setTimeout(res, DSP_BATCH_DELAY_MS));
   }
 
+  if (hadFailures) throw new Error("PARTIAL_INVENTORY_WARMUP");
   dspSaveInventoryToStorage(cityCache);
   state.dspInventoryWarmupDone = true;
   return cityCache;
@@ -5533,6 +5542,14 @@ async function loadScreensFromDSP() {
 // Применяет кэшированный инвентарь для выбранных регионов (вызывается из onCalcClick)
 async function dspEnsureInventoryForRegions(regions) {
   if (!window.DSP_AUTH_ENABLED || !state.dspInventoryCache) return;
+
+  // Важно: без ожидания warmup часть городов может отсутствовать в region->cities,
+  // и расчёт проходит на неполном пуле.
+  if (!state.dspInventoryWarmupDone && state.dspInventoryWarmupPromise) {
+    setStatus(`Догружаю инвентарь перед расчётом…`);
+    await state.dspInventoryWarmupPromise;
+  }
+
   const regionToCities = state.dspRegionToCities || {};
   const regionCities = (regions || []).flatMap(r => regionToCities[r] || []);
   const missing = regionCities.filter(city => !state.dspInventoryCache[city]);
@@ -5540,7 +5557,13 @@ async function dspEnsureInventoryForRegions(regions) {
     setStatus(`Догружаю инвентарь для: ${regions.join(", ")}…`);
     await state.dspInventoryWarmupPromise;
   }
-  const screens = regionCities.flatMap(city => state.dspInventoryCache[city] || []);
+  let screens = regionCities.flatMap(city => state.dspInventoryCache[city] || []);
+
+  // Fallback: если регионы в UI являются фактически названиями городов.
+  if (!screens.length) {
+    screens = (regions || []).flatMap(r => state.dspInventoryCache[r] || []);
+  }
+
   dspApplyMappedScreens(screens);
   console.log(`[DSP] inventory applied: ${screens.length} screens for regions:`, regions);
   setStatus("");
