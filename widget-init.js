@@ -981,6 +981,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <!-- fixed -->
 <div id="budget-input-wrap" style="margin-top:10px;">
   <input id="budget-input" type="number" class="ux-input" placeholder="Введите бюджет, ₽" min="0" step="1000">
+  <input id="budget-total-abs" type="number" style="display:none;">
   <div class="planner-note" style="margin-top:6px;" id="budget-distrib-note">
     Распределим сумму по выбранным регионам.
   </div>
@@ -1000,10 +1001,22 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   </div>
   <!-- per-city rows -->
   <div id="per-city-budget-wrap" style="display:none; margin-top:10px;">
+    <!-- mode switcher ₽ / % -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <span style="font-size:12px;font-weight:500;color:#667085;">Распределение</span>
+      <div style="display:flex;border:1.5px solid #e5e3f0;border-radius:8px;overflow:hidden;background:#f9f8ff;">
+        <button type="button" id="per-city-mode-abs" class="pct-mode-btn active"
+          style="padding:4px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;
+                 background:#5b3ef5;color:#fff;transition:all .12s;">₽</button>
+        <button type="button" id="per-city-mode-pct" class="pct-mode-btn"
+          style="padding:4px 12px;font-size:12px;font-weight:600;border:none;cursor:pointer;
+                 background:transparent;color:#667085;transition:all .12s;">%</button>
+      </div>
+    </div>
     <div id="per-city-rows"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;
                 border-top:1px solid #e5e3f0;padding-top:8px;margin-top:4px;">
-      <span style="font-size:13px;font-weight:600;color:#344054;">Итого</span>
+      <span style="font-size:13px;font-weight:600;color:#344054;" id="per-city-total-label">Итого</span>
       <span style="font-size:13px;font-weight:700;color:#5b3ef5;" id="per-city-total-val">0 ₽</span>
     </div>
   </div>
@@ -1924,7 +1937,35 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     });
 
     // Per-city budget
+    let _perCityMode = "abs"; // "abs" | "pct"
     let _lastPerCityRegionsSig = "";
+
+    function setPerCityMode(mode) {
+      _perCityMode = mode;
+      const btnAbs = el("per-city-mode-abs");
+      const btnPct = el("per-city-mode-pct");
+      if (btnAbs) {
+        btnAbs.style.background = mode === "abs" ? "#5b3ef5" : "transparent";
+        btnAbs.style.color = mode === "abs" ? "#fff" : "#667085";
+      }
+      if (btnPct) {
+        btnPct.style.background = mode === "pct" ? "#5b3ef5" : "transparent";
+        btnPct.style.color = mode === "pct" ? "#fff" : "#667085";
+      }
+      // Update placeholder and labels in existing rows
+      document.querySelectorAll("#per-city-rows .per-city-row input").forEach(inp => {
+        inp.placeholder = mode === "pct" ? "0" : "0";
+        inp.step = mode === "pct" ? "1" : "1000";
+        inp.max = mode === "pct" ? "100" : "";
+      });
+      document.querySelectorAll("#per-city-rows .per-city-row .per-city-unit").forEach(u => {
+        u.textContent = mode === "pct" ? "%" : "₽";
+      });
+      syncPerCityTotal();
+    }
+
+    el("per-city-mode-abs")?.addEventListener("click", () => setPerCityMode("abs"));
+    el("per-city-mode-pct")?.addEventListener("click", () => setPerCityMode("pct"));
     function renderPerCityRows() {
       const regions = window.PLANNER?.state?.selectedRegions || [];
       const wrap = el("per-city-toggle-wrap");
@@ -1950,8 +1991,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const row = document.createElement("div");
         row.className = "per-city-row";
         row.dataset.region = region;
+        const unit = _perCityMode === "pct" ? "%" : "₽";
+        const step = _perCityMode === "pct" ? "1" : "1000";
+        const maxAttr = _perCityMode === "pct" ? ' max="100"' : '';
         row.innerHTML = '<span class="per-city-row-label">' + region + '</span>'
-          + '<input type="number" class="ux-input" min="0" step="1000" placeholder="0" value="' + (existing[region] || '') + '">';
+          + '<div style="display:flex;align-items:center;gap:4px;">'
+          + '<input type="number" class="ux-input" min="0" step="' + step + '" placeholder="0"' + maxAttr
+          + ' value="' + (existing[region] || '') + '" style="width:110px;text-align:right;">'
+          + '<span class="per-city-unit" style="font-size:13px;font-weight:600;color:#667085;min-width:14px;">' + unit + '</span>'
+          + '</div>';
         row.querySelector("input").addEventListener("input", syncPerCityTotal);
         rowsEl.appendChild(row);
       });
@@ -1964,9 +2012,18 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         sum += Number(inp.value || 0);
       });
       const totalEl = el("per-city-total-val");
-      if (totalEl) totalEl.textContent = Math.floor(sum).toLocaleString("ru-RU") + " ₽";
-      const main = el("budget-input");
-      if (main) main.value = sum > 0 ? Math.floor(sum) : "";
+      if (_perCityMode === "pct") {
+        const pctOk = Math.abs(sum - 100) < 0.01;
+        if (totalEl) {
+          totalEl.textContent = sum.toFixed(0) + "%";
+          totalEl.style.color = pctOk ? "#5b3ef5" : (sum > 100 ? "#dc2626" : "#f59e0b");
+        }
+        // Keep budget-input value unchanged (total entered before switching to %)
+      } else {
+        if (totalEl) { totalEl.textContent = Math.floor(sum).toLocaleString("ru-RU") + " ₽"; totalEl.style.color = "#5b3ef5"; }
+        const main = el("budget-input");
+        if (main) main.value = sum > 0 ? Math.floor(sum) : "";
+      }
       renderProgress();
     }
 

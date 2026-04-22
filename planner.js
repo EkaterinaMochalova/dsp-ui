@@ -1095,9 +1095,12 @@ function renderRegionSuggestions(q) {
   if (!Array.isArray(state.selectedRegions)) state.selectedRegions = [];
 
   const qq = q.toLowerCase();
-  const matches = state.regionsAll
-    .filter(r => r.toLowerCase().includes(qq))
-    .slice(0, 12);
+  // Search regions first, then fall back to cities not covered by a region name
+  const regionMatches = state.regionsAll.filter(r => r.toLowerCase().includes(qq));
+  const cityMatches = (state.citiesAll || [])
+    .filter(c => c.toLowerCase().includes(qq) && !state.regionsAll.includes(c))
+    .slice(0, 6);
+  const matches = [...new Set([...regionMatches, ...cityMatches])].slice(0, 12);
 
   matches.forEach(r => {
     const b = document.createElement("button");
@@ -1349,11 +1352,14 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
       currency: "RUB",
       perCity: (() => {
         if (budgetMode !== "fixed" || !document.getElementById("per-city-enabled")?.checked) return null;
+        const isPct = window._perCityMode === "pct";
+        const totalBudget = Number(document.getElementById("budget-input")?.value || 0);
         const map = {};
         document.querySelectorAll("#per-city-rows .per-city-row").forEach(row => {
           const region = row.dataset.region;
           const val = Number(row.querySelector("input")?.value || 0);
-          if (region && val > 0) map[region] = val;
+          if (!region || val <= 0) return;
+          map[region] = isPct ? Math.floor(totalBudget * val / 100) : val;
         });
         return Object.keys(map).length > 0 ? map : null;
       })()
@@ -4882,7 +4888,7 @@ function avgEffectiveBid(screens, bidMode, fallback) {
 // Включается через: window.DSP_AUTH_ENABLED = true; в HTML Tilda перед виджетом
 
 const DSP_API = "https://proddsp.omniboard360.io";
-const DSP_PAGE_SIZE = 500;
+const DSP_PAGE_SIZE = 200; // reduced from 500 to avoid ERR_INCOMPLETE_CHUNKED_ENCODING
 const DSP_PAGE_BATCH = 2; // параллельных запросов за раз (меньше = меньше 500-ок от сервера)
 const DSP_BATCH_DELAY_MS = 300; // пауза между батчами
 
@@ -5069,10 +5075,13 @@ async function dspFetchInventoriesPage(page, size = DSP_PAGE_SIZE) {
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      const ctrl = new AbortController();
+      const tId = setTimeout(() => ctrl.abort(), 30000);
       const r = await fetch(
         `${DSP_API}/api/v1.0/clients/inventories?page=${page}&size=${size}&enabled=true`,
-        { headers }
+        { headers, signal: ctrl.signal }
       );
+      clearTimeout(tId);
       if (r.status === 401) { setDspToken(""); throw new Error("SESSION_EXPIRED"); }
       if (!r.ok) {
         console.warn(`[DSP] ${r.status} on page ${page}`);
