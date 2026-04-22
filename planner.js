@@ -3263,7 +3263,12 @@ async function onCalcClick() {
       if (!selectedNorm) return false;
       const rn = normalizeGeoName(r);
       const cn = normalizeGeoName(c);
-      return rn === selectedNorm || cn === selectedNorm;
+      if (rn === selectedNorm || cn === selectedNorm) return true;
+      // Fuzzy fallback for suffix/prefix variants in API city labels.
+      return (
+        (rn && (rn.includes(selectedNorm) || selectedNorm.includes(rn))) ||
+        (cn && (cn.includes(selectedNorm) || selectedNorm.includes(cn)))
+      );
     });
 
     if (!pool.length) {
