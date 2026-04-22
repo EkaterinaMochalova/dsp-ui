@@ -5265,6 +5265,33 @@ async function dspFetchAllInventories() {
   return cityCache;
 }
 
+// Принудительная полная загрузка всего инвентаря (blocking),
+// используется как fallback, если после обычной загрузки регион/город пуст.
+async function dspForceReloadAllInventoriesBlocking() {
+  const first = await dspFetchInventoriesPage(0);
+  const totalElements = first.totalElements || 0;
+  const totalPages = first.totalPages || Math.ceil(totalElements / DSP_PAGE_SIZE) || 1;
+  const cityCache = dspBuildCityCache(first.items || [], {});
+  let loaded = (first.items || []).length;
+
+  setStatus(`Перезагружаю инвентарь… ${loaded} из ${totalElements || "?"}`);
+  for (let p = 1; p < totalPages; p++) {
+    const pageData = await dspFetchInventoriesPage(p);
+    loaded += (pageData.items || []).length;
+    dspBuildCityCache(pageData.items || [], cityCache);
+    if (p % 5 === 0 || p === totalPages - 1) {
+      setStatus(`Перезагружаю инвентарь… ${loaded} из ${totalElements || "?"}`);
+    }
+  }
+
+  dspHydrateCityState(cityCache);
+  await dspSaveInventoryToStorage(cityCache);
+  state.dspInventoryWarmupDone = true;
+  state.dspInventoryWarmupPromise = null;
+  setStatus("");
+  return cityCache;
+}
+
 // Загрузка инвентаря по конкретным cityId (ленивая, по запросу)
 async function dspFetchInventoriesByCityId(cityId) {
   const token = getDspToken();
@@ -5626,6 +5653,29 @@ async function dspEnsureInventoryForRegions(regions) {
       cacheCitiesTotal: cacheKeys.length,
       possibleCityMatches: hints
     });
+
+    // Final fallback: if selected region/city is empty, force full reload
+    // from API and retry matching once. This mitigates partial warmup/cache.
+    try {
+      setStatus("Не нашла экраны по выбору — делаю полную перезагрузку из API…");
+      await dspForceReloadAllInventoriesBlocking();
+
+      const regionToCities2 = state.dspRegionToCities || {};
+      const regionCities2 = (regions || []).flatMap(r => regionToCities2[r] || []);
+      screens = regionCities2.flatMap(city => byCityName(city));
+      if (!screens.length) {
+        screens = (regions || []).flatMap(r => byCityName(r));
+      }
+
+      console.warn("[DSP] retry after full reload", {
+        requested: regions,
+        regionCities: regionCities2.slice(0, 20),
+        screens: screens.length
+      });
+    } catch (e) {
+      console.warn("[DSP] full reload fallback failed:", e?.message || e);
+      setStatus("");
+    }
   }
 
   dspApplyMappedScreens(screens);
