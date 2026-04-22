@@ -5394,7 +5394,10 @@ const DSP_IDB_VER    = 1;
 
 function getDspCacheKey() {
   const agencyId = getDspAgencyId() || "default";
-  return `dsp_inv_v4_${agencyId}`;
+  const emailKey = normalizeKey(getDspUserEmail() || "").replace(/[^a-z0-9._@-]/gi, "_");
+  if (agencyId && agencyId !== "default") return `dsp_inv_v5_agency_${agencyId}`;
+  if (emailKey) return `dsp_inv_v5_email_${emailKey}`;
+  return null;
 }
 
 function _openIdb() {
@@ -5408,10 +5411,11 @@ function _openIdb() {
 
 async function dspSaveInventoryToStorage(cityCache) {
   try {
+    const key = getDspCacheKey();
+    if (!key) { console.log("[DSP] skip cache save: no cache key"); return; }
     const total = Object.values(cityCache || {}).reduce((s, a) => s + a.length, 0);
     if (total === 0) { console.log("[DSP] skipping cache save: 0 screens"); return; }
     const db  = await _openIdb();
-    const key = getDspCacheKey();
     await new Promise((res, rej) => {
       const tx  = db.transaction(DSP_IDB_STORE, "readwrite");
       tx.objectStore(DSP_IDB_STORE).put({ ts: Date.now(), d: cityCache }, key);
@@ -5430,8 +5434,9 @@ async function dspSaveInventoryToStorage(cityCache) {
 
 async function dspLoadInventoryFromStorage() {
   try {
-    const db  = await _openIdb();
     const key = getDspCacheKey();
+    if (!key) return null;
+    const db  = await _openIdb();
     const rec = await new Promise((res, rej) => {
       const tx  = db.transaction(DSP_IDB_STORE, "readonly");
       const req = tx.objectStore(DSP_IDB_STORE).get(key);
@@ -5557,11 +5562,22 @@ async function dspEnsureInventoryForRegions(regions) {
     setStatus(`Догружаю инвентарь для: ${regions.join(", ")}…`);
     await state.dspInventoryWarmupPromise;
   }
-  let screens = regionCities.flatMap(city => state.dspInventoryCache[city] || []);
+  const byCityName = (cityName) => {
+    const cache = state.dspInventoryCache || {};
+    if (cache[cityName]) return cache[cityName];
+    const target = normalizeGeoName(cityName);
+    if (!target) return [];
+    for (const [k, arr] of Object.entries(cache)) {
+      if (normalizeGeoName(k) === target) return arr || [];
+    }
+    return [];
+  };
+
+  let screens = regionCities.flatMap(city => byCityName(city));
 
   // Fallback: если регионы в UI являются фактически названиями городов.
   if (!screens.length) {
-    screens = (regions || []).flatMap(r => state.dspInventoryCache[r] || []);
+    screens = (regions || []).flatMap(r => byCityName(r));
   }
 
   dspApplyMappedScreens(screens);
@@ -5581,9 +5597,10 @@ async function startPlanner() {
     // DSP API mode: логин + загрузка инвентаря через API
     if (!getDspToken()) await showLoginOverlay();
     renderDspUserBar();
-    // Если agencyId не сохранён (например, токен из предыдущей сессии) — подтягиваем профиль фоново
+    // Если agencyId не сохранён (например, токен из предыдущей сессии),
+    // подтягиваем профиль ДО чтения кэша, чтобы не попадать в default-cache.
     if (!getDspAgencyId()) {
-      dspFetchCurrentUserAgency().catch(() => {});
+      await dspFetchCurrentUserAgency().catch(() => {});
     } else if (!getDspAgencyMarkup().additionalCharge) {
       dspFetchAgencyMarkup(getDspAgencyId()).catch(() => {});
     }
