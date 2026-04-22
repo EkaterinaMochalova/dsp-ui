@@ -5570,6 +5570,13 @@ async function dspEnsureInventoryForRegions(regions) {
     for (const [k, arr] of Object.entries(cache)) {
       if (normalizeGeoName(k) === target) return arr || [];
     }
+    // Fuzzy fallback: handles variants like "Набережные Челны" vs
+    // "г. Набережные Челны"/"Набережные Челны городской округ".
+    for (const [k, arr] of Object.entries(cache)) {
+      const nk = normalizeGeoName(k);
+      if (!nk) continue;
+      if (nk.includes(target) || target.includes(nk)) return arr || [];
+    }
     return [];
   };
 
@@ -5578,6 +5585,24 @@ async function dspEnsureInventoryForRegions(regions) {
   // Fallback: если регионы в UI являются фактически названиями городов.
   if (!screens.length) {
     screens = (regions || []).flatMap(r => byCityName(r));
+  }
+
+  if (!screens.length) {
+    const cacheKeys = Object.keys(state.dspInventoryCache || {});
+    const wanted = (regions || []).map(r => normalizeGeoName(r)).filter(Boolean);
+    const hints = cacheKeys
+      .filter(k => {
+        const nk = normalizeGeoName(k);
+        return wanted.some(w => nk.includes(w) || w.includes(nk));
+      })
+      .slice(0, 20);
+    console.warn("[DSP] no screens after region/city match", {
+      requested: regions,
+      requestedNorm: wanted,
+      regionCities: regionCities.slice(0, 20),
+      cacheCitiesTotal: cacheKeys.length,
+      possibleCityMatches: hints
+    });
   }
 
   dspApplyMappedScreens(screens);
