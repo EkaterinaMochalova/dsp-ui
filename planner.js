@@ -3255,8 +3255,26 @@ async function onCalcClick() {
 
   for (const region of regions) {
     const tier = getTierForGeo(region);
+    const selectedNorm = normalizeGeoName(region);
+    let pool = state.screens.filter(s => {
+      const r = String(s.region || "").trim();
+      const c = String(s.city || "").trim();
+      if (r === region || c === region) return true;
+      if (!selectedNorm) return false;
+      const rn = normalizeGeoName(r);
+      const cn = normalizeGeoName(c);
+      return rn === selectedNorm || cn === selectedNorm;
+    });
 
-    let pool = state.screens.filter(s => String(s.region || "").trim() === region);
+    if (!pool.length) {
+      console.warn("[DSP] empty pool at region step", {
+        selected: region,
+        selectedNorm,
+        screensTotal: state.screens.length,
+        sampleRegions: [...new Set(state.screens.map(s => String(s.region || "").trim()).filter(Boolean))].slice(0, 10),
+        sampleCities: [...new Set(state.screens.map(s => String(s.city || "").trim()).filter(Boolean))].slice(0, 10)
+      });
+    }
 
     // ✅ uses formatsMode/manualFormats derived above
     if (formatsMode === "manual" && manualFormats.length > 0) {
