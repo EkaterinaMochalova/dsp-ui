@@ -5539,7 +5539,10 @@ function dspApplyMappedScreens(screens) {
     lon:    Number.isFinite(Number(s.lon))    ? Number(s.lon)    : NaN,
     region: state.regionsByCity?.[s.city] || getRegionForDspCity(s.city),
   }));
-  state.screensAll = [...state.screens];
+  // IMPORTANT:
+  // do not overwrite screensAll here.
+  // screensAll is the full loaded DSP inventory and is used as a master pool;
+  // this function applies only current selection into state.screens.
 
   // Zero out known-bad OTS owners before computing format averages
   for (const s of state.screens) {
