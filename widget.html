@@ -1091,8 +1091,7 @@
 
     let pool = allScreens;
     if(regions.length){
-      const rset = new Set(regions);
-      pool = allScreens.filter(s => rset.has(String(s.region || "").trim()));
+      pool = allScreens.filter(s => regions.some(r => matchesGeoChoice(s, r)));
     }
 
     const counts = {};
@@ -2030,6 +2029,25 @@
   function getRegion(s){
     return String(s?.region ?? s?.Region ?? s?.city ?? s?.CITY ?? "").trim();
   }
+  function normGeo(s){
+    return String(s || "")
+      .toLowerCase()
+      .replace(/ё/g, "е")
+      .replace(/^(городской\s+округ|муниципальный\s+округ|муниципальный\s+район|г\.\s*о\.\s*|г\.\s*|город\s+)/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  function matchesGeoChoice(screen, choice){
+    const pick = normGeo(choice);
+    if(!pick) return false;
+    const reg = normGeo(screen?.region ?? screen?.Region ?? "");
+    const city = normGeo(screen?.city ?? screen?.CITY ?? "");
+    return (
+      reg === pick || city === pick ||
+      (reg && (reg.includes(pick) || pick.includes(reg))) ||
+      (city && (city.includes(pick) || pick.includes(city)))
+    );
+  }
 
   function escapeHtml(s){
     return String(s ?? "")
@@ -2046,7 +2064,7 @@
     const selectedFormats = window.PLANNER?.state?.selectedFormats;
 
     const pool = screens.filter(s => {
-      if (regions.length && !regions.includes(getRegion(s))) return false;
+      if (regions.length && !regions.some(r => matchesGeoChoice(s, r))) return false;
       if (selectedFormats && selectedFormats.size > 0 && !selectedFormats.has(s.format)) return false;
       return true;
     });

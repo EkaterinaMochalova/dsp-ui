@@ -995,6 +995,18 @@ function normalizeGeoName(s) {
   return normalizeKey(String(s || "").replace(_MUNICIPAL_PREFIXES, ""));
 }
 
+function screenMatchesGeoChoice(screen, choice) {
+  const pick = normalizeGeoName(choice);
+  if (!pick) return false;
+  const r = normalizeGeoName(screen?.region || "");
+  const c = normalizeGeoName(screen?.city || "");
+  return (
+    r === pick || c === pick ||
+    (r && (r.includes(pick) || pick.includes(r))) ||
+    (c && (c.includes(pick) || pick.includes(c)))
+  );
+}
+
 function getRegionForCity(city) {
   const map = window.PLANNER?.cityRegions;
   if (!map) return "Не назначено";
@@ -4188,7 +4200,7 @@ function computePoolPreview() {
   if (!regions.length) return null;
 
   // 1. По регионам
-  let pool = state.screens.filter(s => regions.includes(s.region));
+  let pool = state.screens.filter(s => regions.some(r => screenMatchesGeoChoice(s, r)));
 
   // 2. По форматам (если ручной выбор) — используем те же поля, что и onCalcClick
   const formatsMode = brief.formats?.mode || "auto";
@@ -4442,7 +4454,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   el("constructions-max-btn")?.addEventListener("click", () => {
     const regions = Array.isArray(state.selectedRegions) ? state.selectedRegions : [];
     // Считаем пул: экраны выбранных регионов (с учётом фильтра форматов и операторов)
-    let pool = state.screens.filter(s => !regions.length || regions.includes(String(s.region || "").trim()));
+    let pool = state.screens.filter(s => !regions.length || regions.some(r => screenMatchesGeoChoice(s, r)));
     const fmtsAuto = !!el("formats-auto")?.checked;
     if (!fmtsAuto && state.selectedFormats?.size) {
       pool = pool.filter(s => state.selectedFormats.has(s.format));
