@@ -4171,122 +4171,6 @@ if (brief.schedule?.type === "weekly") {
   return { done, step1, step2, step3, step4, scheduleOk, mode };
 }
 
-const AUTO_CALC_DEBOUNCE_MS = 350;
-let autoCalcTimer = null;
-let autoCalcInFlight = false;
-let autoCalcQueued = false;
-let autoCalcLastSig = "";
-let autoCalcPendingSig = "";
-
-function canAutoCalcNow(brief) {
-  const mode = String(brief?.selection?.mode || "city_even");
-  if (window.DSP_AUTH_ENABLED && state.dspInventoryWarmupPromise && !state.dspInventoryWarmupDone) {
-    return false;
-  }
-  if (mode === "near_address") return Array.isArray(brief?.selection?.addresses) && brief.selection.addresses.length > 0;
-  if (mode === "route") return !!(brief?.selection?.route_from && brief?.selection?.route_to);
-  if (mode === "highway") return !!String(brief?.selection?.highway_name || "").trim();
-  if (mode === "manual_screens") return brief?.selection?.manual_gids instanceof Set && brief.selection.manual_gids.size > 0;
-  return true;
-}
-
-function getAutoCalcSignature(brief) {
-  const selection = brief?.selection || {};
-  const geo = brief?.geo || {};
-  const formats = brief?.formats || {};
-  const grp = brief?.grp || {};
-  const constructions = brief?.constructions || {};
-  const audience = brief?.audience || {};
-  const schedule = brief?.schedule || {};
-  const polygon = Array.isArray(state?.polygonFilter) ? state.polygonFilter : [];
-  return JSON.stringify({
-    budgetMode: brief?.budget?.mode || "",
-    budgetAmount: Number(brief?.budget?.amount || 0),
-    goalOts: Number(brief?.goal?.ots || 0),
-    dates: brief?.dates || {},
-    schedule,
-    geoRegions: Array.isArray(geo.regions) ? geo.regions : [],
-    formatsMode: formats.mode || "auto",
-    formatsSelected: Array.isArray(formats.selected) ? formats.selected : [],
-    selectionMode: selection.mode || "city_even",
-    selectionAddresses: Array.isArray(selection.addresses) ? selection.addresses : [],
-    selectionAddress: selection.address || "",
-    selectionPoiType: selection.poi_type || "",
-    selectionRouteFrom: selection.route_from || "",
-    selectionRouteTo: selection.route_to || "",
-    selectionHighway: selection.highway_name || "",
-    selectionManualGids: selection.manual_gids instanceof Set ? [...selection.manual_gids] : [],
-    selectionRadius: Number(selection.radius_m || 0),
-    grpEnabled: !!grp.enabled,
-    grpMin: Number(grp.min || 0),
-    grpMax: Number(grp.max || 0),
-    constructionsEnabled: !!constructions.enabled,
-    constructionsCount: Number(constructions.count || 0),
-    constructionsPph: Number(constructions.playsPerHour || 0),
-    audienceEnabled: !!audience.enabled,
-    audienceSegments: Array.isArray(audience.segments) ? audience.segments : [],
-    audienceTopPct: Number(audience.topPct || 0),
-    bidMode: brief?.bidMode || "",
-    reachMode: brief?.reachMode || "",
-    selectedOwners: Array.isArray(state?.selectedOwners) ? state.selectedOwners : [...(state?.selectedOwners || [])],
-    polygonPoints: polygon.map(p => [Number(p?.lat || p?.[0] || 0), Number(p?.lon || p?.[1] || 0)]),
-    screensLen: Array.isArray(state?.screens) ? state.screens.length : 0,
-    screensAllLen: Array.isArray(state?.screensAll) ? state.screensAll.length : 0
-  });
-}
-
-function queueAutoCalc() {
-  autoCalcQueued = true;
-}
-
-function scheduleAutoCalc(force = false) {
-  const p = calcCompletion();
-  if (p.done !== 5) {
-    if (!autoCalcInFlight) autoCalcLastSig = "";
-    if (autoCalcTimer) {
-      clearTimeout(autoCalcTimer);
-      autoCalcTimer = null;
-    }
-    return;
-  }
-
-  const brief = buildBrief();
-  if (!canAutoCalcNow(brief)) return;
-
-  const sig = getAutoCalcSignature(brief);
-  autoCalcPendingSig = sig;
-
-  if (!force && sig === autoCalcLastSig && !autoCalcQueued) return;
-
-  if (autoCalcInFlight) {
-    queueAutoCalc();
-    return;
-  }
-
-  if (autoCalcTimer) clearTimeout(autoCalcTimer);
-  autoCalcTimer = setTimeout(async () => {
-    autoCalcTimer = null;
-    if (autoCalcInFlight) {
-      queueAutoCalc();
-      return;
-    }
-    autoCalcInFlight = true;
-    autoCalcQueued = false;
-    try {
-      await onCalcClick();
-      autoCalcLastSig = autoCalcPendingSig;
-    } catch (err) {
-      console.error("[auto-calc] failed", err);
-    } finally {
-      autoCalcInFlight = false;
-      if (autoCalcQueued) {
-        autoCalcQueued = false;
-        scheduleAutoCalc(true);
-      }
-    }
-  }, AUTO_CALC_DEBOUNCE_MS);
-}
-
 function renderProgress() {
   const p = calcCompletion();
 
@@ -4298,8 +4182,7 @@ function renderProgress() {
     calcBtn.disabled = !ok;
     calcBtn.style.opacity = ok ? "1" : ".55";
   }
-
-  scheduleAutoCalc();
+  window.dispatchEvent(new CustomEvent("planner:pool-updated"));
 }
 
 function renderBudgetHints() {
