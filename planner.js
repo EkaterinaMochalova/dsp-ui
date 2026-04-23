@@ -4194,13 +4194,16 @@ function renderBudgetHints() {
 
 // ===== POOL PREVIEW =====
 function computePoolPreview() {
-  if (!state.screens || !state.screens.length) return null;
+  const sourceScreens = (Array.isArray(state.screens) && state.screens.length)
+    ? state.screens
+    : (Array.isArray(state.screensAll) ? state.screensAll : []);
+  if (!sourceScreens.length) return null;
   const brief = buildBrief();
   const regions = Array.isArray(brief?.geo?.regions) ? brief.geo.regions : [];
   if (!regions.length) return null;
 
   // 1. По регионам
-  let pool = state.screens.filter(s => regions.some(r => screenMatchesGeoChoice(s, r)));
+  let pool = sourceScreens.filter(s => regions.some(r => screenMatchesGeoChoice(s, r)));
 
   // 2. По форматам (если ручной выбор) — используем те же поля, что и onCalcClick
   const formatsMode = brief.formats?.mode || "auto";
