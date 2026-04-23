@@ -3859,7 +3859,14 @@ async function onCalcClick() {
     // Если задано кол-во конструкций — частота определяется стратегией (pphTarget).
     // Ручной слайдер ppm игнорируется; для рекомендованного бюджета pphTarget уже
     // заложен в сумму бюджета. Для фиксированного — бюджет кэпит итоговую частоту.
-    const ppmOverride = (constructionsTarget !== null) ? pphTarget : null;
+    const ppmManual = Number(brief.constructions?.playsPerHour || 0);
+    const ppmOverride = (constructionsTarget !== null)
+      ? (
+          brief.budget.mode === "recommendation"
+            ? (Number.isFinite(ppmManual) && ppmManual > 0 ? ppmManual : pphTarget)
+            : pphTarget
+        )
+      : null;
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
     // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу).
@@ -4248,6 +4255,7 @@ function bindPlannerUI() {
       const mode = getBudgetMode();
       const wrap = el("budget-input-wrap");
       if (wrap) wrap.style.display = mode === "fixed" ? "block" : "none";
+      if (el("constructions-enabled")?.checked) applyConstructionsState(true);
       renderBudgetHints();
       renderProgress();
     });
@@ -4378,13 +4386,17 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
     const wrap = el("constructions-count-wrap");
     if (wrap) wrap.style.display = checked ? "block" : "none";
 
-    // Когда конструкции заданы — слайдер ppm отключается, частота определяется стратегией
+    // Constructions:
+    // - recommendation: ppm задаётся вручную (слайдер активен)
+    // - fixed/goal_ots: ppm задаётся стратегией (слайдер неактивен)
     const ppmRow = el("constructions-ppm")?.closest("div[style]");
     const ppmRange = el("constructions-ppm");
     const ppmVal = el("constructions-ppm-val");
     const ppmNote = el("constructions-ppm-note");
+    const budgetMode = getBudgetMode();
+    const manualPpmAllowed = checked && budgetMode === "recommendation";
 
-    if (checked) {
+    if (checked && !manualPpmAllowed) {
       if (ppmRange) ppmRange.disabled = true;
       if (ppmRow) ppmRow.style.opacity = "0.4";
       const pph = getPphTargetForUI();
