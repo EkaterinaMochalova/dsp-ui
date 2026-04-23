@@ -3252,11 +3252,14 @@ async function onCalcClick() {
   // 1) PREPARE POOLS PER REGION
   // =========================
   const prepared = [];
+  const sourceScreens = (Array.isArray(state.screens) && state.screens.length)
+    ? state.screens
+    : (Array.isArray(state.screensAll) ? state.screensAll : []);
 
   for (const region of regions) {
     const tier = getTierForGeo(region);
     const selectedNorm = normalizeGeoName(region);
-    let pool = state.screens.filter(s => {
+    let pool = sourceScreens.filter(s => {
       const r = String(s.region || "").trim();
       const c = String(s.city || "").trim();
       if (r === region || c === region) return true;
@@ -3275,9 +3278,10 @@ async function onCalcClick() {
       console.warn("[DSP] empty pool at region step", {
         selected: region,
         selectedNorm,
-        screensTotal: state.screens.length,
-        sampleRegions: [...new Set(state.screens.map(s => String(s.region || "").trim()).filter(Boolean))].slice(0, 10),
-        sampleCities: [...new Set(state.screens.map(s => String(s.city || "").trim()).filter(Boolean))].slice(0, 10)
+        screensTotal: sourceScreens.length,
+        source: (Array.isArray(state.screens) && state.screens.length) ? "state.screens" : "state.screensAll",
+        sampleRegions: [...new Set(sourceScreens.map(s => String(s.region || "").trim()).filter(Boolean))].slice(0, 10),
+        sampleCities: [...new Set(sourceScreens.map(s => String(s.city || "").trim()).filter(Boolean))].slice(0, 10)
       });
     }
 
