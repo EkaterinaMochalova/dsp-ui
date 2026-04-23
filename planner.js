@@ -4788,8 +4788,20 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
   });
 
   // ===== Calc =====
-  const calcBtn = el("calc-btn");
-  if (calcBtn) calcBtn.addEventListener("click", () => onCalcClick());
+  if (!state._calcClickDelegatedBound) {
+    state._calcClickDelegatedBound = true;
+    document.addEventListener("click", (e) => {
+      const calcBtn = e.target?.closest?.("#calc-btn");
+      if (!calcBtn) return;
+      e.preventDefault();
+      if (calcBtn.disabled) return;
+      Promise.resolve(onCalcClick()).catch((err) => {
+        console.error("[calc] failed", err);
+        alert("Не удалось выполнить расчёт. Проверьте консоль и попробуйте ещё раз.");
+        setStatus("");
+      });
+    });
+  }
 
   // Initial
   renderProgress();
