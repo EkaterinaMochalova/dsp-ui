@@ -5144,17 +5144,13 @@ async function dspFetchInventoriesPage(page, size = DSP_PAGE_SIZE) {
 }
 
 // Субгородские административные единицы, которые не нужны как отдельные «города»
-const DSP_CITY_SKIP_WORDS = ["поселен", "сельское", "сельсовет", "волость"];
-
 function dspBuildCityCache(raw, baseCache = null) {
   const cityCache = baseCache || {};
   for (const inv of raw || []) {
     const s = mapDspInventory(inv);
-    if (!s.city) continue;
-    const cl = s.city.toLowerCase();
-    if (DSP_CITY_SKIP_WORDS.some(w => cl.includes(w))) continue;
-    if (!cityCache[s.city]) cityCache[s.city] = [];
-    cityCache[s.city].push(s);
+    const cityKey = String(s.city || "").trim() || "Не назначено";
+    if (!cityCache[cityKey]) cityCache[cityKey] = [];
+    cityCache[cityKey].push({ ...s, city: cityKey });
   }
   return cityCache;
 }
