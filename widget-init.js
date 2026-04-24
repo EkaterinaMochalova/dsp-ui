@@ -127,6 +127,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   #planner-widget .pool-preview-filter b{ color:#0b1220; }
   #planner-widget .pool-preview-pct{ font-size:12px; color:#e04444; margin-left:2px; }
 
+  /* Мини-бейдж на шаге 1 */
+  #pool-mini-badge{ transition: opacity .2s; }
+
   #planner-widget .ux-input{ width:100%; box-sizing:border-box; }
   #planner-widget .row-2{ display:flex; gap:10px; }
   #planner-widget .row-2 > *{ flex:1; min-width:0; }
@@ -875,6 +878,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         </div>
       </div>
       <div id="region-selected" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
+      <!-- Pool mini badge (step 1) -->
+      <div id="pool-mini-badge" style="display:none; margin-top:10px; padding:10px 14px;
+           background:#f4f1ff; border-radius:10px; font-size:13px; color:#5b3ef5;
+           align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:16px;">📺</span>
+        <span>Доступно экранов: <strong id="pool-mini-count" style="font-size:16px; font-weight:700;"></strong></span>
+        <span id="pool-mini-filters" style="font-size:12px; color:#9b8aff; margin-left:2px;"></span>
+      </div>
       <button id="regions-clear" type="button"
         style="margin-top:10px; display:none; padding:8px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;">
         Очистить регионы
@@ -3712,15 +3723,37 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 (function(){
   function fmtN(n){ return Math.round(n).toLocaleString("ru-RU"); }
 
+  function updateMini(preview){
+    const mini = document.getElementById("pool-mini-badge");
+    const miniCnt = document.getElementById("pool-mini-count");
+    const miniFilters = document.getElementById("pool-mini-filters");
+    if(!mini) return;
+    if(!preview || !preview.countFinal){
+      mini.style.display = "none";
+      return;
+    }
+    mini.style.display = "flex";
+    if(miniCnt) miniCnt.textContent = fmtN(preview.countFinal);
+    // Краткая подсказка о применённых фильтрах
+    if(miniFilters){
+      const parts = [];
+      if(preview.hasGrpFilter) parts.push("GRP");
+      if(preview.hasOwnerFilter) parts.push("операторы");
+      if(preview.hasAffinityFilter) parts.push("VK");
+      miniFilters.textContent = parts.length ? "(" + parts.join(", ") + ")" : "";
+    }
+  }
+
   function renderPoolPreview(){
     const box = document.getElementById("pool-preview-content");
+    const badge = document.getElementById("pool-count-badge");
     if(!box) return;
     const preview = window.PLANNER?.computePoolPreview?.();
 
-    const badge = document.getElementById("pool-count-badge");
     if(!preview){
       box.innerHTML = '<span style="color:#667085">Укажите регионы, чтобы увидеть объём доступного инвентаря.</span>';
       if(badge) badge.textContent = "";
+      updateMini(null);
       return;
     }
 
@@ -3767,6 +3800,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     box.innerHTML = html;
     if(badge) badge.textContent = preview.countFinal.toLocaleString("ru-RU");
+    updateMini(preview);
   }
 
   // Обновлять при любом изменении фильтров
@@ -3774,13 +3808,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   window.addEventListener("planner:pool-updated", renderPoolPreview);
   window.addEventListener("planner:affinity-loaded", renderPoolPreview);
 
-  // Делегируем на изменения фильтров через MutationObserver + события
+  // Делегируем на изменения фильтров через события
   document.addEventListener("change", (e) => {
     const t = e.target;
     if(!t) return;
     const id = t.id || "";
     const name = t.name || "";
-    // GRP, форматы, операторы, конструкции, аудитория
     if(id === "grp-enabled" || id === "grp-min" || id === "grp-max" ||
        id === "constructions-enabled" || id === "constructions-count" ||
        id === "audience-enabled" || id === "audience-min-affinity" ||
@@ -3790,10 +3823,18 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       setTimeout(renderPoolPreview, 50);
     }
   });
+  document.addEventListener("input", (e) => {
+    const t = e.target;
+    if(!t) return;
+    const id = t.id || "";
+    // Живое обновление при вводе GRP-диапазона
+    if(id === "grp-min" || id === "grp-max" || id === "constructions-count"){
+      setTimeout(renderPoolPreview, 80);
+    }
+  });
   document.addEventListener("click", (e) => {
     const t = e.target;
     if(!t) return;
-    // Кнопки операторов Все/Очистить, форматы-пресеты
     if(t.id === "owner-all" || t.id === "owner-clear" ||
        t.closest?.("#formats-presets") || t.closest?.("#owner-wrap")){
       setTimeout(renderPoolPreview, 100);

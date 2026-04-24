@@ -4206,41 +4206,46 @@ function computePoolPreview() {
   // 1. По регионам
   let pool = sourceScreens.filter(s => regions.some(r => screenMatchesGeoChoice(s, r)));
 
-  // 2. По форматам (если ручной выбор) — используем те же поля, что и onCalcClick
+  // 2. По форматам (если ручной выбор) — те же что в onCalcClick
   const formatsMode = brief.formats?.mode || "auto";
   const manualFormats = Array.isArray(brief.formats?.selected) ? brief.formats.selected : [];
   if (formatsMode === "manual" && manualFormats.length > 0) {
     const fset = new Set(manualFormats);
     pool = pool.filter(s => fset.has(s.format));
   }
+
+  // 3. minBid-фильтр (обычный режим, не конструкции) — как в onCalcClick
+  const constructionsMode = brief.constructions?.enabled && brief.constructions.count > 0;
+  if (!constructionsMode) {
+    const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
+    if (hasBidScreens) pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+  }
+
   const countBase = pool.length;
 
-  // 3. После GRP-фильтра
-  let poolAfterGrp = pool;
+  // 4. GRP-фильтр
   let countAfterGrp = null;
   if (brief.grp?.enabled) {
-    poolAfterGrp = pool.filter(s => {
+    pool = pool.filter(s => {
       if (!Number.isFinite(s.grp) || s.grp <= 0) return false;
       return s.grp >= (brief.grp.min ?? 0) && s.grp <= (brief.grp.max ?? 9.98);
     });
-    countAfterGrp = poolAfterGrp.length;
+    countAfterGrp = pool.length;
   }
 
-  // 4. После фильтра по операторам
+  // 5. Фильтр по операторам
   const selectedOwners = state.selectedOwners ? [...state.selectedOwners] : [];
   let countAfterOwners = null;
   if (selectedOwners.length > 0) {
-    countAfterOwners = poolAfterGrp.filter(s => selectedOwners.includes(s.owner)).length;
+    pool = pool.filter(s => selectedOwners.includes(s.owner));
+    countAfterOwners = pool.length;
   }
 
-  // 5. After affinity filter
+  // 6. Affinity-фильтр (топ-N% от текущего пула)
   let countAfterAffinity = null;
-  const poolBeforeAff = selectedOwners.length > 0
-    ? poolAfterGrp.filter(s => selectedOwners.includes(s.owner))
-    : poolAfterGrp;
   if (brief.audience?.enabled && brief.audience.segments?.length > 0 && state.affinityMap?.size > 0) {
     const topPct = brief.audience.topPct ?? 0.10;
-    countAfterAffinity = Math.max(1, Math.ceil(poolBeforeAff.length * topPct));
+    countAfterAffinity = Math.max(1, Math.ceil(pool.length * topPct));
   }
 
   const countFinal = countAfterAffinity !== null
