@@ -1073,6 +1073,7 @@ function renderSelectedRegions() {
       state.selectedRegion = (state.selectedRegions[0] || null);
       if (state.selectedRegions.length <= REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = false;
       renderSelectedRegions();
+      renderFormats();
       renderProgress();
       window.dispatchEvent(new CustomEvent("planner:pool-updated"));
     });
@@ -1127,6 +1128,7 @@ function renderRegionSuggestions(q) {
       sug.innerHTML = "";
 
       renderSelectedRegions();
+      renderFormats();
       renderProgress();
       window.dispatchEvent(new CustomEvent("planner:pool-updated"));
     });
@@ -1291,7 +1293,12 @@ function renderFormats() {
     b.style.textAlign = "left";
     b.style.maxWidth = "240px";
 
-    const fmtCount = state.screensAll.filter(s => s.format === fmt).length;
+    const selRegions = Array.isArray(state.selectedRegions) && state.selectedRegions.length > 0
+      ? state.selectedRegions : null;
+    const poolForCount = selRegions
+      ? state.screensAll.filter(s => selRegions.includes(s.region))
+      : state.screensAll;
+    const fmtCount = poolForCount.filter(s => s.format === fmt).length;
     const fmtCountTxt = fmtCount > 0 ? `${fmtCount} экр.` : "";
     b.innerHTML = `
       <div style="font-weight:700;">${escapeHtml(meta.label)}</div>
@@ -4498,6 +4505,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
       state.selectedRegions = [];
       state.selectedRegion = null;
       renderSelectedRegions();
+      renderFormats();
       renderProgress();
       window.dispatchEvent(new CustomEvent("planner:pool-updated"));
     });
@@ -4567,6 +4575,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
     state.selectedRegion = state.selectedRegions[0] || null;
     if (state.selectedRegions.length > REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = true;
     renderSelectedRegions();
+    renderFormats();
     renderProgress();
     window.dispatchEvent(new CustomEvent("planner:pool-updated"));
   });
@@ -4633,6 +4642,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
           state.selectedRegion = state.selectedRegions[0] || null;
           if (state.selectedRegions.length > REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = true;
           renderSelectedRegions();
+          renderFormats();
           renderProgress();
           window.dispatchEvent(new CustomEvent("planner:pool-updated"));
         }
@@ -4748,6 +4758,7 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
           state.selectedRegion = state.selectedRegions[0] || null;
           if (state.selectedRegions.length > REGIONS_COLLAPSE_LIMIT) state._regionsCollapsed = true;
           renderSelectedRegions();
+          renderFormats();
           renderProgress();
           window.dispatchEvent(new CustomEvent("planner:pool-updated"));
         }
