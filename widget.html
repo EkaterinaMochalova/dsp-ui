@@ -1086,7 +1086,8 @@
 
     const regions = getSelectedRegionsNow();
 
-    const allScreens = Array.isArray(st.screensAll) ? st.screensAll
+    const allScreens = (Array.isArray(st.screensAll) && st.screensAll.length)
+                    ? st.screensAll
                     : (Array.isArray(st.screens) ? st.screens : []);
 
     let pool = allScreens;
@@ -2018,9 +2019,9 @@
   function getScreensAll(){
     const st = window.PLANNER?.state;
     if(!st) return [];
-    return Array.isArray(st.screensAll) ? st.screensAll
-         : Array.isArray(st.screens) ? st.screens
-         : [];
+    if (Array.isArray(st.screensAll) && st.screensAll.length) return st.screensAll;
+    if (Array.isArray(st.screens) && st.screens.length) return st.screens;
+    return [];
   }
 
   function getOwnerName(s){
