@@ -4214,12 +4214,9 @@ function computePoolPreview() {
     pool = pool.filter(s => fset.has(s.format));
   }
 
-  // 3. minBid-фильтр (обычный режим, не конструкции) — как в onCalcClick
-  const constructionsMode = brief.constructions?.enabled && brief.constructions.count > 0;
-  if (!constructionsMode) {
-    const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
-    if (hasBidScreens) pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
-  }
+  // minBid-фильтр здесь НЕ применяется: он невидим пользователю и создаёт
+  // путаницу (карточка формата показывает 24, а пул — 21). Применяется
+  // автоматически при расчёте (onCalcClick).
 
   const countBase = pool.length;
 
