@@ -3822,6 +3822,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   window.addEventListener("planner:screens-ready", renderPoolPreview);
   window.addEventListener("planner:pool-updated", renderPoolPreview);
   window.addEventListener("planner:affinity-loaded", renderPoolPreview);
+  // Клики по карточкам форматов и операторов диспатчат planner:filters-changed
+  window.addEventListener("planner:filters-changed", () => setTimeout(renderPoolPreview, 50));
 
   // Делегируем на изменения фильтров через события
   document.addEventListener("change", (e) => {
@@ -3842,7 +3844,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const t = e.target;
     if(!t) return;
     const id = t.id || "";
-    // Живое обновление при вводе GRP-диапазона
     if(id === "grp-min" || id === "grp-max" || id === "constructions-count"){
       setTimeout(renderPoolPreview, 80);
     }
@@ -3850,8 +3851,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   document.addEventListener("click", (e) => {
     const t = e.target;
     if(!t) return;
+    // Карточки форматов, кнопки пресетов, операторы
     if(t.id === "owner-all" || t.id === "owner-clear" ||
-       t.closest?.("#formats-presets") || t.closest?.("#owner-wrap")){
+       t.closest?.("#formats-presets") || t.closest?.("#owner-wrap") ||
+       t.closest?.("#formats-wrap")){
       setTimeout(renderPoolPreview, 100);
     }
   });
