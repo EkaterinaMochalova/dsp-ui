@@ -2233,13 +2233,22 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     const regions = getSelectedRegionsNow();
 
-    const allScreens = Array.isArray(st.screensAll) ? st.screensAll
-                    : (Array.isArray(st.screens) ? st.screens : []);
-
-    let pool = allScreens;
-    if(regions.length){
-      const rset = new Set(regions);
-      pool = allScreens.filter(s => rset.has(String(s.region || "").trim()));
+    // state.screens уже отфильтрован по выбранным регионам (заполняется после Calculate
+    // или при загрузке CSV). Используем его напрямую, если он не пуст — это гарантирует
+    // совпадение region-ключей. Если screens ещё пуст (до первого расчёта в DSP-режиме),
+    // фолбэк на screensAll с фильтром по region-имени.
+    let pool;
+    if(regions.length && Array.isArray(st.screens) && st.screens.length > 0){
+      pool = st.screens; // уже отфильтрован для выбранных регионов
+    } else {
+      const allScreens = Array.isArray(st.screensAll) ? st.screensAll
+                      : (Array.isArray(st.screens) ? st.screens : []);
+      pool = allScreens;
+      if(regions.length){
+        const rset = new Set(regions);
+        const byRegion = allScreens.filter(s => rset.has(String(s.region || "").trim()));
+        if(byRegion.length) pool = byRegion; // используем только если что-то нашли
+      }
     }
 
     const counts = {};
