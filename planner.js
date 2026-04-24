@@ -4195,9 +4195,12 @@ function renderBudgetHints() {
 
 // ===== POOL PREVIEW =====
 function computePoolPreview() {
-  const sourceScreens = (Array.isArray(state.screens) && state.screens.length)
-    ? state.screens
-    : (Array.isArray(state.screensAll) ? state.screensAll : []);
+  // Приоритет — screensAll (весь инвентарь DSP), чтобы совпадать с форматными
+  // карточками и не показывать стейл с прошлого Calculate. В CSV-режиме
+  // screensAll не заполняется → фолбэк на state.screens.
+  const sourceScreens = (Array.isArray(state.screensAll) && state.screensAll.length)
+    ? state.screensAll
+    : (Array.isArray(state.screens) ? state.screens : []);
   if (!sourceScreens.length) return null;
   const brief = buildBrief();
   const regions = Array.isArray(brief?.geo?.regions) ? brief.geo.regions : [];
