@@ -4631,15 +4631,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Script block 21c — Per-region constructions (count + ppm)
   runScript(`
 (function(){
+  let _lastRegionSig = "";
+
   function getRegions(){
     return Array.isArray(window.PLANNER?.state?.selectedRegions)
       ? window.PLANNER.state.selectedRegions.filter(Boolean) : [];
   }
 
-  function renderRows(containerId, inputClass, unit, min, max, step) {
+  function renderRows(containerId, inputClass, unit, min, max, step, regions) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    const regions = getRegions();
     // Preserve existing values
     const existing = {};
     container.querySelectorAll("." + inputClass).forEach(inp => {
@@ -4656,51 +4657,48 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }).join("");
   }
 
-  function refreshVisibility() {
+  const _opens = { cnt: false, ppm: false };
+
+  function refreshVisibility(forceRender) {
     const regions = getRegions();
+    const sig = regions.join("|");
     const multi = regions.length >= 2;
     const cnsActive = document.getElementById("constructions-enabled")?.checked;
     const show = multi && cnsActive;
-    const cntWrap = document.getElementById("cns-region-count-wrap");
-    const ppmWrap = document.getElementById("cns-region-ppm-wrap");
-    if (cntWrap) cntWrap.style.display = show ? "block" : "none";
-    if (ppmWrap) ppmWrap.style.display = show ? "block" : "none";
-    if (show) {
-      renderRows("cns-region-count-rows", "cns-region-count-input", "экр.", 1, 99999, 1);
-      renderRows("cns-region-ppm-rows",   "cns-region-ppm-input",   "/ч",   1,    60, 1);
+
+    document.getElementById("cns-region-count-wrap").style.display = show ? "block" : "none";
+    document.getElementById("cns-region-ppm-wrap").style.display   = show ? "block" : "none";
+
+    // Only re-render rows when regions actually change
+    if (show && (sig !== _lastRegionSig || forceRender)) {
+      _lastRegionSig = sig;
+      if (_opens.cnt) renderRows("cns-region-count-rows", "cns-region-count-input", "экр.", 1, 99999, 1, regions);
+      if (_opens.ppm) renderRows("cns-region-ppm-rows",   "cns-region-ppm-input",   "/ч",   1,    60, 1, regions);
     }
+    if (!show) _lastRegionSig = "";
   }
 
-  function makeToggle(btnId, arrowId, rowsId) {
+  function makeToggle(btnId, arrowId, rowsId, openKey, inputClass, unit, min, max) {
     const btn = document.getElementById(btnId);
     if (!btn) return;
-    let open = false;
     btn.addEventListener("click", () => {
-      open = !open;
-      const rows = document.getElementById(rowsId);
+      _opens[openKey] = !_opens[openKey];
+      const rows  = document.getElementById(rowsId);
       const arrow = document.getElementById(arrowId);
-      if (rows) rows.style.display = open ? "flex" : "none";
-      if (arrow) arrow.textContent = open ? "▼" : "▶";
-      if (open) {
-        renderRows(rowsId,
-          rowsId === "cns-region-count-rows" ? "cns-region-count-input" : "cns-region-ppm-input",
-          rowsId === "cns-region-count-rows" ? "экр." : "/ч",
-          1,
-          rowsId === "cns-region-count-rows" ? 99999 : 60,
-          1
-        );
-      }
+      if (rows) rows.style.display = _opens[openKey] ? "flex" : "none";
+      if (arrow) arrow.textContent = _opens[openKey] ? "▼" : "▶";
+      if (_opens[openKey]) renderRows(rowsId, inputClass, unit, 1, max, 1, getRegions());
     });
   }
 
-  makeToggle("cns-region-count-toggle", "cns-region-count-arrow", "cns-region-count-rows");
-  makeToggle("cns-region-ppm-toggle",   "cns-region-ppm-arrow",   "cns-region-ppm-rows");
+  makeToggle("cns-region-count-toggle", "cns-region-count-arrow", "cns-region-count-rows", "cnt", "cns-region-count-input", "экр.", 1, 99999);
+  makeToggle("cns-region-ppm-toggle",   "cns-region-ppm-arrow",   "cns-region-ppm-rows",   "ppm", "cns-region-ppm-input",   "/ч",   1, 60);
 
-  document.getElementById("constructions-enabled")?.addEventListener("change", refreshVisibility);
-  document.getElementById("constructions-chip")?.addEventListener("click", () => setTimeout(refreshVisibility, 50));
-  window.addEventListener("planner:filters-changed", refreshVisibility);
-  window.addEventListener("planner:screens-ready", refreshVisibility);
-  setInterval(refreshVisibility, 1500);
+  document.getElementById("constructions-enabled")?.addEventListener("change", () => refreshVisibility(false));
+  document.getElementById("constructions-chip")?.addEventListener("click", () => setTimeout(() => refreshVisibility(false), 50));
+  window.addEventListener("planner:filters-changed", () => refreshVisibility(false));
+  window.addEventListener("planner:screens-ready",   () => refreshVisibility(false));
+  setInterval(() => refreshVisibility(false), 1500);
 })();
 `);
 
