@@ -796,29 +796,46 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   /* ===== SEND PLAN POPUP ===== */
   #send-plan-popup{
     display:none; position:fixed; inset:0; z-index:999999;
-    background:rgba(11,18,32,0.65); backdrop-filter:blur(4px);
+    background:rgba(11,18,32,0.55); backdrop-filter:blur(6px);
     align-items:center; justify-content:center;
   }
   #send-plan-popup.active{ display:flex; }
   #send-plan-popup .spp-card{
-    background:#fff; border-radius:20px; padding:36px 40px;
-    max-width:400px; width:90%; text-align:center;
-    box-shadow:0 20px 60px rgba(11,18,32,0.22);
-    animation:spp-in 0.2s ease;
+    background:#fff; border-radius:24px; padding:40px 40px 36px;
+    max-width:380px; width:90%; text-align:center;
+    box-shadow:0 24px 64px rgba(91,62,245,0.18), 0 2px 8px rgba(11,18,32,0.08);
+    animation:spp-in 0.22s cubic-bezier(.34,1.36,.64,1);
   }
   @keyframes spp-in{
-    from{ transform:scale(0.88); opacity:0; }
-    to  { transform:scale(1);    opacity:1; }
+    from{ transform:scale(0.82) translateY(12px); opacity:0; }
+    to  { transform:scale(1)    translateY(0);    opacity:1; }
   }
-  #send-plan-popup .spp-icon{ font-size:48px; margin-bottom:12px; }
-  #send-plan-popup .spp-title{ font-size:20px; font-weight:700; color:#0b1220; margin-bottom:8px; }
-  #send-plan-popup .spp-sub{ font-size:14px; color:#667085; margin-bottom:24px; }
+  #send-plan-popup .spp-icon{
+    width:64px; height:64px; border-radius:50%;
+    background:linear-gradient(135deg,#7c5cfc,#5B3EF5);
+    display:flex; align-items:center; justify-content:center;
+    margin:0 auto 20px; box-shadow:0 8px 24px rgba(91,62,245,0.35);
+  }
+  #send-plan-popup .spp-icon svg{ width:30px; height:30px; }
+  #send-plan-popup .spp-title{
+    font-size:19px; font-weight:700; color:#0b1220;
+    margin-bottom:8px; letter-spacing:-0.2px;
+  }
+  #send-plan-popup .spp-sub{
+    font-size:13.5px; color:#667085; line-height:1.55;
+    margin-bottom:28px;
+  }
   #send-plan-popup .spp-close{
     background:#5B3EF5; color:#fff; border:none;
-    padding:11px 32px; border-radius:10px;
+    padding:12px 36px; border-radius:12px;
     font-size:14px; font-weight:600; cursor:pointer;
+    transition:background 0.15s, box-shadow 0.15s;
+    box-shadow:0 4px 14px rgba(91,62,245,0.35);
   }
-  #send-plan-popup .spp-close:hover{ background:#4730d4; }
+  #send-plan-popup .spp-close:hover{
+    background:#4730d4;
+    box-shadow:0 6px 20px rgba(91,62,245,0.45);
+  }
 
   /* ===== CALC HISTORY ===== */
   #planner-widget .calc-history-toggle{
@@ -1401,7 +1418,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <!-- ===================== SEND PLAN POPUP ===================== -->
 <div id="send-plan-popup">
   <div class="spp-card">
-    <div class="spp-icon">✅</div>
+    <div class="spp-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
     <div class="spp-title">План передан менеджеру!</div>
     <div class="spp-sub">Мы свяжемся с вами в ближайшее время и уточним детали размещения.</div>
     <button class="spp-close" id="send-plan-popup-close">Отлично</button>
