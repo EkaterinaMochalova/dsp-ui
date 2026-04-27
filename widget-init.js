@@ -782,6 +782,27 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   #planner-recalc-float:hover { background: #4730d4; }
   #planner-recalc-float .rf-icon { font-size: 16px; line-height: 1; }
 
+  /* ===== PER-REGION CONSTRUCTIONS ===== */
+  #planner-widget .cns-per-region-toggle{
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:12px; font-weight:600; color:#5B3EF5;
+    cursor:pointer; padding:4px 0; user-select:none;
+    background:none; border:none;
+  }
+  #planner-widget .cns-per-region-rows{ display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+  #planner-widget .cns-per-region-row{
+    display:flex; align-items:center; gap:8px;
+  }
+  #planner-widget .cns-per-region-label{
+    flex:1; font-size:12px; color:#344054; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #planner-widget .cns-per-region-row .ux-input{
+    width:80px; flex:none; font-size:13px; padding:5px 8px;
+  }
+  #planner-widget .cns-per-region-unit{
+    font-size:12px; color:#667085; min-width:24px;
+  }
+
   /* ===== SEND PLAN BUTTON ===== */
   #planner-widget #send-plan-btn{
     background:#22c55e; color:#fff; border:1.5px solid #16a34a;
@@ -1224,6 +1245,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           max
         </button>
       </div>
+      <!-- per-region screen count -->
+      <div id="cns-region-count-wrap" style="display:none; margin-top:8px;">
+        <button type="button" class="cns-per-region-toggle" id="cns-region-count-toggle">
+          <span id="cns-region-count-arrow">▶</span> По регионам
+        </button>
+        <div id="cns-region-count-rows" class="cns-per-region-rows" style="display:none;"></div>
+      </div>
       <div style="margin-top:12px;">
         <div style="font-size:12px; font-weight:600; margin-bottom:6px; color:#0b1220;">
           Выходов в час на экран: <span id="constructions-ppm-val" style="color:#5b3ef5;">10</span>
@@ -1234,6 +1262,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         </div>
         <div id="constructions-ppm-note" style="display:none; margin-top:6px; font-size:12px; color:#5b3ef5;">
           ℹ️ Частота определяется стратегией подбора. Слайдер неактивен.
+        </div>
+        <!-- per-region ppm -->
+        <div id="cns-region-ppm-wrap" style="display:none; margin-top:8px;">
+          <button type="button" class="cns-per-region-toggle" id="cns-region-ppm-toggle">
+            <span id="cns-region-ppm-arrow">▶</span> По регионам
+          </button>
+          <div id="cns-region-ppm-rows" class="cns-per-region-rows" style="display:none;"></div>
         </div>
       </div>
     </div>
@@ -3716,6 +3751,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
               <span><b>Бюджет:</b> \${fmtMoney(r.budget)}</span>
               <span><b>Выходов:</b> \${fmtInt(r.plays)}</span>
               <span><b>OTS:</b> \${ots}</span>
+              \${(days && hpd && r.plays > 0 && r.screens > 0) ? \`<span><b>Частота:</b> \${(r.plays / days / hpd / r.screens).toFixed(1)}/ч на экран</span>\` : ""}
             </div>
           </div>
         \`;
@@ -3760,6 +3796,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <div class="ps-grid">
             <div class="ps-metric"><div class="k">Выходов / день</div><div class="v">\${playsPerDay == null ? "—" : fmtInt(playsPerDay)}</div></div>
             <div class="ps-metric"><div class="k">Выходов / час</div><div class="v">\${playsPerHour == null ? "—" : fmtInt(playsPerHour)}</div></div>
+            <div class="ps-metric"><div class="k">Выходов / час на экран</div><div class="v">\${(playsPerHour != null && totalScreens > 0) ? (playsPerHour / totalScreens).toFixed(1) : "—"}</div></div>
             <div class="ps-metric"><div class="k">OTS всего</div><div class="v">\${otsTotal == null ? "—" : fmtInt(otsTotal)}</div></div>
             <div class="ps-metric"><div class="k">Стоимость выхода</div><div class="v">\${(totalBudget > 0 && totalPlays > 0) ? Math.round(totalBudget / totalPlays).toLocaleString("ru-RU") + "\u202f₽" : "—"}</div></div>
             <div class="ps-metric"><div class="k">CPM (стоимость 1\u202f000 OTS)</div><div class="v">\${(totalBudget > 0 && otsTotal > 0) ? Math.round(totalBudget / otsTotal * 1000).toLocaleString("ru-RU") + "\u202f₽" : "—"}</div></div>
@@ -4588,6 +4625,82 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       btn.textContent = "🚀 Передать менеджеру";
     }
   });
+})();
+`);
+
+  // Script block 21c — Per-region constructions (count + ppm)
+  runScript(`
+(function(){
+  function getRegions(){
+    return Array.isArray(window.PLANNER?.state?.selectedRegions)
+      ? window.PLANNER.state.selectedRegions.filter(Boolean) : [];
+  }
+
+  function renderRows(containerId, inputClass, unit, min, max, step) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const regions = getRegions();
+    // Preserve existing values
+    const existing = {};
+    container.querySelectorAll("." + inputClass).forEach(inp => {
+      if (inp.dataset.region && inp.value) existing[inp.dataset.region] = inp.value;
+    });
+    container.innerHTML = regions.map(r => {
+      const v = existing[r] || "";
+      return \`<div class="cns-per-region-row">
+        <span class="cns-per-region-label">\${r}</span>
+        <input type="number" class="ux-input \${inputClass}" data-region="\${r}"
+          min="\${min}" max="\${max}" step="\${step}" placeholder="—" value="\${v}">
+        <span class="cns-per-region-unit">\${unit}</span>
+      </div>\`;
+    }).join("");
+  }
+
+  function refreshVisibility() {
+    const regions = getRegions();
+    const multi = regions.length >= 2;
+    const cnsActive = document.getElementById("constructions-enabled")?.checked;
+    const show = multi && cnsActive;
+    const cntWrap = document.getElementById("cns-region-count-wrap");
+    const ppmWrap = document.getElementById("cns-region-ppm-wrap");
+    if (cntWrap) cntWrap.style.display = show ? "block" : "none";
+    if (ppmWrap) ppmWrap.style.display = show ? "block" : "none";
+    if (show) {
+      renderRows("cns-region-count-rows", "cns-region-count-input", "экр.", 1, 99999, 1);
+      renderRows("cns-region-ppm-rows",   "cns-region-ppm-input",   "/ч",   1,    60, 1);
+    }
+  }
+
+  function makeToggle(btnId, arrowId, rowsId) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    let open = false;
+    btn.addEventListener("click", () => {
+      open = !open;
+      const rows = document.getElementById(rowsId);
+      const arrow = document.getElementById(arrowId);
+      if (rows) rows.style.display = open ? "flex" : "none";
+      if (arrow) arrow.textContent = open ? "▼" : "▶";
+      if (open) {
+        renderRows(rowsId,
+          rowsId === "cns-region-count-rows" ? "cns-region-count-input" : "cns-region-ppm-input",
+          rowsId === "cns-region-count-rows" ? "экр." : "/ч",
+          1,
+          rowsId === "cns-region-count-rows" ? 99999 : 60,
+          1
+        );
+      }
+    });
+  }
+
+  makeToggle("cns-region-count-toggle", "cns-region-count-arrow", "cns-region-count-rows");
+  makeToggle("cns-region-ppm-toggle",   "cns-region-ppm-arrow",   "cns-region-ppm-rows");
+
+  document.getElementById("constructions-enabled")?.addEventListener("change", refreshVisibility);
+  document.getElementById("constructions-chip")?.addEventListener("click", () => setTimeout(refreshVisibility, 50));
+  window.addEventListener("planner:filters-changed", refreshVisibility);
+  window.addEventListener("planner:screens-ready", refreshVisibility);
+  setInterval(refreshVisibility, 1500);
 })();
 `);
 

@@ -1417,9 +1417,25 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
       max: toNumber(el("grp-max")?.value ?? 9.98)
     },
     constructions: {
-      enabled:     !!el("constructions-enabled")?.checked,
-      count:       toNumber(el("constructions-count")?.value ?? 0),
+      enabled:      !!el("constructions-enabled")?.checked,
+      count:        toNumber(el("constructions-count")?.value ?? 0),
       playsPerHour: toNumber(el("constructions-ppm")?.value ?? 0) || 0,
+      perRegionCount: (() => {
+        const map = {};
+        document.querySelectorAll(".cns-region-count-input").forEach(inp => {
+          const r = inp.dataset.region; const v = toNumber(inp.value);
+          if (r && Number.isFinite(v) && v > 0) map[r] = v;
+        });
+        return Object.keys(map).length ? map : null;
+      })(),
+      perRegionPpm: (() => {
+        const map = {};
+        document.querySelectorAll(".cns-region-ppm-input").forEach(inp => {
+          const r = inp.dataset.region; const v = toNumber(inp.value);
+          if (r && Number.isFinite(v) && v > 0) map[r] = v;
+        });
+        return Object.keys(map).length ? map : null;
+      })(),
     },
     audience: {
       enabled: !!el("audience-enabled")?.checked,
@@ -3794,21 +3810,33 @@ async function onCalcClick() {
   // 4) MAIN CALC PER REGION
   // =========================
 
-  // Distribute constructions count proportionally across regions by pool size
+  // Distribute constructions count across regions (per-region override takes precedence)
   const _perRegionConstructionsTarget = {};
   if (brief.constructions?.enabled && brief.constructions.count > 0) {
     const N = brief.constructions.count;
-    const totalPool = prepared.reduce((s, r) => s + r.pool.length, 0);
-    let remaining = N;
+    const overrides = brief.constructions.perRegionCount || {};
+    const withOverride    = prepared.filter(r => overrides[r.region] != null);
+    const withoutOverride = prepared.filter(r => overrides[r.region] == null);
+    const explicitSum = withOverride.reduce((s, r) => s + Math.min(r.pool.length, overrides[r.region]), 0);
+    const remaining   = Math.max(0, N - explicitSum);
+    const totalPoolWithout = withoutOverride.reduce((s, r) => s + r.pool.length, 0);
+    let distRemaining = remaining;
     for (let i = 0; i < prepared.length; i++) {
       const r = prepared[i];
-      if (i === prepared.length - 1) {
-        _perRegionConstructionsTarget[r.region] = Math.min(r.pool.length, Math.max(0, remaining));
+      if (overrides[r.region] != null) {
+        _perRegionConstructionsTarget[r.region] = Math.min(r.pool.length, overrides[r.region]);
+      } else if (withoutOverride.length === 0) {
+        _perRegionConstructionsTarget[r.region] = 0;
       } else {
-        const share = Math.round(N * r.pool.length / Math.max(1, totalPool));
-        const alloc = Math.min(r.pool.length, share);
-        _perRegionConstructionsTarget[r.region] = alloc;
-        remaining -= alloc;
+        const isLast = withoutOverride[withoutOverride.length - 1].region === r.region;
+        if (isLast) {
+          _perRegionConstructionsTarget[r.region] = Math.min(r.pool.length, Math.max(0, distRemaining));
+        } else {
+          const share = Math.round(remaining * r.pool.length / Math.max(1, totalPoolWithout));
+          const alloc = Math.min(r.pool.length, share);
+          _perRegionConstructionsTarget[r.region] = alloc;
+          distRemaining -= alloc;
+        }
       }
     }
   }
@@ -3906,7 +3934,10 @@ async function onCalcClick() {
     // Если задано кол-во конструкций — частота определяется стратегией (pphTarget).
     // Ручной слайдер ppm игнорируется; для рекомендованного бюджета pphTarget уже
     // заложен в сумму бюджета. Для фиксированного — бюджет кэпит итоговую частоту.
-    const ppmManual = Number(brief.constructions?.playsPerHour || 0);
+    const ppmManual = Number(
+      brief.constructions?.perRegionPpm?.[region] ||
+      brief.constructions?.playsPerHour || 0
+    );
     const ppmOverride = (constructionsTarget !== null)
       ? (
           brief.budget.mode === "recommendation"
