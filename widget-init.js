@@ -782,6 +782,45 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   #planner-recalc-float:hover { background: #4730d4; }
   #planner-recalc-float .rf-icon { font-size: 16px; line-height: 1; }
 
+  /* ===== SEND PLAN BUTTON ===== */
+  #planner-widget #send-plan-btn{
+    background:#22c55e; color:#fff; border:none;
+    padding:12px 28px; border-radius:12px;
+    font-size:15px; font-weight:700; cursor:pointer;
+    display:none; margin-top:14px;
+    transition:background 0.15s, opacity 0.15s;
+    width:100%;
+  }
+  #planner-widget #send-plan-btn:hover{ background:#16a34a; }
+  #planner-widget #send-plan-btn:disabled{ opacity:0.6; cursor:default; }
+
+  /* ===== SEND PLAN POPUP ===== */
+  #send-plan-popup{
+    display:none; position:fixed; inset:0; z-index:999999;
+    background:rgba(11,18,32,0.65); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center;
+  }
+  #send-plan-popup.active{ display:flex; }
+  #send-plan-popup .spp-card{
+    background:#fff; border-radius:20px; padding:36px 40px;
+    max-width:400px; width:90%; text-align:center;
+    box-shadow:0 20px 60px rgba(11,18,32,0.22);
+    animation:spp-in 0.2s ease;
+  }
+  @keyframes spp-in{
+    from{ transform:scale(0.88); opacity:0; }
+    to  { transform:scale(1);    opacity:1; }
+  }
+  #send-plan-popup .spp-icon{ font-size:48px; margin-bottom:12px; }
+  #send-plan-popup .spp-title{ font-size:20px; font-weight:700; color:#0b1220; margin-bottom:8px; }
+  #send-plan-popup .spp-sub{ font-size:14px; color:#667085; margin-bottom:24px; }
+  #send-plan-popup .spp-close{
+    background:#5B3EF5; color:#fff; border:none;
+    padding:11px 32px; border-radius:10px;
+    font-size:14px; font-weight:600; cursor:pointer;
+  }
+  #send-plan-popup .spp-close:hover{ background:#4730d4; }
+
   /* ===== CALC HISTORY ===== */
   #planner-widget .calc-history-toggle{
     display:inline-flex; align-items:center; gap:6px;
@@ -1351,6 +1390,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <button id="download-poi-csv" class="wiz-btn ghost" disabled>Скачать POI (CSV)</button>
   <button id="download-poi-xlsx" class="wiz-btn ghost" disabled>Скачать POI (XLSX)</button>
 </div>
+<button id="send-plan-btn">🚀 Передать план менеджеру</button>
 <div id="poi-results" style="margin-top:12px;"></div>
 <!-- это твоя таблица "первые 10 экранов" — оставляем -->
 <div id="results" style="margin-top:14px;"></div>
@@ -1359,6 +1399,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
     </div>
+<!-- ===================== SEND PLAN POPUP ===================== -->
+<div id="send-plan-popup">
+  <div class="spp-card">
+    <div class="spp-icon">✅</div>
+    <div class="spp-title">План передан менеджеру!</div>
+    <div class="spp-sub">Мы свяжемся с вами в ближайшее время и уточним детали размещения.</div>
+    <button class="spp-close" id="send-plan-popup-close">Отлично</button>
+  </div>
+</div>
 <!-- ===================== POLYGON DRAW MODAL ===================== -->
 <div id="poly-modal" style="
   display:none; position:fixed; inset:0; z-index:10000;
@@ -4450,6 +4499,69 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   document.querySelectorAll('input[name="budget_mode"]').forEach(r =>
     r.addEventListener("change", update)
   );
+})();
+`);
+
+  // Script block 21b — Send plan button
+  runScript(`
+(function(){
+  const SEND_URL = "https://dsp-rag-telegram-bot-production.up.railway.app/send_plan";
+
+  const btn   = document.getElementById("send-plan-btn");
+  const popup = document.getElementById("send-plan-popup");
+  const close = document.getElementById("send-plan-popup-close");
+  if (!btn || !popup) return;
+
+  window.addEventListener("planner:calc-done", () => {
+    btn.style.display = "block";
+  });
+
+  close.addEventListener("click", () => popup.classList.remove("active"));
+  popup.addEventListener("click", e => { if (e.target === popup) popup.classList.remove("active"); });
+
+  btn.addEventListener("click", async () => {
+    const calc = window.PLANNER?.lastCalc;
+    if (!calc) return;
+
+    btn.disabled = true;
+    btn.textContent = "Отправляю…";
+
+    const brief   = calc.brief || {};
+    const meta    = calc.meta  || {};
+    const email   = sessionStorage.getItem("dsp_user_email") || "";
+    const formats = brief.formats?.selected?.length
+      ? brief.formats.selected
+      : (brief.formats?.mode === "auto" ? ["auto"] : []);
+
+    const payload = {
+      user_email:     email,
+      regions:        brief.geo?.regions || [],
+      date_start:     brief.dates?.start,
+      date_end:       brief.dates?.end,
+      budget:         meta.totalBudget,
+      screens:        calc.chosen?.length ?? 0,
+      plays:          meta.totalPlays,
+      ots:            meta.totalOts,
+      formats:        formats,
+      selection_mode: brief.selection?.mode || "",
+    };
+
+    try {
+      const res = await fetch(SEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || res.status);
+      popup.classList.add("active");
+    } catch(err) {
+      alert("Не удалось отправить план: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "🚀 Передать план менеджеру";
+    }
+  });
 })();
 `);
 
