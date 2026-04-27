@@ -4121,6 +4121,8 @@ ${perRegionText}`
     : [];
   window.PLANNER.lastUnmatchedGids = unmatchedGids;
 
+  saveCalcToHistory();
+
   window.dispatchEvent(new CustomEvent("planner:calc-done", {
     detail: { chosen: chosenAll, perRegion: perRegionRows, warnings, inputBudget: brief.budget.amount,
               formatStats, meta: window.PLANNER.lastCalc.meta, unmatchedGids }
@@ -4979,6 +4981,164 @@ function getDspToken() { return sessionStorage.getItem("dsp_token") || ""; }
 function setDspToken(t) { t ? sessionStorage.setItem("dsp_token", t) : sessionStorage.removeItem("dsp_token"); }
 function getDspUserEmail() { return sessionStorage.getItem("dsp_user_email") || ""; }
 function setDspUserEmail(e) { e ? sessionStorage.setItem("dsp_user_email", e) : sessionStorage.removeItem("dsp_user_email"); }
+
+function _calcHistoryKey() {
+  const email = getDspUserEmail();
+  if (!email) return null;
+  const safe = normalizeKey(email).replace(/[^a-z0-9._@-]/gi, "_");
+  return `planner_history_${safe}`;
+}
+
+function saveCalcToHistory() {
+  const key = _calcHistoryKey();
+  if (!key) return;
+  const calc = window.PLANNER?.lastCalc;
+  if (!calc?.brief) return;
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem(key) || "[]"); } catch (e) {}
+  if (!Array.isArray(history)) history = [];
+  history.unshift({
+    id: Date.now(),
+    ts: new Date().toISOString(),
+    brief: calc.brief,
+    summary: {
+      screens: calc.chosen?.length ?? 0,
+      totalBudget: calc.meta?.totalBudget ?? 0,
+      totalPlays: calc.meta?.totalPlays ?? 0,
+      totalOts: calc.meta?.totalOts ?? null,
+      regions: calc.brief?.geo?.regions ?? [],
+      dateStart: calc.brief?.dates?.start,
+      dateEnd: calc.brief?.dates?.end
+    }
+  });
+  history.splice(10);
+  try { localStorage.setItem(key, JSON.stringify(history)); } catch (e) {}
+  window.dispatchEvent(new CustomEvent("planner:history-updated"));
+}
+
+function restoreBriefToUI(brief) {
+  if (!brief) return;
+
+  // 1. Regions
+  state.selectedRegions = Array.isArray(brief.geo?.regions) ? [...brief.geo.regions] : [];
+  state.selectedRegion = state.selectedRegions[0] || null;
+  renderSelectedRegions();
+
+  // 2. Dates
+  if (el("date-start")) el("date-start").value = brief.dates?.start || "";
+  if (el("date-end")) el("date-end").value = brief.dates?.end || "";
+
+  // 3. Schedule
+  const schType = brief.schedule?.type || "all_day";
+  const schChip = document.querySelector(`.sch-chip[data-sch="${schType}"]`);
+  if (schChip) {
+    schChip.click();
+  } else {
+    const schRadio = document.getElementById(`sch-r-${schType}`);
+    if (schRadio) { schRadio.checked = true; schRadio.dispatchEvent(new Event("change", { bubbles: true })); }
+  }
+  if (schType === "custom") {
+    if (el("time-from")) el("time-from").value = brief.schedule?.from || "07:00";
+    if (el("time-to")) el("time-to").value = brief.schedule?.to || "22:00";
+  }
+  if (schType === "weekly" && brief.schedule?.weekly) {
+    const weekly = brief.schedule.weekly;
+    const dows = ["mon","tue","wed","thu","fri","sat","sun"];
+    const timeKey = t => `${t.from}-${t.to}`;
+    const timeToGroup = {};
+    const groups = [];
+    for (const dow of dows) {
+      for (const t of (weekly[dow] || [])) {
+        const k = timeKey(t);
+        if (!timeToGroup[k]) { timeToGroup[k] = { days: {}, times: [{ from: t.from, to: t.to }] }; groups.push(timeToGroup[k]); }
+        timeToGroup[k].days[dow] = true;
+      }
+    }
+    if (groups.length) state.weeklyGroups = groups;
+    if (typeof window.renderWeeklyDays === "function") window.renderWeeklyDays();
+  }
+
+  // 4. Budget mode + amount
+  const budgetMode = brief.budget?.mode || "fixed";
+  const bmRadio = document.querySelector(`input[name="budget_mode"][value="${budgetMode}"]`);
+  if (bmRadio) { bmRadio.checked = true; bmRadio.dispatchEvent(new Event("change", { bubbles: true })); }
+  if (el("budget-input") && brief.budget?.amount != null) el("budget-input").value = brief.budget.amount;
+  if (el("goal-ots") && brief.goal?.ots != null) el("goal-ots").value = brief.goal.ots;
+
+  // 5. Formats
+  const fmtAutoEl = el("formats-auto");
+  if (fmtAutoEl) {
+    fmtAutoEl.checked = brief.formats?.mode === "auto";
+    fmtAutoEl.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  if (brief.formats?.mode !== "auto" && state.selectedFormats) {
+    state.selectedFormats.clear();
+    (brief.formats?.selected || []).forEach(f => state.selectedFormats.add(f));
+    if (typeof window.renderFormatsCards === "function") window.renderFormatsCards();
+  }
+
+  // 6. Selection mode
+  const selEl = el("selection-mode");
+  if (selEl) { selEl.value = brief.selection?.mode || "city_even"; selEl.dispatchEvent(new Event("change", { bubbles: true })); }
+  const selMode = brief.selection?.mode;
+  if (selMode === "near_address") {
+    const addrInputs = document.querySelectorAll(".planner-addr-input");
+    if (addrInputs.length && brief.selection?.addresses?.length) addrInputs[0].value = brief.selection.addresses[0];
+    const radEl = el("planner-radius") || el("radius");
+    if (radEl) radEl.value = brief.selection?.radius_m ?? 500;
+  }
+  if (selMode === "poi") {
+    const poiEl = el("poi-type"); if (poiEl) poiEl.value = brief.selection?.poi_type || "pet_store";
+    const radEl = el("planner-radius") || el("radius"); if (radEl) radEl.value = brief.selection?.radius_m ?? 500;
+  }
+  if (selMode === "route") {
+    const rfEl = el("route-from"); if (rfEl) rfEl.value = brief.selection?.route_from || "";
+    const rtEl = el("route-to"); if (rtEl) rtEl.value = brief.selection?.route_to || "";
+    const radEl = el("planner-radius") || el("radius"); if (radEl) radEl.value = brief.selection?.radius_m ?? 300;
+  }
+  if (selMode === "highway") {
+    const hnEl = el("highway-name"); if (hnEl) hnEl.value = brief.selection?.highway_name || "";
+    const radEl = el("planner-radius") || el("radius"); if (radEl) radEl.value = brief.selection?.radius_m ?? 500;
+  }
+  if (selMode === "manual_screens") {
+    const mgEl = el("manual-gids"); if (mgEl) mgEl.value = (brief.selection?.manual_gids || []).join("\n");
+  }
+
+  // 7. GRP
+  const grpEl = el("grp-enabled");
+  if (grpEl) { grpEl.checked = !!brief.grp?.enabled; grpEl.dispatchEvent(new Event("change", { bubbles: true })); }
+  if (el("grp-min")) el("grp-min").value = brief.grp?.min ?? 0;
+  if (el("grp-max")) el("grp-max").value = brief.grp?.max ?? 9.98;
+
+  // 8. Constructions
+  const constrEl = el("constructions-enabled");
+  if (constrEl) { constrEl.checked = !!brief.constructions?.enabled; constrEl.dispatchEvent(new Event("change", { bubbles: true })); }
+  if (el("constructions-count")) el("constructions-count").value = brief.constructions?.count ?? "";
+  if (el("constructions-ppm")) el("constructions-ppm").value = brief.constructions?.playsPerHour ?? 10;
+
+  // 9. Audience
+  const audEl = el("audience-enabled");
+  if (audEl) { audEl.checked = !!brief.audience?.enabled; audEl.dispatchEvent(new Event("change", { bubbles: true })); }
+  if (brief.audience?.segments) {
+    document.querySelectorAll('#audience-segment-wrap input[type="checkbox"]').forEach(cb => {
+      cb.checked = brief.audience.segments.includes(cb.value);
+    });
+  }
+  const topPctEl = el("audience-top-pct");
+  if (topPctEl && brief.audience?.topPct != null) topPctEl.value = Math.round(brief.audience.topPct * 100);
+
+  // 10. Bid mode
+  const bidId = brief.bidMode === "min" ? "bid-mode-min" : "bid-mode-recommended";
+  const bidRadio = document.getElementById(bidId);
+  if (bidRadio) { bidRadio.checked = true; bidRadio.dispatchEvent(new Event("change", { bubbles: true })); }
+
+  if (typeof window.renderProgress === "function") window.renderProgress();
+  if (typeof window.setStep === "function") window.setStep(1);
+}
+
+window.PLANNER = window.PLANNER || {};
+window.PLANNER.saveCalcToHistory = saveCalcToHistory;
+window.PLANNER.restoreBriefToUI = restoreBriefToUI;
 function getDspAgencyId() { return sessionStorage.getItem("dsp_agency_id") || ""; }
 function setDspAgencyId(id) { id ? sessionStorage.setItem("dsp_agency_id", String(id)) : sessionStorage.removeItem("dsp_agency_id"); }
 // additionalCharge — множитель надбавки агентства (напр. 0.15 = +15%), platformFee — фиксированная надбавка платформы (в той же валюте что и ставка)

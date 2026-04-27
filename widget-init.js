@@ -781,6 +781,28 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   }
   #planner-recalc-float:hover { background: #4730d4; }
   #planner-recalc-float .rf-icon { font-size: 16px; line-height: 1; }
+
+  /* ===== CALC HISTORY ===== */
+  #planner-widget .calc-history-toggle{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:13px; font-weight:600; color:#5B3EF5;
+    cursor:pointer; padding:4px 0; user-select:none;
+  }
+  #planner-widget .calc-history-list{
+    display:flex; flex-direction:column; gap:6px; margin-top:8px;
+  }
+  #planner-widget .calc-history-item{
+    background:#f8f8ff; border:1.5px solid #e0d9ff;
+    border-radius:10px; padding:8px 12px;
+    cursor:pointer; font-size:13px;
+    transition:border-color 0.15s, background 0.15s;
+  }
+  #planner-widget .calc-history-item:hover{
+    background:#eee9ff; border-color:#a78bfa;
+  }
+  #planner-widget .calc-history-date{ font-size:11px; color:#888; margin-bottom:2px; }
+  #planner-widget .calc-history-title{ font-weight:600; color:#0b1220; }
+  #planner-widget .calc-history-meta{ font-size:11px; color:#667085; margin-top:2px; }
 `;
   document.head.appendChild(style);
 
@@ -791,7 +813,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@56fcbe68378b92dc97403c3d574434cfb923741d/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@6c165e09a03b96015d581c89a96fc75ad7e116d5/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -801,6 +823,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 </button>
 <br><br><br><br>  <h2 class="planner-title">Расчёт размещения</h2>
   <div id="dsp-user-bar" style="display:none; font-size:12px; color:#888; margin:-8px 0 10px;"></div>
+  <div id="calc-history-panel" style="display:none; margin-bottom:12px;">
+    <div id="calc-history-toggle" class="calc-history-toggle">
+      <span id="calc-history-arrow">▶</span> История расчётов
+    </div>
+    <div id="calc-history-list" class="calc-history-list" style="display:none; flex-direction:column;"></div>
+  </div>
   <div class="wiz-progress" id="wiz-progress">
     <div class="bar"><i id="wiz-bar"></i></div>
     <div class="meta" id="wiz-meta">0/4</div>
@@ -4422,6 +4450,87 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   document.querySelectorAll('input[name="budget_mode"]').forEach(r =>
     r.addEventListener("change", update)
   );
+})();
+`);
+
+  // Script block 22a — Calc history panel
+  runScript(`
+(function(){
+  const panel  = document.getElementById("calc-history-panel");
+  const toggle = document.getElementById("calc-history-toggle");
+  const list   = document.getElementById("calc-history-list");
+  const arrow  = document.getElementById("calc-history-arrow");
+  if (!panel || !toggle || !list) return;
+
+  let expanded = false;
+
+  function historyKey() {
+    const email = sessionStorage.getItem("dsp_user_email") || "";
+    if (!email) return null;
+    return "planner_history_" + email.toLowerCase().replace(/[^a-z0-9._@-]/g, "_");
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "";
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" })
+           + " " + d.toLocaleTimeString("ru-RU", { hour:"2-digit", minute:"2-digit" });
+    } catch(e) { return iso; }
+  }
+
+  function getHistory() {
+    const key = historyKey();
+    if (!key) return null;
+    try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch(e) { return []; }
+  }
+
+  function renderList() {
+    const history = getHistory();
+    if (!history || !history.length) { list.innerHTML = ""; return; }
+    list.innerHTML = history.map((entry, i) => {
+      const s = entry.summary || {};
+      const regions = (s.regions || entry.brief?.geo?.regions || []).join(", ") || "—";
+      const budget  = s.totalBudget ? Math.floor(s.totalBudget).toLocaleString("ru-RU") + " ₽" : "—";
+      const screens = s.screens != null ? s.screens + " экр." : "";
+      const plays   = s.totalPlays ? Math.floor(s.totalPlays).toLocaleString("ru-RU") + " выходов" : "";
+      const meta    = [screens, plays].filter(Boolean).join(" · ");
+      const dates   = [s.dateStart, s.dateEnd].filter(Boolean).join(" → ");
+      return \`<div class="calc-history-item" data-idx="\${i}">
+        <div class="calc-history-date">\${fmtDate(entry.ts)}</div>
+        <div class="calc-history-title">\${regions}\${dates ? " · " + dates : ""}</div>
+        <div class="calc-history-meta">\${budget}\${meta ? " · " + meta : ""}</div>
+      </div>\`;
+    }).join("");
+    list.querySelectorAll(".calc-history-item").forEach(item => {
+      item.addEventListener("click", () => {
+        const history2 = getHistory();
+        const entry = history2 && history2[Number(item.dataset.idx)];
+        if (entry?.brief && typeof window.PLANNER?.restoreBriefToUI === "function") {
+          window.PLANNER.restoreBriefToUI(entry.brief);
+        }
+      });
+    });
+  }
+
+  function refreshVisibility() {
+    const history = getHistory();
+    const hasItems = Array.isArray(history) && history.length > 0;
+    panel.style.display = hasItems ? "block" : "none";
+    if (expanded && hasItems) renderList();
+  }
+
+  toggle.addEventListener("click", () => {
+    expanded = !expanded;
+    list.style.display = expanded ? "flex" : "none";
+    if (arrow) arrow.textContent = expanded ? "▼" : "▶";
+    if (expanded) renderList();
+  });
+
+  window.addEventListener("planner:history-updated", refreshVisibility);
+  window.addEventListener("planner:calc-done", refreshVisibility);
+  window.addEventListener("planner:screens-ready", refreshVisibility);
+  setTimeout(refreshVisibility, 1500);
 })();
 `);
 
