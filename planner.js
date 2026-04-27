@@ -3764,8 +3764,8 @@ async function onCalcClick() {
         }
       }
 
-      // Если режим constructions — пересчитываем бюджет с реальными recoBid
-      if (brief.constructions?.enabled && brief.constructions.count > 0) {
+      // Если режим constructions (только recommendation) — пересчитываем бюджет с реальными recoBid
+      if (brief.budget.mode === "recommendation" && brief.constructions?.enabled && brief.constructions.count > 0) {
         const allRecos = prepared.flatMap(r => r.pool.map(s => s.recoBid))
           .filter(v => Number.isFinite(v) && v > 0);
         if (allRecos.length > 0) {
@@ -3793,6 +3793,26 @@ async function onCalcClick() {
   // =========================
   // 4) MAIN CALC PER REGION
   // =========================
+
+  // Distribute constructions count proportionally across regions by pool size
+  const _perRegionConstructionsTarget = {};
+  if (brief.constructions?.enabled && brief.constructions.count > 0) {
+    const N = brief.constructions.count;
+    const totalPool = prepared.reduce((s, r) => s + r.pool.length, 0);
+    let remaining = N;
+    for (let i = 0; i < prepared.length; i++) {
+      const r = prepared[i];
+      if (i === prepared.length - 1) {
+        _perRegionConstructionsTarget[r.region] = Math.min(r.pool.length, Math.max(0, remaining));
+      } else {
+        const share = Math.round(N * r.pool.length / Math.max(1, totalPool));
+        const alloc = Math.min(r.pool.length, share);
+        _perRegionConstructionsTarget[r.region] = alloc;
+        remaining -= alloc;
+      }
+    }
+  }
+
   for (const pr of prepared) {
     const region = pr.region;
     const tier = pr.tier;
@@ -3831,10 +3851,9 @@ async function onCalcClick() {
       brief.budget.mode
     );
 
-    // Если пользователь задал кол-во конструкций — это цель, а не верхний предел.
-    // Алгоритм выбирает ровно столько экранов (или меньше, если пул меньше).
+    // Если пользователь задал кол-во конструкций — распределяем пропорционально по регионам.
     const constructionsTarget = (brief.constructions?.enabled && brief.constructions.count > 0)
-      ? brief.constructions.count
+      ? (_perRegionConstructionsTarget[region] ?? brief.constructions.count)
       : null;
     let screensChosenCount = constructionsTarget !== null
       ? Math.min(pool.length, constructionsTarget)
