@@ -4546,11 +4546,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     };
 
     try {
-      const res = await fetch(SEND_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const form = new FormData();
+      form.append("data", JSON.stringify(payload));
+
+      if (typeof window.PLANNER?.buildMediaPlanBlob === "function") {
+        try {
+          const { blob, filename } = await window.PLANNER.buildMediaPlanBlob();
+          form.append("file", blob, filename);
+        } catch(e) { console.warn("Could not build xlsx for send:", e); }
+      }
+
+      const res  = await fetch(SEND_URL, { method: "POST", body: form });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || res.status);
       popup.classList.add("active");
@@ -4558,7 +4564,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       alert("Не удалось отправить план: " + err.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = "🚀 Передать план менеджеру";
+      btn.textContent = "🚀 Передать менеджеру";
     }
   });
 })();

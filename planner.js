@@ -1946,7 +1946,7 @@ function downloadXLSX(rows) {
 }
 
 // ===== Медиаплан (красивый XLSX через ExcelJS) =====
-async function downloadMediaPlan() {
+async function buildMediaPlanBlob() {
   const calc = window.PLANNER?.lastCalc;
   if (!calc) return alert("Сначала нажмите «Рассчитать».");
 
@@ -2357,12 +2357,21 @@ async function downloadMediaPlan() {
 
 
   // Сохранение
-  const buf  = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = `mediaplan_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateStr(brief.dates?.start)}.xlsx`;
+  const buf      = await wb.xlsx.writeBuffer();
+  const mimeXlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const blob     = new Blob([buf], { type: mimeXlsx });
+  const filename = `mediaplan_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateStr(brief.dates?.start)}.xlsx`;
+  return { blob, filename };
+}
+
+async function downloadMediaPlan() {
+  const result = await buildMediaPlanBlob();
+  if (!result) return;
+  const { blob, filename } = result;
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement("a");
+  a.href    = url;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -5139,6 +5148,7 @@ function restoreBriefToUI(brief) {
 window.PLANNER = window.PLANNER || {};
 window.PLANNER.saveCalcToHistory = saveCalcToHistory;
 window.PLANNER.restoreBriefToUI = restoreBriefToUI;
+window.PLANNER.buildMediaPlanBlob = buildMediaPlanBlob;
 function getDspAgencyId() { return sessionStorage.getItem("dsp_agency_id") || ""; }
 function setDspAgencyId(id) { id ? sessionStorage.setItem("dsp_agency_id", String(id)) : sessionStorage.removeItem("dsp_agency_id"); }
 // additionalCharge — множитель надбавки агентства (напр. 0.15 = +15%), platformFee — фиксированная надбавка платформы (в той же валюте что и ставка)
