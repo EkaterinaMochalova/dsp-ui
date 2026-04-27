@@ -784,12 +784,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   /* ===== SEND PLAN BUTTON ===== */
   #planner-widget #send-plan-btn{
-    background:#22c55e; color:#fff; border:none;
-    padding:12px 28px; border-radius:12px;
-    font-size:15px; font-weight:700; cursor:pointer;
-    display:none; margin-top:14px;
+    background:#22c55e; color:#fff; border:1.5px solid #16a34a;
+    padding:8px 18px; border-radius:10px;
+    font-size:13px; font-weight:600; cursor:pointer;
+    display:none;
     transition:background 0.15s, opacity 0.15s;
-    width:100%;
   }
   #planner-widget #send-plan-btn:hover{ background:#16a34a; }
   #planner-widget #send-plan-btn:disabled{ opacity:0.6; cursor:default; }
@@ -1389,8 +1388,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <button id="download-plan-xlsx" class="wiz-btn ghost" disabled>Скачать план</button>
   <button id="download-poi-csv" class="wiz-btn ghost" disabled>Скачать POI (CSV)</button>
   <button id="download-poi-xlsx" class="wiz-btn ghost" disabled>Скачать POI (XLSX)</button>
+  <button id="send-plan-btn">🚀 Передать менеджеру</button>
 </div>
-<button id="send-plan-btn">🚀 Передать план менеджеру</button>
 <div id="poi-results" style="margin-top:12px;"></div>
 <!-- это твоя таблица "первые 10 экранов" — оставляем -->
 <div id="results" style="margin-top:14px;"></div>
