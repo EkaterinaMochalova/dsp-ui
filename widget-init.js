@@ -3797,7 +3797,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             <div class="ps-metric"><div class="k">Стоимость выхода</div><div class="v">\${(totalBudget > 0 && totalPlays > 0) ? Math.round(totalBudget / totalPlays).toLocaleString("ru-RU") + "\u202f₽" : "—"}</div></div>
             <div class="ps-metric"><div class="k">Выходов в день</div><div class="v">\${playsPerDay == null ? "—" : fmtInt(playsPerDay)}</div></div>
             <div class="ps-metric"><div class="k">OTS всего</div><div class="v">\${otsTotal == null ? "—" : fmtInt(otsTotal)}</div></div>
-            <div class="ps-metric"><div class="k">Выходов в час</div><div class="v">\${playsPerHour == null ? "—" : fmtInt(playsPerHour)}</div></div>
+            <div class="ps-metric"><div class="k">Выходов / час на экран</div><div class="v">\${(playsPerHour != null && totalScreens > 0) ? (playsPerHour / totalScreens).toFixed(1) : "—"}</div></div>
             <div class="ps-metric"><div class="k">CPM (стоимость 1\u202f000 OTS)</div><div class="v">\${(totalBudget > 0 && otsTotal > 0) ? Math.round(totalBudget / otsTotal * 1000).toLocaleString("ru-RU") + "\u202f₽" : "—"}</div></div>
           </div>
 
