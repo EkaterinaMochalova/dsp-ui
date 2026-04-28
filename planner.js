@@ -5195,10 +5195,62 @@ function restoreBriefToUI(brief) {
   if (typeof window.setStep === "function") window.setStep(1);
 }
 
+function computeRecoBudgetTiers() {
+  const BASE_MONTHLY = { M: 2_000_000, SP: 1_500_000, A: 1_000_000, B: 500_000, C: 300_000, D: 100_000 };
+  const MAX_MONTHLY  = { M: 30_000_000, SP: 15_000_000, A: 5_000_000, B: 2_000_000, C: 1_000_000, D: 300_000 };
+
+  const sourceScreens = (Array.isArray(state.screensAll) && state.screensAll.length)
+    ? state.screensAll : (Array.isArray(state.screens) ? state.screens : []);
+  if (!sourceScreens.length) return null;
+
+  const brief = buildBrief();
+  const regions = Array.isArray(brief?.geo?.regions) ? brief.geo.regions : [];
+  if (!regions.length) return null;
+
+  const dates = brief?.dates;
+  const days = (dates?.start && dates?.end)
+    ? Math.max(1, Math.round((new Date(dates.end) - new Date(dates.start)) / 86400000) + 1)
+    : 30;
+
+  const formatsMode = brief.formats?.mode || "auto";
+  const manualFormats = new Set(Array.isArray(brief.formats?.selected) ? brief.formats.selected : []);
+
+  let totalMin = 0, totalOpt = 0, totalMax = 0;
+
+  for (const region of regions) {
+    const regionKey = typeof region === "string" ? region : (region?.city || region?.region || "");
+    let pool = sourceScreens.filter(s => screenMatchesGeoChoice(s, region));
+    if (formatsMode === "manual" && manualFormats.size > 0) {
+      pool = pool.filter(s => manualFormats.has(s.format));
+    }
+    pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+    if (!pool.length) continue;
+
+    const tier = getTierForGeo(regionKey);
+    const avgBid = avgEffectiveBid(pool, brief.bidMode, 1);
+    const capPlays = Math.floor(SC_MAX * RECO_HOURS_PER_DAY * pool.length * days);
+    const capBudget = Math.floor(capPlays * avgBid);
+
+    const optRaw  = Math.floor((BASE_MONTHLY[tier] ?? BASE_MONTHLY.C) * (days / 30));
+    const maxRaw  = Math.floor((MAX_MONTHLY[tier]  ?? MAX_MONTHLY.C)  * (days / 30));
+    const optimal = Math.min(optRaw, capBudget);
+    const max     = Math.min(maxRaw, capBudget);
+    const min     = Math.round(optimal * 0.35);
+
+    totalMin += min;
+    totalOpt += optimal;
+    totalMax += max;
+  }
+
+  if (totalOpt === 0) return null;
+  return { min: totalMin, optimal: totalOpt, max: totalMax };
+}
+
 window.PLANNER = window.PLANNER || {};
 window.PLANNER.saveCalcToHistory = saveCalcToHistory;
 window.PLANNER.restoreBriefToUI = restoreBriefToUI;
 window.PLANNER.buildMediaPlanBlob = buildMediaPlanBlob;
+window.PLANNER.computeRecoBudgetTiers = computeRecoBudgetTiers;
 function getDspAgencyId() { return sessionStorage.getItem("dsp_agency_id") || ""; }
 function setDspAgencyId(id) { id ? sessionStorage.setItem("dsp_agency_id", String(id)) : sessionStorage.removeItem("dsp_agency_id"); }
 // additionalCharge — множитель надбавки агентства (напр. 0.15 = +15%), platformFee — фиксированная надбавка платформы (в той же валюте что и ставка)
