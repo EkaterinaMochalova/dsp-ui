@@ -718,6 +718,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   }
 
   /* ===== BUDGET EXTRAS (НДС / commission) ===== */
+  #planner-widget .budget-tier-chip{
+    display:inline-flex;flex-direction:column;align-items:flex-start;
+    gap:1px;padding:7px 12px;border-radius:10px;border:1.5px solid #e0d9fd;
+    background:#f7f5ff;cursor:pointer;transition:background .15s,border-color .15s;
+    font-size:11px;color:#5b3ef5;font-weight:600;line-height:1.3;
+  }
+  #planner-widget .budget-tier-chip:hover{ background:#ede9ff;border-color:#b9a8f8; }
+  #planner-widget .budget-tier-chip .btc-label{ font-size:10px;font-weight:500;color:#8b83c5;text-transform:uppercase;letter-spacing:.4px; }
   #planner-widget .budget-extra-row{
     display: flex;
     align-items: center;
@@ -889,7 +897,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@44dee687e92e71a9027f4afccad2c61609cdfd07/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@7780743e9661c8e8ce543f33d242428bdcb19d25/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -1146,6 +1154,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <!-- goal_reco -->
 <div id="budget-reco-hint" style="margin-top:6px; color:#667085;">
   Планировщик соберёт адреску для адекватного охвата региона.
+  <div id="budget-tier-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
 </div>
 
 <!-- НДС + Комиссия -->
@@ -4025,6 +4034,52 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   document.querySelectorAll('input[name="budget_mode"]').forEach(r => r.addEventListener("change", sync));
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", sync);
   else sync();
+})();
+`);
+
+  // Script block 16b — budget tier chips
+  runScript(`
+(function(){
+  function fmtM(n){
+    if (n >= 1_000_000) return (n / 1_000_000).toLocaleString("ru-RU", {maximumFractionDigits:1}) + " М ₽";
+    if (n >= 1_000)     return (n / 1_000).toLocaleString("ru-RU", {maximumFractionDigits:0}) + " тыс. ₽";
+    return n.toLocaleString("ru-RU") + " ₽";
+  }
+
+  function renderChips() {
+    const chips = document.getElementById("budget-tier-chips");
+    if (!chips) return;
+    const tiers = window.PLANNER?.computeRecoBudgetTiers?.();
+    if (!tiers) { chips.innerHTML = ""; return; }
+
+    const items = [
+      { key: "min",     label: "Минимум",     value: tiers.min },
+      { key: "optimal", label: "Оптимальный", value: tiers.optimal },
+      { key: "max",     label: "Максимум",    value: tiers.max },
+    ];
+
+    chips.innerHTML = items.map(it => \`
+      <button type="button" class="budget-tier-chip" data-amount="\${it.value}">
+        <span class="btc-label">\${it.label}</span>
+        <span>\${fmtM(it.value)}</span>
+      </button>
+    \`).join("");
+
+    chips.querySelectorAll(".budget-tier-chip").forEach(btn => {
+      btn.addEventListener("click", function(){
+        const amount = Number(this.dataset.amount);
+        const fixedRadio = document.querySelector('input[name="budget_mode"][value="fixed"]');
+        if (fixedRadio) { fixedRadio.checked = true; fixedRadio.dispatchEvent(new Event("change", {bubbles:true})); }
+        const inp = document.getElementById("budget");
+        if (inp) { inp.value = amount; inp.dispatchEvent(new Event("input", {bubbles:true})); }
+      });
+    });
+  }
+
+  ["planner:screens-ready", "planner:pool-updated", "planner:filters-changed"].forEach(ev =>
+    window.addEventListener(ev, renderChips)
+  );
+  renderChips();
 })();
 `);
 
