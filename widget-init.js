@@ -152,7 +152,31 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     margin: 0;
   }
 
-  #planner-widget .download-row{ margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; }
+  #planner-widget .download-row{ margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  #planner-widget .dl-settings-gear{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:32px;height:32px;border-radius:8px;border:1.5px solid #e0d9fd;
+    background:#f7f5ff;color:#5b3ef5;cursor:pointer;transition:background .15s;flex-shrink:0;
+    padding:0;
+  }
+  #planner-widget .dl-settings-gear:hover{ background:#ede9ff; }
+  #planner-widget .dl-settings-gear:disabled{ opacity:.4;cursor:default; }
+  #planner-widget .dl-settings-popup{
+    position:absolute;top:calc(100% + 8px);left:0;z-index:9999;
+    background:#fff;border:1.5px solid #e0d9fd;border-radius:14px;
+    box-shadow:0 8px 32px rgba(91,62,245,.12);padding:14px 16px;
+    min-width:280px;
+  }
+  #planner-widget .dl-settings-title{
+    font-size:12px;font-weight:700;color:#5b3ef5;text-transform:uppercase;
+    letter-spacing:.5px;margin-bottom:10px;
+  }
+  #planner-widget .dl-settings-row{
+    display:flex;align-items:flex-start;gap:8px;cursor:pointer;
+    font-size:13px;color:#374151;margin-bottom:8px;line-height:1.4;
+  }
+  #planner-widget .dl-settings-row:last-child{ margin-bottom:0; }
+  #planner-widget .dl-settings-row input{ margin-top:2px;accent-color:#5b3ef5;flex-shrink:0; }
   #planner-widget .planner-status{ margin-top:10px; font-size:14px; color:rgba(11,18,32,.62); }
   #planner-map.planner-map{ height:420px; width:100%; border-radius:14px; overflow:hidden; border:1px solid rgba(15,23,42,.10); font-family: Inter, Arial, sans-serif; }
 
@@ -910,7 +934,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@4a35635be5fab2cea0126775d764e222b447304f/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@42132c1b2af8c2b4cedc0e7c0b1f218bd77ba78c/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -1470,7 +1494,27 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <div id="charts" style="margin-top:12px;"></div>
 <div class="download-row">
   <button id="download-csv" class="wiz-btn">Скачать GIDы</button>
-  <button id="download-plan-xlsx" class="wiz-btn ghost" disabled>Скачать план</button>
+  <div style="position:relative;display:inline-flex;align-items:center;gap:4px;">
+    <button id="download-plan-xlsx" class="wiz-btn ghost" disabled>Скачать план</button>
+    <button id="dl-settings-btn" class="dl-settings-gear" title="Настройки скачивания" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <div id="dl-settings-popup" class="dl-settings-popup" style="display:none;">
+      <div class="dl-settings-title">Настройки скачивания</div>
+      <label class="dl-settings-row">
+        <input type="checkbox" id="dl-show-commission" checked>
+        <span>Показывать сумму и % комиссии отдельно</span>
+      </label>
+      <label class="dl-settings-row">
+        <input type="checkbox" id="dl-show-vat" checked>
+        <span>Показывать сумму НДС и итого отдельно</span>
+      </label>
+      <label class="dl-settings-row">
+        <input type="checkbox" id="dl-split-operator">
+        <span>Разбить строки по операторам</span>
+      </label>
+    </div>
+  </div>
   <button id="download-poi-csv" class="wiz-btn ghost" disabled>Скачать POI (CSV)</button>
   <button id="download-poi-xlsx" class="wiz-btn ghost" disabled>Скачать POI (XLSX)</button>
   <button id="send-plan-btn">🚀 Передать менеджеру</button>
@@ -4891,6 +4935,35 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   // После завершения расчёта — скрываем кнопку
   window.addEventListener("planner:calc-done", hideFloat);
+})();
+`);
+
+  // Script block 23 — Download settings gear popup
+  runScript(`
+(function(){
+  const gearBtn = document.getElementById("dl-settings-btn");
+  const popup   = document.getElementById("dl-settings-popup");
+  const planBtn = document.getElementById("download-plan-xlsx");
+  if (!gearBtn || !popup) return;
+
+  gearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = popup.style.display !== "none";
+    popup.style.display = open ? "none" : "block";
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!popup.contains(e.target) && e.target !== gearBtn) {
+      popup.style.display = "none";
+    }
+  });
+
+  // Mirror disabled state from plan button
+  const observer = new MutationObserver(() => {
+    gearBtn.disabled = !!planBtn?.disabled;
+  });
+  if (planBtn) observer.observe(planBtn, { attributes: true, attributeFilter: ["disabled"] });
+  gearBtn.disabled = !!planBtn?.disabled;
 })();
 `);
 
