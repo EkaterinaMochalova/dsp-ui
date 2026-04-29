@@ -718,6 +718,19 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   }
 
   /* ===== BUDGET EXTRAS (НДС / commission) ===== */
+  #planner-widget .ux-toggle-track{
+    position:relative;display:inline-block;width:36px;height:20px;
+    background:#d1d5db;border-radius:999px;transition:background .2s;flex-shrink:0;
+  }
+  #planner-widget .ux-toggle-input{ position:absolute;opacity:0;width:0;height:0; }
+  #planner-widget .ux-toggle-thumb{
+    position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s;
+    pointer-events:none;
+  }
+  #planner-widget .ux-toggle-input:checked ~ .ux-toggle-thumb{ transform:translateX(16px); }
+  #planner-widget .ux-toggle-input:checked + .ux-toggle-thumb{ transform:translateX(16px); }
+  #planner-widget .ux-toggle-track:has(.ux-toggle-input:checked){ background:#5b3ef5; }
   #planner-widget .budget-tier-chip{
     display:inline-flex;flex-direction:column;align-items:flex-start;
     gap:1px;padding:7px 12px;border-radius:10px;border:1.5px solid #e0d9fd;
@@ -897,7 +910,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@7780743e9661c8e8ce543f33d242428bdcb19d25/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@f5c1c6c60faee5acd3de49a2e392badefa4355e7/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -990,6 +1003,18 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         </div>
       </div>
       <div id="region-selected" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
+      <!-- Only-active-bids toggle -->
+      <div style="margin-top:12px; display:flex; align-items:center; gap:8px;">
+        <label class="ux-toggle-label" for="only-active-bids" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151;font-weight:500;">
+          <span class="ux-toggle-track">
+            <input type="checkbox" id="only-active-bids" class="ux-toggle-input">
+            <span class="ux-toggle-thumb"></span>
+          </span>
+          Только активные
+        </label>
+        <span style="font-size:12px;color:#9ca3af;">экраны с известной ставкой</span>
+      </div>
+
       <!-- Pool mini badge (step 1) -->
       <div id="pool-mini-badge" style="display:none; margin-top:10px; padding:10px 14px;
            background:#f4f1ff; border-radius:10px; font-size:13px; color:#5b3ef5;
@@ -3468,6 +3493,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     // Re-render badge when screens load
     window.addEventListener("planner:screens-ready", updateBadge);
     window.addEventListener("planner:filters-changed", updateBadge);
+
+    // only-active-bids toggle → refresh pool preview counts
+    document.getElementById("only-active-bids")?.addEventListener("change", () => {
+      window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+    });
 
     updateBadge();
   }
