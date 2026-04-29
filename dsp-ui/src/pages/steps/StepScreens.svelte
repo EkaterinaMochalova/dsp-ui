@@ -18,8 +18,8 @@
   let screens = []
   let totalLoaded = 0
 
-  // Filters
-  let filterCity = ''
+  // Filters — city pre-seeded from draft.cities chosen in step 1
+  let filterCity = (draft.cities?.length === 1) ? draft.cities[0] : ''
   let filterFormat = ''
   let searchText = ''
 
@@ -27,7 +27,11 @@
   $: cities = [...new Set(screens.map(s => s.city).filter(Boolean))].sort()
   $: formats = [...new Set(screens.map(s => s.format).filter(Boolean))].sort()
 
+  // If user selected cities in step 1, restrict to those; local filterCity further narrows
+  $: draftCities = draft.cities ?? []
+
   $: filtered = screens.filter(s => {
+    if (draftCities.length > 0 && !draftCities.includes(s.city)) return false
     if (filterCity && s.city !== filterCity) return false
     if (filterFormat && s.format !== filterFormat) return false
     if (searchText) {
@@ -178,6 +182,14 @@
       <div class="sb-section">
         <div class="sb-label">Фильтры</div>
 
+        {#if draftCities.length > 0}
+          <div class="sb-city-pills">
+            {#each draftCities as city}
+              <span class="sb-city-pill">{city}</span>
+            {/each}
+          </div>
+        {/if}
+
         <input
           class="sb-input"
           type="text"
@@ -185,10 +197,12 @@
           bind:value={searchText}
         />
 
-        <select class="sb-select" bind:value={filterCity}>
-          <option value="">Все города</option>
-          {#each cities as c}<option value={c}>{c}</option>{/each}
-        </select>
+        {#if draftCities.length !== 1}
+          <select class="sb-select" bind:value={filterCity}>
+            <option value="">Все города</option>
+            {#each (draftCities.length > 0 ? draftCities : cities) as c}<option value={c}>{c}</option>{/each}
+          </select>
+        {/if}
 
         <select class="sb-select" bind:value={filterFormat}>
           <option value="">Все форматы</option>
@@ -302,6 +316,23 @@
     min-height: 0;
     overflow: hidden;
     border-bottom: none;
+  }
+
+  .sb-city-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .sb-city-pill {
+    background: var(--navy-light);
+    color: var(--navy);
+    border: 1px solid rgba(17,40,83,.15);
+    border-radius: 12px;
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 600;
   }
 
   .sb-label {
