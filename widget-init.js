@@ -1154,7 +1154,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <!-- goal_reco -->
 <div id="budget-reco-hint" style="margin-top:6px; color:#667085;">
   Планировщик соберёт адреску для адекватного охвата региона.
-  <div id="budget-tier-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
 </div>
 
 <!-- НДС + Комиссия -->
@@ -3696,6 +3695,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const x = Number(n);
     return (Number.isFinite(x) && x > 0) ? (Math.round(x).toLocaleString("ru-RU") + " ₽") : "—";
   };
+  const fmtRange = (n) => {
+    const x = Number(n);
+    if (!Number.isFinite(x) || x <= 0) return "—";
+    if (x >= 1_000_000) return (x / 1_000_000).toLocaleString("ru-RU", {maximumFractionDigits:1}) + " М ₽";
+    if (x >= 1_000)     return Math.round(x / 1_000).toLocaleString("ru-RU") + " тыс. ₽";
+    return Math.round(x).toLocaleString("ru-RU") + " ₽";
+  };
 
   function hoursPerDayFromRaw(){
     const raw = el("summary")?.textContent || "";
@@ -3810,6 +3816,20 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             <div class="ps-metric"><div class="k">CPM (стоимость 1\u202f000 OTS)</div><div class="v">\${(totalBudget > 0 && otsTotal > 0) ? Math.round(totalBudget / otsTotal * 1000).toLocaleString("ru-RU") + "\u202f₽" : "—"}</div></div>
           </div>
 
+          \${(() => {
+            const t = window.PLANNER?.computeRecoBudgetTiers?.();
+            if (!t) return "";
+            const items = [["Минимум", t.min], ["Оптимальный", t.optimal], ["Максимум", t.max]];
+            return \`<div style="margin-top:14px;padding-top:12px;border-top:1px solid #eef2f6;">
+              <div style="font-size:11px;font-weight:600;color:#8b83c5;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Диапазон бюджета</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">\${items.map(([label, val]) =>
+                \`<div class="budget-tier-chip" style="cursor:default;">
+                  <span class="btc-label">\${label}</span>
+                  <span>\${fmtRange(val)}</span>
+                </div>\`
+              ).join("")}</div>
+            </div>\`;
+          })()}
           \${warnsHtml}
         </div>
 
@@ -4037,51 +4057,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 })();
 `);
 
-  // Script block 16b — budget tier chips
-  runScript(`
-(function(){
-  function fmtM(n){
-    if (n >= 1_000_000) return (n / 1_000_000).toLocaleString("ru-RU", {maximumFractionDigits:1}) + " М ₽";
-    if (n >= 1_000)     return (n / 1_000).toLocaleString("ru-RU", {maximumFractionDigits:0}) + " тыс. ₽";
-    return n.toLocaleString("ru-RU") + " ₽";
-  }
-
-  function renderChips() {
-    const chips = document.getElementById("budget-tier-chips");
-    if (!chips) return;
-    const tiers = window.PLANNER?.computeRecoBudgetTiers?.();
-    if (!tiers) { chips.innerHTML = ""; return; }
-
-    const items = [
-      { key: "min",     label: "Минимум",     value: tiers.min },
-      { key: "optimal", label: "Оптимальный", value: tiers.optimal },
-      { key: "max",     label: "Максимум",    value: tiers.max },
-    ];
-
-    chips.innerHTML = items.map(it => \`
-      <button type="button" class="budget-tier-chip" data-amount="\${it.value}">
-        <span class="btc-label">\${it.label}</span>
-        <span>\${fmtM(it.value)}</span>
-      </button>
-    \`).join("");
-
-    chips.querySelectorAll(".budget-tier-chip").forEach(btn => {
-      btn.addEventListener("click", function(){
-        const amount = Number(this.dataset.amount);
-        const fixedRadio = document.querySelector('input[name="budget_mode"][value="fixed"]');
-        if (fixedRadio) { fixedRadio.checked = true; fixedRadio.dispatchEvent(new Event("change", {bubbles:true})); }
-        const inp = document.getElementById("budget");
-        if (inp) { inp.value = amount; inp.dispatchEvent(new Event("input", {bubbles:true})); }
-      });
-    });
-  }
-
-  ["planner:screens-ready", "planner:pool-updated", "planner:filters-changed"].forEach(ev =>
-    window.addEventListener(ev, renderChips)
-  );
-  renderChips();
-})();
-`);
 
   // Script block 17
   runScript(`
