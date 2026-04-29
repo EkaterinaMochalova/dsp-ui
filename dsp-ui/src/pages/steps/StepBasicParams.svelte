@@ -16,6 +16,7 @@
   let citiesLoading = true
 
   if (!draft.cities) draft.cities = []
+  if (!draft.cityIds) draft.cityIds = []
 
   $: cityNames = allCities.map(c => c.name)
   $: citySuggestions = cityInput.length > 0
@@ -51,14 +52,19 @@
     } catch {}
   }
 
-  function addCity(city) {
-    if (!draft.cities.includes(city)) draft.cities = [...draft.cities, city]
+  function addCity(name) {
+    if (draft.cities.includes(name)) return
+    const found = allCities.find(c => c.name === name)
+    draft.cities = [...draft.cities, name]
+    if (found?.id != null) draft.cityIds = [...draft.cityIds, found.id]
     cityInput = ''
     cityDropdownOpen = false
   }
 
-  function removeCity(city) {
-    draft.cities = draft.cities.filter(c => c !== city)
+  function removeCity(name) {
+    const found = allCities.find(c => c.name === name)
+    draft.cities = draft.cities.filter(c => c !== name)
+    if (found?.id != null) draft.cityIds = draft.cityIds.filter(id => id !== found.id)
   }
 
   function onCityKeydown(e) {

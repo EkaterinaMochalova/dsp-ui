@@ -36,16 +36,13 @@
   let filterDistrict = ''
   let filterIndex = ''
 
-  // Derived
-  $: draftCities = draft.cities ?? []
-
+  // Derived — API already filtered by city, just apply local search
   $: filtered = screens.filter(s => {
-    if (draftCities.length > 0 && !draftCities.includes(s.city)) return false
-    if (tableSearch) {
-      const q = tableSearch.toLowerCase()
-      if (!s.address.toLowerCase().includes(q) && !s.city.toLowerCase().includes(q) && !s.owner.toLowerCase().includes(q)) return false
-    }
-    return true
+    if (!tableSearch) return true
+    const q = tableSearch.toLowerCase()
+    return s.address.toLowerCase().includes(q)
+      || s.city.toLowerCase().includes(q)
+      || s.owner.toLowerCase().includes(q)
   })
 
   $: tabRows = activeTab === 'selected'
@@ -89,26 +86,36 @@
   async function loadScreens() {
     loading = true; loadingProgress = 0; error = ''
     const PAGE_SIZE = 500
-    const BATCH = 10   // concurrent requests per batch
+    const BATCH = 10
+    const cityIds = draft.cityIds ?? []
+
     try {
-      // First page — learn total
-      const first = await api.inventories.list({ page: 0, size: PAGE_SIZE })
-      const totalPages = first.totalPages ?? 1
-      totalLoaded = first.totalElements ?? 0
-      loadingProgress = Math.round(100 / totalPages)
+      let allItems = []
 
-      const allItems = [...(first.content ?? [])]
+      if (cityIds.length > 0) {
+        // Fetch each selected city in parallel, all pages per city
+        const cityResults = await Promise.all(cityIds.map(id => loadAllPagesForCity(id, PAGE_SIZE)))
+        allItems = cityResults.flat()
+        loadingProgress = 100
+        totalLoaded = allItems.length
+      } else {
+        // No city filter — load everything
+        const first = await api.inventories.list({ page: 0, size: PAGE_SIZE })
+        const totalPages = first.totalPages ?? 1
+        totalLoaded = first.totalElements ?? 0
+        loadingProgress = Math.round(100 / totalPages)
+        allItems = [...(first.content ?? [])]
 
-      // Remaining pages in parallel batches
-      for (let start = 1; start < totalPages; start += BATCH) {
-        const end = Math.min(start + BATCH, totalPages)
-        const batch = await Promise.all(
-          Array.from({ length: end - start }, (_, i) =>
-            api.inventories.list({ page: start + i, size: PAGE_SIZE })
+        for (let start = 1; start < totalPages; start += BATCH) {
+          const end = Math.min(start + BATCH, totalPages)
+          const batch = await Promise.all(
+            Array.from({ length: end - start }, (_, i) =>
+              api.inventories.list({ page: start + i, size: PAGE_SIZE })
+            )
           )
-        )
-        batch.forEach(r => allItems.push(...(r.content ?? [])))
-        loadingProgress = Math.round((end / totalPages) * 100)
+          batch.forEach(r => allItems.push(...(r.content ?? [])))
+          loadingProgress = Math.round((end / totalPages) * 100)
+        }
       }
 
       screens = allItems.map(mapInventory).filter(
@@ -121,6 +128,22 @@
     } finally {
       loading = false
     }
+  }
+
+  async function loadAllPagesForCity(cityId, size) {
+    const items = []
+    const first = await api.inventories.list({ cityId, page: 0, size })
+    items.push(...(first.content ?? []))
+    const totalPages = first.totalPages ?? 1
+    if (totalPages > 1) {
+      const rest = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, i) =>
+          api.inventories.list({ cityId, page: i + 1, size })
+        )
+      )
+      rest.forEach(r => items.push(...(r.content ?? [])))
+    }
+    return items
   }
 
   function mapInventory(inv) {

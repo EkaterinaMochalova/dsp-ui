@@ -32,6 +32,7 @@
     buyerMarkup: '',
     budgetMode: 'RECOMMENDED',
     cities: [],
+    cityIds: [],
     screenIds: [],
   }
 
