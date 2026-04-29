@@ -83,5 +83,32 @@ export const api = {
       const q = new URLSearchParams({ enabled: 'true', ...params })
       return request(`/clients/inventories?${q}`)
     },
+    async cities() {
+      // Fetch several pages and extract unique city names + IDs from inventory data
+      const PAGE = 500
+      const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
+      const items = first.content ?? []
+      const totalPages = first.totalPages ?? 1
+      const extra = Math.min(totalPages - 1, 9) // up to 10 pages = 5000 items
+      if (extra > 0) {
+        const rest = await Promise.all(
+          Array.from({ length: extra }, (_, i) =>
+            request(`/clients/inventories?enabled=true&page=${i + 1}&size=${PAGE}`)
+          )
+        )
+        rest.forEach(r => items.push(...(r.content ?? [])))
+      }
+      const seen = new Map()
+      for (const inv of items) {
+        const itc = inv.inventoryTypeAndCity
+        if (!itc?.cityName) continue
+        if (!seen.has(itc.cityName)) {
+          seen.set(itc.cityName, itc.cityId ?? itc.id ?? null)
+        }
+      }
+      return [...seen.entries()]
+        .map(([name, id]) => ({ name, id }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    },
   },
 }

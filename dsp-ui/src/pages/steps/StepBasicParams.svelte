@@ -12,27 +12,33 @@
   // City multi-select state
   let cityInput = ''
   let cityDropdownOpen = false
-
-  // Hardcoded city list — could be fetched from API if endpoint exists
-  const CITIES = [
-    'Москва','Санкт-Петербург','Новосибирск','Екатеринбург','Казань',
-    'Нижний Новгород','Челябинск','Красноярск','Самара','Уфа',
-    'Ростов-на-Дону','Омск','Краснодар','Воронеж','Пермь',
-    'Волгоград','Саратов','Тюмень','Тольятти','Ижевск',
-  ]
+  let allCities = []      // [{ name, id }] from API
+  let citiesLoading = true
 
   if (!draft.cities) draft.cities = []
 
+  $: cityNames = allCities.map(c => c.name)
   $: citySuggestions = cityInput.length > 0
-    ? CITIES.filter(c => c.toLowerCase().includes(cityInput.toLowerCase()) && !draft.cities.includes(c))
-    : CITIES.filter(c => !draft.cities.includes(c))
+    ? cityNames.filter(c => c.toLowerCase().includes(cityInput.toLowerCase()) && !draft.cities.includes(c))
+    : cityNames.filter(c => !draft.cities.includes(c))
 
   onMount(async () => {
     try {
-      const data = await api.customers.list({ size: 100 })
-      customers = data.content ?? []
+      const [customersData] = await Promise.all([
+        api.customers.list({ size: 100 }),
+      ])
+      customers = customersData.content ?? []
     } catch {}
     loading = false
+
+    // Load cities in background — not blocking
+    try {
+      allCities = await api.inventories.cities()
+    } catch {
+      allCities = []
+    } finally {
+      citiesLoading = false
+    }
   })
 
   async function onCustomerChange() {
@@ -166,11 +172,12 @@
         <input
           class="city-input"
           type="text"
-          placeholder="Выберите один или несколько городов"
+          placeholder={citiesLoading ? 'Загрузка городов…' : 'Выберите один или несколько городов'}
           bind:value={cityInput}
           on:focus={() => cityDropdownOpen = true}
           on:keydown={onCityKeydown}
           on:input={() => cityDropdownOpen = true}
+          disabled={citiesLoading}
         />
         <svg class="chip-arrow" viewBox="0 0 10 6" fill="none" width="10" height="6">
           <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
