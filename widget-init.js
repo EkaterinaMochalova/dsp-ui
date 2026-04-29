@@ -16,7 +16,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const s = document.createElement("script");
       s.src = src; s.async = false;
       s.onload = resolve;
-      s.onerror = reject;
+      s.onerror = () => reject(new Error("Failed to load: " + src));
       document.head.appendChild(s);
     });
   }
@@ -4967,4 +4967,4 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 })();
 `);
 
-})();
+})().catch(e => console.error("[widget-init]", e));
