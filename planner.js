@@ -1447,6 +1447,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
       })(),
       topPct: parseInt(el("audience-top-pct")?.value || "10", 10) / 100,
     },
+    onlyActiveBids: !!el("only-active-bids")?.checked,
     bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
     reachMode: getReachModeFromUI(),
     goal: {
@@ -3547,11 +3548,26 @@ async function onCalcClick() {
     }
 
     // In constructions mode keep all screens — avgBid computed from those that have minBid.
-    // In regular mode exclude no-bid screens if any bid screens exist (prevents pool inflation).
+    // onlyActiveBids=true → filter out no-bid screens (default-safe).
+    // onlyActiveBids=false → estimate bid for no-bid screens from same-format avg in this region.
     if (!(brief.constructions?.enabled && brief.constructions.count > 0)) {
-      const hasBidScreens = pool.some(s => Number.isFinite(s.minBid) && s.minBid > 0);
-      if (hasBidScreens) {
-        pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+      const bidScreens = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+      if (bidScreens.length > 0) {
+        if (brief.onlyActiveBids !== false) {
+          pool = bidScreens;
+        } else {
+          const fmtAvg = {};
+          for (const s of bidScreens) {
+            if (!fmtAvg[s.format]) fmtAvg[s.format] = { sum: 0, n: 0 };
+            fmtAvg[s.format].sum += s.minBid; fmtAvg[s.format].n++;
+          }
+          const regionAvg = bidScreens.reduce((a, s) => a + s.minBid, 0) / bidScreens.length;
+          pool = pool.map(s => {
+            if (Number.isFinite(s.minBid) && s.minBid > 0) return s;
+            const f = fmtAvg[s.format];
+            return { ...s, minBid: f ? f.sum / f.n : regionAvg, _bidEstimated: true };
+          });
+        }
       }
     }
 
@@ -4285,9 +4301,10 @@ function computePoolPreview() {
     pool = pool.filter(s => fset.has(s.format));
   }
 
-  // minBid-фильтр здесь НЕ применяется: он невидим пользователю и создаёт
-  // путаницу (карточка формата показывает 24, а пул — 21). Применяется
-  // автоматически при расчёте (onCalcClick).
+  // onlyActiveBids: when toggled on, filter no-bid screens from the preview counts too.
+  if (brief.onlyActiveBids) {
+    pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+  }
 
   const countBase = pool.length;
 
