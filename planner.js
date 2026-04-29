@@ -2117,6 +2117,11 @@ async function buildMediaPlanBlob() {
   const commOn   = !!el("commission-enabled")?.checked;
   const commRate = commOn ? Math.max(0, Number(el("commission-rate")?.value || 0)) : 0;
 
+  // ── Download settings ─────────────────────────────────────────
+  const showCommDetail  = !!el("dl-show-commission")?.checked;
+  const showVatDetail   = !!el("dl-show-vat")?.checked;
+  const splitByOperator = !!el("dl-split-operator")?.checked;
+
   // brief.budget.amount = net (placement) budget after commission deduction
   const netBudget   = brief.budget?.amount || meta.totalBudget || 0;
   const grossBudget = commOn && commRate > 0 ? netBudget * (1 + commRate / 100) : netBudget;
@@ -2173,19 +2178,24 @@ async function buildMediaPlanBlob() {
   ws1.getRow(r).height = 26;
   r++;
 
-  // Бюджет: с разбивкой по НДС/комиссии
+  // Бюджет: с разбивкой по НДС/комиссии (управляется настройками скачивания)
   const budgetRows = [];
-  if (commOn && commRate > 0) {
+  if (commOn && commRate > 0 && showCommDetail) {
     budgetRows.push(["Бюджет размещения", fmtR(netBudget), `Комиссия агентства ${commRate}%`, fmtR(commAmount)]);
     budgetRows.push(["Итого для клиента (с комиссией)", fmtR(grossBudget), "", ""]);
+  } else if (commOn && commRate > 0) {
+    budgetRows.push(["Бюджет (с комиссией)", fmtR(grossBudget), "", ""]);
   } else {
     budgetRows.push(["Бюджет размещения", fmtR(netBudget), "", ""]);
   }
-  if (vatOn && vatRate > 0) {
+  if (vatOn && vatRate > 0 && showVatDetail) {
     budgetRows.push([`НДС ${vatRate}%`, fmtR(vatAmount), `Итого с НДС`, fmtR(netBudget + vatAmount)]);
     if (commOn && commRate > 0) {
       budgetRows.push(["Итого для клиента с НДС", fmtR(grossBudget + vatAmount), "", ""]);
     }
+  } else if (vatOn && vatRate > 0) {
+    const totalWithVat = (commOn && commRate > 0 ? grossBudget : netBudget) + vatAmount;
+    budgetRows.push(["Итого с НДС", fmtR(totalWithVat), "", ""]);
   }
 
   const totals = [
@@ -2311,6 +2321,43 @@ async function buildMediaPlanBlob() {
       ].forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill, border: true, right: ci >= 1 }));
       ws2.getRow(ws2Row).height = 17;
       ws2Row++;
+
+      // Operator sub-rows
+      if (splitByOperator) {
+        const byOwner = {};
+        for (const s of fmtScreens) {
+          const owner = String(s.owner || "—").trim();
+          if (!byOwner[owner]) byOwner[owner] = [];
+          byOwner[owner].push(s);
+        }
+        const sortedOwners = Object.entries(byOwner).sort((a, b) => b[1].length - a[1].length);
+        sortedOwners.forEach(([ownerName, ownerScreens]) => {
+          const ownerWeight = fmtScreens.length > 0 ? ownerScreens.length / fmtScreens.length : 0;
+          const ownerBudget = fmtBudget * ownerWeight;
+          const ownerPlays  = fmtPlays  * ownerWeight;
+          const ownerPlaysDay = meta.days > 0 ? Math.round(ownerPlays / meta.days) : 0;
+          const ownerOts    = fmtOts    * ownerWeight;
+          const ownerBids   = ownerScreens.map(s => {
+            const b = brief.bidMode === "min" ? s.minBid : (s.recoBid || s.minBid);
+            return Number.isFinite(b) && b > 0 ? b : null;
+          }).filter(b => b != null);
+          const ownerAvgBid = ownerBids.length > 0 ? ownerBids.reduce((a, b) => a + b, 0) / ownerBids.length : null;
+          const ownerOtsVals = ownerScreens.map(s => Number.isFinite(s.ots) && s.ots > 0 ? s.ots : null).filter(x => x != null);
+          const ownerAvgOts  = ownerOtsVals.length > 0 ? ownerOtsVals.reduce((a, b) => a + b, 0) / ownerOtsVals.length : null;
+          [
+            "        " + ownerName,
+            fmt(ownerScreens.length),
+            fmt(Math.round(ownerPlays)),
+            fmt(ownerPlaysDay),
+            Math.round(ownerBudget).toLocaleString("ru-RU"),
+            Number.isFinite(ownerOts) && ownerOts > 0 ? fmt(Math.round(ownerOts)) : "—",
+            ownerAvgOts != null ? fmt(Math.round(ownerAvgOts)) : "—",
+            ownerAvgBid != null ? ownerAvgBid.toFixed(2) : "—",
+          ].forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill: WHITE, border: true, right: ci >= 1, muted: ci === 0 }));
+          ws2.getRow(ws2Row).height = 16;
+          ws2Row++;
+        });
+      }
     });
 
     // Empty separator row
