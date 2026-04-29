@@ -195,12 +195,21 @@ const AFFINITY_SKIP_COLS = new Set([
 const AFFINITY_GROUPS = {
   "Пол":         ["Женщины", "Мужчины"],
   "Возраст":     ["<17", "18-24", "25-34", "35-44", "45-54", ">55"],
-  "Доход":       ["Низкий", "Эконом класс", "Средний", "Средний класс", "Выше ср.", "Высокий", "Премиум базовый", "Премиум средний", "Премиум высокий", "Премиум класс"],
+  "Доход":       ["Низкий", "Средний", "Выше ср.", "Высокий", "Премиум базовый", "Премиум средний", "Премиум высокий"],
   "Семья":       ["Есть дети", "Нет детей", "Женат/Замужем", "Не женат/Не замужем"],
   "Образование": ["Есть высшее", "Нет высшего", "Среднее образование"],
   "Занятость":   ["Работает", "Не работает"],
   "Черты":       ["Импульсивность", "Интроверсия", "Любознательность", "Практичность", "Самоконтроль", "Сдержанность", "Творчество", "Экстраверсия", "Эмоциональность"],
 };
+
+// Segments where PVZ screens and low-quality vendors are excluded from scoring
+const PREMIUM_INCOME_SEGS = new Set(["Премиум базовый", "Премиум средний", "Премиум высокий", "Высокий", "Выше ср."]);
+const AUDIENCE_EXCL_VENDORS = ["spectrum", "трансмедиа", "магнит", "эфир", "новый альянс"];
+function _isExcludedForPremium(s) {
+  if (s.format === "PVZ_SCREEN") return true;
+  const o = String(s.owner ?? "").toLowerCase();
+  return AUDIENCE_EXCL_VENDORS.some(v => o.includes(v));
+}
 window.PLANNER.AFFINITY_GROUPS = AFFINITY_GROUPS;
 
 async function loadAffinityJSON(urlOverride) {
@@ -3530,9 +3539,14 @@ async function onCalcClick() {
         const topPct = brief.audience.topPct ?? 0.10;
         const before = pool.length;
         // Score each screen in pool
+        const hasPremiumSeg = segs.some(seg => PREMIUM_INCOME_SEGS.has(seg));
         const withScore = pool.map(s => {
           const aff = state.affinityMap.get(_screenIdOf(s));
-          const score = aff ? segs.reduce((sum, seg) => sum + (aff[seg] ?? 0), 0) / segs.length : 0;
+          const excl = hasPremiumSeg && _isExcludedForPremium(s);
+          const score = aff ? segs.reduce((sum, seg) => {
+            if (excl && PREMIUM_INCOME_SEGS.has(seg)) return sum;
+            return sum + (aff[seg] ?? 0);
+          }, 0) / segs.length : 0;
           return { s, score };
         });
         withScore.sort((a, b) => b.score - a.score);
