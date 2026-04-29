@@ -15,6 +15,7 @@
   let map
   let markersLayer
   let loading = true
+  let loadingProgress = 0   // 0–100
   let error = ''
   let screens = []
   let totalLoaded = 0
@@ -86,24 +87,34 @@
   })
 
   async function loadScreens() {
-    loading = true; error = ''
+    loading = true; loadingProgress = 0; error = ''
+    const PAGE_SIZE = 500
+    const BATCH = 10   // concurrent requests per batch
     try {
-      const first = await api.inventories.list({ page: 0, size: 100 })
-      const pages = [first.content ?? []]
+      // First page — learn total
+      const first = await api.inventories.list({ page: 0, size: PAGE_SIZE })
       const totalPages = first.totalPages ?? 1
-      const extraPages = Math.min(totalPages - 1, 4)
-      if (extraPages > 0) {
-        const rest = await Promise.all(
-          Array.from({ length: extraPages }, (_, i) =>
-            api.inventories.list({ page: i + 1, size: 100 })
+      totalLoaded = first.totalElements ?? 0
+      loadingProgress = Math.round(100 / totalPages)
+
+      const allItems = [...(first.content ?? [])]
+
+      // Remaining pages in parallel batches
+      for (let start = 1; start < totalPages; start += BATCH) {
+        const end = Math.min(start + BATCH, totalPages)
+        const batch = await Promise.all(
+          Array.from({ length: end - start }, (_, i) =>
+            api.inventories.list({ page: start + i, size: PAGE_SIZE })
           )
         )
-        rest.forEach(r => pages.push(r.content ?? []))
+        batch.forEach(r => allItems.push(...(r.content ?? [])))
+        loadingProgress = Math.round((end / totalPages) * 100)
       }
-      screens = pages.flat().map(mapInventory).filter(
+
+      screens = allItems.map(mapInventory).filter(
         s => Number.isFinite(s.lat) && Number.isFinite(s.lon)
       )
-      totalLoaded = first.totalElements ?? screens.length
+      totalLoaded = totalLoaded || screens.length
     } catch (e) {
       error = 'Не удалось загрузить экраны'
       console.error(e)
@@ -140,20 +151,45 @@
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     markersLayer = L.layerGroup().addTo(map)
     renderMarkers(filtered)
+
+    // Re-render on pan/zoom to keep only visible markers
+    map.on('moveend zoomend', () => renderMarkers(filtered))
+
     if (screens.length > 0) {
       const valid = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
-      if (valid.length) map.fitBounds(L.latLngBounds(valid.map(s => [s.lat, s.lon])), { padding: [40, 40], maxZoom: 10 })
+      if (valid.length) map.fitBounds(L.latLngBounds(valid.map(s => [s.lat, s.lon])), { padding: [40, 40], maxZoom: 7 })
     }
   }
 
+  // Cap at 2000 visible markers for performance; always show selected ones
+  const MAX_VISIBLE = 2000
+
   function renderMarkers(list) {
-    if (!markersLayer) return
+    if (!markersLayer || !map) return
     markersLayer.clearLayers()
-    for (const s of list) {
-      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) continue
+
+    const bounds = map.getBounds().pad(0.1)
+    const zoom = map.getZoom()
+
+    // At low zoom, cluster by grid to avoid 22k dots
+    let visible = list.filter(s =>
+      Number.isFinite(s.lat) && Number.isFinite(s.lon) && bounds.contains([s.lat, s.lon])
+    )
+
+    // Selected always shown regardless of limit
+    const selected = visible.filter(s => isSelected(s.id))
+    const unselected = visible.filter(s => !isSelected(s.id))
+
+    // At low zoom subsample unselected to MAX_VISIBLE
+    const maxUnsel = Math.max(0, MAX_VISIBLE - selected.length)
+    const toRender = zoom >= 10
+      ? [...selected, ...unselected]
+      : [...selected, ...unselected.slice(0, maxUnsel)]
+
+    for (const s of toRender) {
       const sel = isSelected(s.id)
       const m = L.circleMarker([s.lat, s.lon], {
-        radius: sel ? 8 : 5,
+        radius: sel ? 8 : zoom >= 10 ? 6 : 4,
         fillColor: sel ? '#112853' : '#55C1FA',
         color: sel ? '#112853' : '#2a8fb5',
         weight: sel ? 2 : 1,
@@ -202,7 +238,12 @@
     {#if loading}
       <div class="map-overlay">
         <div class="spinner"></div>
-        Загружаю экраны…
+        <span>Загружаю экраны… {loadingProgress > 0 ? `${loadingProgress}%` : ''}</span>
+        {#if loadingProgress > 0}
+          <div class="load-bar-track">
+            <div class="load-bar-fill" style="width:{loadingProgress}%"></div>
+          </div>
+        {/if}
       </div>
     {/if}
     <div bind:this={mapEl} class="screens-map"></div>
@@ -455,6 +496,21 @@
     z-index: 500;
     font-size: 14px;
     color: var(--text-muted);
+  }
+
+  .load-bar-track {
+    width: 200px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .load-bar-fill {
+    height: 100%;
+    background: var(--navy);
+    border-radius: 2px;
+    transition: width .3s ease;
   }
 
   /* Floating map elements */
