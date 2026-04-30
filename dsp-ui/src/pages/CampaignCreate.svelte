@@ -82,6 +82,13 @@
 
   $: dateLabel = formatDateRange()
   $: campaignName = draft.name || `Рекламная кампания от ${new Date().toLocaleDateString('ru-RU', { day:'numeric', month:'numeric', year:'numeric' })}`
+
+  const TYPE_BADGE = {
+    RTB: 'Аукционная', OPEN_RTB: 'Open RTB',
+    GUARANTEED: 'Гарантированная', FLEX_GUARANTEED: 'Flex',
+    MEDIA_PLAN: 'Медиаплан', STATIC: 'Статик',
+  }
+  $: typeBadgeLabel = TYPE_BADGE[campaignType] ?? campaignType
 </script>
 
 <div class="layout" style="height:100%">
@@ -114,7 +121,10 @@
 
   <!-- Wizard left panel -->
   <div class="wizard-panel">
-    <div class="wizard-draft-badge">Черновик</div>
+    <div class="wizard-badges">
+      <span class="wizard-draft-badge">Черновик</span>
+      <span class="wizard-type-badge">{typeBadgeLabel}</span>
+    </div>
 
     <div class="wizard-steps">
       {#each STEPS as step}
@@ -150,6 +160,9 @@
 
       {#if !hasScreensAndDates}
         <div class="wizard-hint">
+          <svg class="wizard-hint-icon" width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+          </svg>
           <div class="wizard-hint-text">Выберите даты и хотя бы один экран для расчёта прогноза</div>
         </div>
       {/if}
