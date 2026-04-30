@@ -5,6 +5,9 @@
   import { api } from '../../lib/api.js'
   import { formatMoney } from '../../lib/utils.js'
 
+  // Module-level cache keyed by sorted city names (or '__all__')
+  const _cache = {}
+
   const dispatch = createEventDispatcher()
   export let draft
 
@@ -87,6 +90,19 @@
     loading = true; loadingProgress = 0; error = ''
     const PAGE_SIZE = 500
     const BATCH = 10
+    const selectedCities = draft.cities ?? []
+    const cacheKey = selectedCities.length > 0
+      ? [...selectedCities].sort().join('|')
+      : '__all__'
+
+    // Return from cache if available
+    if (_cache[cacheKey]) {
+      screens = _cache[cacheKey]
+      totalLoaded = screens.length
+      loading = false
+      loadingProgress = 100
+      return
+    }
 
     try {
       const first = await api.inventories.list({ page: 0, size: PAGE_SIZE })
@@ -106,15 +122,14 @@
         loadingProgress = Math.round((end / totalPages) * 100)
       }
 
-      const selectedCities = draft.cities ?? []
       const mapped = allItems.map(mapInventory).filter(
         s => Number.isFinite(s.lat) && Number.isFinite(s.lon)
       )
-      // Filter by chosen cities (by name, guaranteed to match)
       screens = selectedCities.length > 0
         ? mapped.filter(s => selectedCities.includes(s.city))
         : mapped
       totalLoaded = screens.length
+      _cache[cacheKey] = screens
     } catch (e) {
       error = 'Не удалось загрузить экраны'
       console.error(e)

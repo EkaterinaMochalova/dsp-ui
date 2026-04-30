@@ -67,6 +67,11 @@
     if (found?.id != null) draft.cityIds = draft.cityIds.filter(id => id !== found.id)
   }
 
+  function addAllCities() {
+    for (const name of citySuggestions) addCity(name)
+    cityDropdownOpen = false
+  }
+
   function onCityKeydown(e) {
     if (e.key === 'Enter' && citySuggestions.length > 0) addCity(citySuggestions[0])
     if (e.key === 'Escape') cityDropdownOpen = false
@@ -197,6 +202,12 @@
               {city}
             </div>
           {/each}
+          {#if citySuggestions.length > 1}
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <div class="city-dropdown-add-all" on:click={addAllCities}>
+              Добавить все{citySuggestions.length > 8 ? ` (${citySuggestions.length})` : ''}
+            </div>
+          {/if}
         </div>
       {/if}
     </div>
@@ -313,4 +324,16 @@
     transition: background .1s;
   }
   .city-dropdown-item:hover { background: var(--navy-light); color: var(--navy); }
+
+  .city-dropdown-add-all {
+    padding: 7px 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--navy);
+    cursor: pointer;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    transition: background .1s;
+  }
+  .city-dropdown-add-all:hover { background: var(--navy-light); }
 </style>

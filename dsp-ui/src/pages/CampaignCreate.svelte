@@ -131,7 +131,22 @@
         {@const status = stepStatus(step.id)}
         <div class="wizard-step">
           <button class="wizard-step-header" on:click={() => goToStep(step.id)}>
-            <div class="wizard-step-circle" class:done={status==='done'} class:active={status==='active'}></div>
+            <!-- Circle: done = navy+check, active = blue outlined+dot, pending = gray -->
+            {#if status === 'done'}
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="flex-shrink:0;margin-top:1px">
+                <circle cx="9" cy="9" r="9" fill="#112853"/>
+                <path d="M5.5 9l2.5 2.5 4.5-4.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            {:else if status === 'active'}
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="flex-shrink:0;margin-top:1px">
+                <circle cx="9" cy="9" r="8" stroke="#2563EB" stroke-width="2"/>
+                <circle cx="9" cy="9" r="4" fill="#2563EB"/>
+              </svg>
+            {:else}
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="flex-shrink:0;margin-top:1px">
+                <circle cx="9" cy="9" r="8" stroke="#C8D0DA" stroke-width="1.5"/>
+              </svg>
+            {/if}
             <span class="wizard-step-label" class:active={status==='active'} class:done={status==='done'}>
               {step.label}
             </span>
