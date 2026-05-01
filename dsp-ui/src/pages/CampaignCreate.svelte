@@ -68,11 +68,11 @@
     currentStep = idx > 0 ? STEPS[idx - 1].id : 'start'
   }
 
-  function stepStatus(id) {
-    if (completedSteps.has(id)) return 'done'
-    if (currentStep === id) return 'active'
-    return 'pending'
-  }
+  // Inline status logic so Svelte sees currentStep + completedSteps as direct deps
+  $: stepRows = STEPS.map(s => ({
+    ...s,
+    status: completedSteps.has(s.id) ? 'done' : currentStep === s.id ? 'active' : 'pending',
+  }))
 
   function formatDateRange() {
     if (!draft.startDate || !draft.endDate) return null
@@ -127,17 +127,15 @@
     </div>
 
     <div class="wizard-steps">
-      {#each STEPS as step}
-        {@const status = stepStatus(step.id)}
+      {#each stepRows as step (step.id)}
         <div class="wizard-step">
           <button class="wizard-step-header" on:click={() => goToStep(step.id)}>
-            <!-- Circle: done = navy+check, active = blue outlined+dot, pending = gray -->
-            {#if status === 'done'}
+            {#if step.status === 'done'}
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="flex-shrink:0;margin-top:1px">
                 <circle cx="9" cy="9" r="9" fill="#112853"/>
                 <path d="M5.5 9l2.5 2.5 4.5-4.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-            {:else if status === 'active'}
+            {:else if step.status === 'active'}
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="flex-shrink:0;margin-top:1px">
                 <circle cx="9" cy="9" r="8" stroke="#2563EB" stroke-width="2"/>
                 <circle cx="9" cy="9" r="4" fill="#2563EB"/>
@@ -147,11 +145,13 @@
                 <circle cx="9" cy="9" r="8" stroke="#C8D0DA" stroke-width="1.5"/>
               </svg>
             {/if}
-            <span class="wizard-step-label" class:active={status==='active'} class:done={status==='done'}>
+            <span class="wizard-step-label"
+              class:active={step.status === 'active'}
+              class:done={step.status === 'done'}>
               {step.label}
             </span>
           </button>
-          {#if step.subs.length && (status === 'active' || status === 'done')}
+          {#if step.subs.length && (step.status === 'active' || step.status === 'done')}
             <div class="wizard-substeps">
               {#each step.subs as sub}
                 <button class="wizard-substep">{sub}</button>
