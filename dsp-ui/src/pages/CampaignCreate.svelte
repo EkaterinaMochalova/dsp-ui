@@ -52,13 +52,12 @@
   ]
 
   let currentStep = 'start'
-  let completedSteps = new Set()
+  let completedSteps = {}   // plain object — spread creates new ref, guaranteed reactive
 
   function goToStep(id) { currentStep = id }
 
   function completeStep(id) {
-    completedSteps.add(id)
-    completedSteps = completedSteps
+    completedSteps = { ...completedSteps, [id]: true }  // new object → Svelte sees the change
     const idx = STEPS.findIndex(s => s.id === id)
     if (idx < STEPS.length - 1) currentStep = STEPS[idx + 1].id
   }
@@ -68,10 +67,10 @@
     currentStep = idx > 0 ? STEPS[idx - 1].id : 'start'
   }
 
-  // Inline status logic so Svelte sees currentStep + completedSteps as direct deps
+  // Both completedSteps and currentStep are direct deps — always recomputes correctly
   $: stepRows = STEPS.map(s => ({
     ...s,
-    status: completedSteps.has(s.id) ? 'done' : currentStep === s.id ? 'active' : 'pending',
+    status: completedSteps[s.id] ? 'done' : currentStep === s.id ? 'active' : 'pending',
   }))
 
   function formatDateRange() {
@@ -204,7 +203,7 @@
 
       <div class="wizard-actions">
         <button class="btn-save">Сохранить</button>
-        <button class="btn-launch" class:ready={completedSteps.size >= STEPS.length - 1}>Запустить</button>
+        <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1}>Запустить</button>
       </div>
     </div>
   </div>
