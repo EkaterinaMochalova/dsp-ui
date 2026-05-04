@@ -2916,13 +2916,25 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       return;
     }
 
-    const arrAll = (Array.isArray(items) ? items : []).filter(s => !!getImg(s));
+    const allItems = Array.isArray(items) ? items : [];
+    const arrAll = allItems.filter(s => !!getImg(s));
+    const coordCount = allItems.filter(s => Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon))).length;
+    const mapBtn = coordCount > 0
+      ? \`<button id="carousel-map-download-btn" style="padding:5px 12px;border:1px solid #5B3EF5;border-radius:8px;background:#fff;color:#5B3EF5;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">⬇ Скачать карту</button>\`
+      : "";
+
     if(arrAll.length === 0){
       box.innerHTML = \`
-        <div style="font-weight:700; margin-bottom:8px;">Фото экранов</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-weight:700;">Фото экранов</div>
+          \${mapBtn}
+        </div>
         <div style="font-size:13px; color:#666;">Нет изображений (image_url) у выбранных экранов.</div>
       \`;
       box.style.display = "block";
+      el("carousel-map-download-btn")?.addEventListener("click", () => {
+        if(window.PLANNER?.downloadMapHtml) window.PLANNER.downloadMapHtml();
+      });
       return;
     }
 
@@ -2979,8 +2991,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       \`;
     }).join("");
 
-    box.innerHTML = sectionsHtml;
+    box.innerHTML = \`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div style="font-weight:700;font-size:14px;color:#111827;">Фото экранов</div>
+      \${mapBtn}
+    </div>\` + sectionsHtml;
     box.style.display = "block";
+
+    el("carousel-map-download-btn")?.addEventListener("click", () => {
+      if(window.PLANNER?.downloadMapHtml) window.PLANNER.downloadMapHtml();
+    });
 
     box.querySelectorAll(".img-section").forEach(section => {
       const regionName = section.querySelector(".img-row")?.dataset?.region || "";
@@ -3090,10 +3109,34 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       .replaceAll("'","&#039;");
   }
 
+  function ensureMapHeader(){
+    const existing = el("planner-map-header");
+    if(existing){ existing.style.display = "flex"; return; }
+
+    const box = el("planner-map");
+    if(!box) return;
+
+    const header = document.createElement("div");
+    header.id = "planner-map-header";
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;";
+    header.innerHTML = \`
+      <div style="font-weight:700;font-size:14px;color:#111827;">Карта экранов</div>
+      <button id="map-download-btn" style="padding:5px 12px;border:1px solid #5B3EF5;border-radius:8px;background:#fff;color:#5B3EF5;font-size:12px;font-weight:600;cursor:pointer;">
+        ⬇ Скачать карту
+      </button>
+    \`;
+    box.parentNode.insertBefore(header, box);
+
+    header.querySelector("#map-download-btn").addEventListener("click", () => {
+      if(window.PLANNER?.downloadMapHtml) window.PLANNER.downloadMapHtml();
+    });
+  }
+
   function ensureMap(){
     const box = el("planner-map");
     if(!box) return null;
 
+    ensureMapHeader();
     box.style.display = "block";
     if(map) return map;
 

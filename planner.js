@@ -2487,50 +2487,12 @@ async function buildMediaPlanBlob() {
   let mapBlob = null;
   let mapFilename = null;
   if (mapScreens2.length > 0) {
-    const pointsJson = JSON.stringify(mapScreens2.map(s => ({
-      lat: +s.lat.toFixed(6), lon: +s.lon.toFixed(6),
-      id: s.screen_id || "", fmt: s.format || "", city: s.city || "", addr: s.address || ""
-    })));
-    const mapHtml = `<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <title>Карта экранов — ${(brief.geo?.regions || brief.selectedRegions || []).join(", ") || "план"}</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Inter,Arial,sans-serif;display:flex;flex-direction:column;height:100vh}
-    #toolbar{padding:10px 16px;background:#5B3EF5;color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;gap:12px}
-    #toolbar span{font-weight:400;opacity:.8}
-    #map{flex:1}
-  </style>
-</head>
-<body>
-  <div id="toolbar">
-    Карта экранов
-    <span id="cnt"></span>
-  </div>
-  <div id="map"></div>
-  <script>
-    const pts = ${pointsJson};
-    document.getElementById("cnt").textContent = pts.length + " экранов";
-    const map = L.map("map");
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap",
-      maxZoom: 19
-    }).addTo(map);
-    const markers = pts.map(p => {
-      const popup = \`<b>\${p.fmt}</b><br>\${p.city}<br>\${p.addr}<br><small>\${p.id}</small>\`;
-      return L.circleMarker([p.lat, p.lon], {radius:6, color:"#5B3EF5", fillColor:"#5B3EF5", fillOpacity:.8, weight:1.5}).bindPopup(popup);
-    });
-    const group = L.featureGroup(markers).addTo(map);
-    map.fitBounds(group.getBounds().pad(.05));
-  <\/script>
-</body>
-</html>`;
-    mapBlob = new Blob([mapHtml], { type: "text/html;charset=utf-8" });
-    mapFilename = baseName + "_map.html";
+    const regionLabel = (brief.geo?.regions || brief.selectedRegions || []).join(", ") || "план";
+    const mapHtml = buildMapHtml(screens, regionLabel);
+    if (mapHtml) {
+      mapBlob = new Blob([mapHtml], { type: "text/html;charset=utf-8" });
+      mapFilename = baseName + "_map.html";
+    }
   }
 
   return { blob, filename, mapBlob, mapFilename };
@@ -6268,6 +6230,73 @@ function bootPlanner() {
   }
 })();
 
+// ===== HTML MAP DOWNLOAD =====
+function buildMapHtml(screens, regionLabel) {
+  const pts = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
+  if (!pts.length) return null;
+
+  const pointsJson = JSON.stringify(pts.map(s => ({
+    lat: +s.lat.toFixed(6), lon: +s.lon.toFixed(6),
+    id: s.screen_id || "", fmt: s.format || "", city: s.city || "", addr: s.address || ""
+  })));
+
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Карта экранов${regionLabel ? " — " + regionLabel : ""}</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Inter,Arial,sans-serif;display:flex;flex-direction:column;height:100vh}
+    #toolbar{padding:10px 16px;background:#5B3EF5;color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;gap:12px}
+    #toolbar span{font-weight:400;opacity:.8}
+    #map{flex:1}
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    Карта экранов${regionLabel ? " — " + regionLabel : ""}
+    <span id="cnt"></span>
+  </div>
+  <div id="map"></div>
+  <script>
+    const pts = ${pointsJson};
+    document.getElementById("cnt").textContent = pts.length + " экранов";
+    const map = L.map("map");
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap",maxZoom:19}).addTo(map);
+    const markers = pts.map(p => {
+      const popup = \`<b>\${p.fmt}</b><br>\${p.city}<br>\${p.addr}<br><small>\${p.id}</small>\`;
+      return L.circleMarker([p.lat,p.lon],{radius:6,color:"#5B3EF5",fillColor:"#5B3EF5",fillOpacity:.8,weight:1.5}).bindPopup(popup);
+    });
+    const group = L.featureGroup(markers).addTo(map);
+    map.fitBounds(group.getBounds().pad(.05));
+  <\/script>
+</body>
+</html>`;
+}
+
+function downloadMapHtml() {
+  const calc = window.PLANNER?.lastCalc;
+  const screens = state.lastChosen || calc?.chosen || [];
+  const pts = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
+  if (!pts.length) { alert("Нет экранов с координатами"); return; }
+
+  const regions = (calc?.brief?.geo?.regions || calc?.brief?.selectedRegions || state.selectedRegions || []);
+  const regionLabel = regions.join(", ") || "";
+  const html = buildMapHtml(screens, regionLabel);
+  if (!html) return;
+
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const name = `map_${regions.join("-") || "screens"}_${today}.html`;
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 // ===== EXPORTS =====
 Object.assign(window.PLANNER, {
   state,
@@ -6289,4 +6318,6 @@ Object.assign(window.PLANNER, {
   countScreensInPolygon,
   replaceScreen,
   removeScreen,
+  downloadMapHtml,
+  buildMapHtml,
 });
