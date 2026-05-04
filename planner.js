@@ -2112,16 +2112,18 @@ async function buildMediaPlanBlob() {
     max_freq:  "Максимальная частота"
   };
 
-  // ── Budget extras from DOM ──────────────────────────────────────
-  const vatOn    = !!el("vat-enabled")?.checked;
-  const vatRate  = vatOn  ? Math.max(0, Number(el("vat-rate")?.value  || 20)) : 0;
-  const commOn   = !!el("commission-enabled")?.checked;
-  const commRate = commOn ? Math.max(0, Number(el("commission-rate")?.value || 0)) : 0;
-
   // ── Download settings ─────────────────────────────────────────
   const showCommDetail  = !!el("dl-show-commission")?.checked;
   const showVatDetail   = !!el("dl-show-vat")?.checked;
   const splitByOperator = !!el("dl-split-operator")?.checked;
+
+  // ── Budget extras from DOM ──────────────────────────────────────
+  const commOn   = !!el("commission-enabled")?.checked;
+  const commRate = commOn ? Math.max(0, Number(el("commission-rate")?.value || 0)) : 0;
+  // vatOn = true if UI toggle enabled OR if "show VAT detail" is requested in download settings
+  const vatEnabledUI = !!el("vat-enabled")?.checked;
+  const vatRate  = Math.max(0, Number(el("vat-rate")?.value || 20));
+  const vatOn    = (vatEnabledUI || showVatDetail) && vatRate > 0;
 
   // brief.budget.amount = net (placement) budget after commission deduction
   const netBudget   = brief.budget?.amount || meta.totalBudget || 0;
@@ -2169,6 +2171,30 @@ async function buildMediaPlanBlob() {
     val(ws1, r, 2, v1, { border: true });
     hdr(ws1, r, 3, k2, { bg: GREY, border: true });
     val(ws1, r, 4, v2, { border: true });
+    ws1.getRow(r).height = 20;
+    r++;
+  }
+
+  // Ссылка на карту всех экранов
+  const mapScreens = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
+  if (mapScreens.length > 0) {
+    const MAX_MAP_POINTS = 100;
+    const pts = mapScreens.slice(0, MAX_MAP_POINTS)
+      .map(s => `${s.lon.toFixed(6)},${s.lat.toFixed(6)}`)
+      .join("~");
+    const mapUrl = `https://yandex.ru/maps/?pt=${pts}&l=map`;
+    hdr(ws1, r, 1, "Карта экранов", { bg: GREY, border: true });
+    ws1.mergeCells(r, 2, r, 4);
+    const mapCell = ws1.getCell(r, 2);
+    mapCell.value = {
+      text: mapScreens.length > MAX_MAP_POINTS
+        ? `Открыть карту (первые ${MAX_MAP_POINTS} из ${mapScreens.length} экранов)`
+        : `Открыть карту (${mapScreens.length} экранов)`,
+      hyperlink: mapUrl
+    };
+    mapCell.font = { color: { argb: "2563EB" }, underline: true, size: 10 };
+    mapCell.alignment = { vertical: "middle", horizontal: "left" };
+    mapCell.border = { top: { style: "thin", color: { argb: "CCCCCC" } }, left: { style: "thin", color: { argb: "CCCCCC" } }, bottom: { style: "thin", color: { argb: "CCCCCC" } }, right: { style: "thin", color: { argb: "CCCCCC" } } };
     ws1.getRow(r).height = 20;
     r++;
   }
@@ -2221,11 +2247,17 @@ async function buildMediaPlanBlob() {
 
   // ── Лист 2: По регионам и форматам (иерархически) ────────────────
   const ws2 = wb.addWorksheet("По регионам");
-  ws2.columns = [
-    { width: 32 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 14 }
-  ];
+  const showVatCol = showVatDetail && vatOn && vatRate > 0;
+  const vatFactor  = 1 + vatRate / 100;
+  const budgetHdr  = showVatCol ? "Бюджет без НДС, ₽" : "Бюджет, ₽";
+  const ws2ColDefs = showVatCol
+    ? [{ width: 32 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 14 }]
+    : [{ width: 32 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 14 }];
+  ws2.columns = ws2ColDefs;
   const bidColHdr = brief.bidMode === "min" ? "Ср. ставка (мин), ₽" : "Ср. ставка (реко), ₽";
-  ["Регион / Формат", "Экранов", "Выходов всего", "Выходов/день", "Бюджет, ₽", "OTS всего", "OTS/выход (ср.)", bidColHdr].forEach((h, i) => {
+  const ws2Headers = ["Регион / Формат", "Экранов", "Выходов всего", "Выходов/день", budgetHdr, "OTS всего", "OTS/выход (ср.)", bidColHdr];
+  if (showVatCol) ws2Headers.splice(5, 0, `Бюджет с НДС ${vatRate}%, ₽`);
+  ws2Headers.forEach((h, i) => {
     hdr(ws2, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
   ws2.getRow(1).height = 22;
@@ -2253,7 +2285,7 @@ async function buildMediaPlanBlob() {
     const playsPerDay   = meta.days > 0 ? Math.round(regionPlays / meta.days) : 0;
 
     // Region header row
-    ws2.mergeCells(ws2Row, 1, ws2Row, 8);
+    ws2.mergeCells(ws2Row, 1, ws2Row, showVatCol ? 9 : 8);
     const regionCell = ws2.getCell(ws2Row, 1);
     regionCell.value = regionName;
     regionCell.font  = { bold: true, size: 11, color: { argb: WHITE } };
@@ -2271,16 +2303,20 @@ async function buildMediaPlanBlob() {
       ? regionBids.reduce((a, b) => a + b, 0) / regionBids.length : null;
 
     // Region totals row
-    [
+    const regionRow = [
       "  Итого по региону",
       fmt(regionScreens),
       fmt(regionPlays),
       fmt(playsPerDay),
       Math.round(regionBudget).toLocaleString("ru-RU"),
+    ];
+    if (showVatCol) regionRow.push(Math.round(regionBudget * vatFactor).toLocaleString("ru-RU"));
+    regionRow.push(
       Number.isFinite(regionOts) && regionOts > 0 ? fmt(regionOts) : "—",
       "—",
       regionAvgBid != null ? regionAvgBid.toFixed(2) : "—",
-    ].forEach((c, ci) => {
+    );
+    regionRow.forEach((c, ci) => {
       const cell = val(ws2, ws2Row, ci + 1, c, { fill: LIGHT, border: true, right: ci >= 1 });
       cell.font = { bold: true, color: { argb: DARK }, size: 10 };
     });
@@ -2310,16 +2346,20 @@ async function buildMediaPlanBlob() {
       const avgOts  = otsVals.length > 0 ? otsVals.reduce((a, b) => a + b, 0) / otsVals.length : null;
 
       const fill = fi % 2 === 0 ? WHITE : GREY;
-      [
+      const fmtRow = [
         "    " + fmtName,
         fmt(fmtScreens.length),
         fmt(Math.round(fmtPlays)),
         fmt(fmtPlaysDay),
         Math.round(fmtBudget).toLocaleString("ru-RU"),
+      ];
+      if (showVatCol) fmtRow.push(Math.round(fmtBudget * vatFactor).toLocaleString("ru-RU"));
+      fmtRow.push(
         Number.isFinite(fmtOts) && fmtOts > 0 ? fmt(Math.round(fmtOts)) : "—",
         avgOts != null ? fmt(Math.round(avgOts)) : "—",
         avgBid != null ? avgBid.toFixed(2) : "—",
-      ].forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill, border: true, right: ci >= 1 }));
+      );
+      fmtRow.forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill, border: true, right: ci >= 1 }));
       ws2.getRow(ws2Row).height = 17;
       ws2Row++;
 
@@ -2345,16 +2385,20 @@ async function buildMediaPlanBlob() {
           const ownerAvgBid = ownerBids.length > 0 ? ownerBids.reduce((a, b) => a + b, 0) / ownerBids.length : null;
           const ownerOtsVals = ownerScreens.map(s => Number.isFinite(s.ots) && s.ots > 0 ? s.ots : null).filter(x => x != null);
           const ownerAvgOts  = ownerOtsVals.length > 0 ? ownerOtsVals.reduce((a, b) => a + b, 0) / ownerOtsVals.length : null;
-          [
+          const ownerRow = [
             "        " + ownerName,
             fmt(ownerScreens.length),
             fmt(Math.round(ownerPlays)),
             fmt(ownerPlaysDay),
             Math.round(ownerBudget).toLocaleString("ru-RU"),
+          ];
+          if (showVatCol) ownerRow.push(Math.round(ownerBudget * vatFactor).toLocaleString("ru-RU"));
+          ownerRow.push(
             Number.isFinite(ownerOts) && ownerOts > 0 ? fmt(Math.round(ownerOts)) : "—",
             ownerAvgOts != null ? fmt(Math.round(ownerAvgOts)) : "—",
             ownerAvgBid != null ? ownerAvgBid.toFixed(2) : "—",
-          ].forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill: WHITE, border: true, right: ci >= 1, muted: ci === 0 }));
+          );
+          ownerRow.forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill: WHITE, border: true, right: ci >= 1, muted: ci === 0 }));
           ws2.getRow(ws2Row).height = 16;
           ws2Row++;
         });
@@ -2372,12 +2416,12 @@ async function buildMediaPlanBlob() {
   ws3.columns = [
     { width: 18 }, { width: 16 }, { width: 18 }, { width: 40 },
     { width: 20 }, { width: 10 }, { width: 10 }, { width: 14 },
-    { width: 14 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 40 }
+    { width: 14 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 40 }, { width: 16 }
   ];
   [
     "GID", "Формат", "Город", "Адрес", "Оператор",
     "Широта", "Долгота", bidColLabel,
-    "OTS/выход", "Разрешение", "Соотн. сторон", "Сторона", "Фото"
+    "OTS/выход", "Разрешение", "Соотн. сторон", "Сторона", "Фото", "На карте"
   ].forEach((h, i) => {
     hdr(ws3, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
   });
@@ -2397,6 +2441,11 @@ async function buildMediaPlanBlob() {
     // Aspect ratio — already computed in mapDspInventory
     const aspectRatio = s.aspectRatio || "";
 
+    const hasCoords = Number.isFinite(s.lat) && Number.isFinite(s.lon);
+    const mapLink = hasCoords
+      ? `https://yandex.ru/maps/?ll=${s.lon.toFixed(6)},${s.lat.toFixed(6)}&z=17&pt=${s.lon.toFixed(6)},${s.lat.toFixed(6)}`
+      : "";
+
     [
       s.screen_id ?? "", s.format ?? "", s.city ?? "", s.address ?? "",
       s.owner ?? "",
@@ -2407,12 +2456,18 @@ async function buildMediaPlanBlob() {
       s.resolution ?? "",
       aspectRatio,
       s.side    ?? "",
-      s.image_url ?? ""
+      s.image_url ?? "",
+      mapLink
     ].forEach((c, ci) => {
       const cell = val(ws3, rowIdx, ci + 1, c, { fill, border: true });
-      if (ci === 13 && c) {  // Фото — гиперссылка
+      if (ci === 12 && c) {  // Фото — гиперссылка
         cell.value = { text: "Фото", hyperlink: String(c) };
         cell.font  = { color: { argb: "2563EB" }, underline: true, size: 10 };
+      }
+      if (ci === 13 && c) {  // На карте — гиперссылка
+        cell.value = { text: "Открыть", hyperlink: String(c) };
+        cell.font  = { color: { argb: "2563EB" }, underline: true, size: 10 };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
       }
     });
 
