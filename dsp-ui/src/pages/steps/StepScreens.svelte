@@ -160,12 +160,13 @@
   }
 
   function formatScreenSize(inv) {
-    // surfaceDimensionMM contains physical size in mm; convert to meters
     const d = inv.surfaceDimensionMM
     if (d?.width && d?.height) {
-      const w = (d.width  / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })
-      const h = (d.height / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })
-      return `${w}×${h}м`
+      // Values < 3000 are pixel resolutions mislabeled as MM — fall back to standard size
+      const w = d.width  < 3000 ? 6 : d.width  / 1000
+      const h = d.height < 3000 ? 3 : d.height / 1000
+      const fmt = v => v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+      return `${fmt(w)}×${fmt(h)}м`
     }
     return ''
   }
