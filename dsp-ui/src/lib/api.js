@@ -100,11 +100,11 @@ export const api = {
       }
       const seen = new Map()
       for (const inv of items) {
-        const itc = inv.inventoryTypeAndCity
-        if (!itc?.cityName) continue
-        if (!seen.has(itc.cityName)) {
-          seen.set(itc.cityName, itc.cityId ?? itc.id ?? null)
-        }
+        // prefer inv.city.name (direct object), fallback to inventoryTypeAndCity.cityName
+        const cityName = inv.city?.name || inv.inventoryTypeAndCity?.cityName
+        const cityId   = inv.city?.id   || inv.inventoryTypeAndCity?.cityId
+        if (!cityName) continue
+        if (!seen.has(cityName)) seen.set(cityName, cityId ?? null)
       }
       return [...seen.entries()]
         .map(([name, id]) => ({ name, id }))

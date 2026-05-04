@@ -138,44 +138,36 @@
     }
   }
 
-  let _loggedSample = false
   function mapInventory(inv) {
-    if (!_loggedSample) {
-      console.log('📦 RAW INVENTORY SAMPLE:', JSON.stringify(inv, null, 2))
-      _loggedSample = true
-    }
     const loc = inv.location ?? {}
-    const meta = inv.inventoryType ?? inv.inventoryTypeAndCity ?? {}
-    const itc  = inv.inventoryTypeAndCity ?? {}
+    const itc = inv.inventoryTypeAndCity ?? {}
     return {
       id: inv.id,
-      gid: inv.gid || inv.externalId || inv.code || itc.gid || '',
-      city: itc.cityName
-        || (typeof loc.city === 'string' ? loc.city : loc.city?.name)
-        || '',
-      format: meta.format || meta.name || inv.type || '',
-      side: inv.sideId || meta.sideId || inv.side || meta.side || '',
-      size: formatSize(meta),
+      gid: inv.gid || inv.name || '',
+      city: inv.city?.name || itc.cityName || '',
+      format: inv.type || itc.type || '',
+      side: '',   // not present in API response
+      size: formatScreenSize(inv),
       address: loc.address || inv.name || '',
       lat: loc.latitude ?? NaN,
       lon: loc.longitude ?? NaN,
       minBid: inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? null,
-      ots: inv.minBidInfo?.ots ?? null,
-      owner: inv.displayOwner?.name || inv.owner?.name || '',
-      photo: inv.photo || inv.photoUrl || inv.imageUrl || inv.thumbnailUrl
-        || meta.photo || meta.photoUrl || null,
+      ots: inv.minBidInfo?.ots ?? inv.metadata?.ots ?? null,
+      owner: inv.displayOwner?.name || '',
+      photo: inv.images?.[0]?.preview ?? null,
       active: inv.enabled !== false,
     }
   }
 
-  function formatSize(meta) {
-    const w = meta.width ?? meta.sizeWidth ?? meta.w
-    const h = meta.height ?? meta.sizeHeight ?? meta.h
-    if (w != null && h != null) {
-      const fmt = v => String(v).replace('.', ',')
-      return `${fmt(w)}×${fmt(h)}м`
+  function formatScreenSize(inv) {
+    // surfaceDimensionMM contains physical size in mm; convert to meters
+    const d = inv.surfaceDimensionMM
+    if (d?.width && d?.height) {
+      const w = (d.width  / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+      const h = (d.height / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+      return `${w}×${h}м`
     }
-    return meta.size || meta.dimensions || ''
+    return ''
   }
 
   function initMap() {
