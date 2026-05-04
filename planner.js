@@ -1457,6 +1457,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
       topPct: parseInt(el("audience-top-pct")?.value || "10", 10) / 100,
     },
     onlyActiveBids: !!el("only-active-bids")?.checked,
+    recoTier: document.querySelector('input[name="reco_tier"]:checked')?.value || "optimal",
     bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
     reachMode: getReachModeFromUI(),
     goal: {
@@ -3753,15 +3754,25 @@ async function onCalcClick() {
         budgets[r.region] = found ? Number(found.budget) : 0;
       }
     } else {
+      // Use computeRecoBudgetTiers if available to respect recoTier selection
+      const recoTier = brief.recoTier || "optimal"; // "min" | "optimal" | "max"
+      const BASE_MONTHLY_BY_TIER = { M: 2_000_000, SP: 1_500_000, A: 1_000_000, B: 500_000, C: 300_000, D: 100_000 };
+      const MAX_MONTHLY_BY_TIER  = { M: 30_000_000, SP: 15_000_000, A: 5_000_000, B: 2_000_000, C: 1_000_000, D: 300_000 };
+
       for (const r of prepared) {
-        const BASE_MONTHLY_BY_TIER = { M: 2000000, SP: 1500000, A: 1000000, B: 500000, C: 300000, D: 100000 };
-        const baseMonthly = BASE_MONTHLY_BY_TIER[r.tier] ?? BASE_MONTHLY_BY_TIER.C;
-        const baseBudgetForPeriod = Math.floor(baseMonthly * (days / 30));
+        const avgBid   = avgEffectiveBid(r.pool, brief.bidMode, 1);
+        const capPlays = Math.floor(SC_MAX * RECO_HOURS_PER_DAY * r.pool.length * days);
+        const capBudget = Math.floor(capPlays * avgBid);
 
-        const maxPlays = Math.floor(SC_MAX * RECO_HOURS_PER_DAY * r.pool.length * days);
-        const maxBudget = maxPlays * r.bidPlus20;
+        const optRaw = Math.floor((BASE_MONTHLY_BY_TIER[r.tier] ?? BASE_MONTHLY_BY_TIER.C) * (days / 30));
+        const maxRaw = Math.floor((MAX_MONTHLY_BY_TIER[r.tier]  ?? MAX_MONTHLY_BY_TIER.C)  * (days / 30));
+        const optimal = Math.min(optRaw, capBudget);
+        const max     = Math.min(maxRaw, capBudget);
+        const min     = Math.round(optimal * 0.35);
 
-        budgets[r.region] = Math.floor(Math.min(baseBudgetForPeriod, maxBudget));
+        budgets[r.region] = Math.floor(
+          recoTier === "min" ? min : recoTier === "max" ? max : optimal
+        );
       }
     }
   }
