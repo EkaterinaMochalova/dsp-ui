@@ -5,8 +5,8 @@
   import { api } from '../../lib/api.js'
   import { formatMoney } from '../../lib/utils.js'
 
-  // Module-level cache keyed by sorted city names (or '__all__')
-  const _cache = {}
+  // Persist cache on window so it survives HMR reloads and component re-mounts
+  if (!window._dspScreensCache) window._dspScreensCache = {}
 
   const dispatch = createEventDispatcher()
   export let draft
@@ -96,8 +96,8 @@
       : '__all__'
 
     // Return from cache if available
-    if (_cache[cacheKey]) {
-      screens = _cache[cacheKey]
+    if (window._dspScreensCache[cacheKey]) {
+      screens = window._dspScreensCache[cacheKey]
       totalLoaded = screens.length
       loading = false
       loadingProgress = 100
@@ -129,7 +129,7 @@
         ? mapped.filter(s => selectedCities.includes(s.city))
         : mapped
       totalLoaded = screens.length
-      _cache[cacheKey] = screens
+      window._dspScreensCache[cacheKey] = screens
     } catch (e) {
       error = 'Не удалось загрузить экраны'
       console.error(e)
@@ -138,23 +138,44 @@
     }
   }
 
+  let _loggedSample = false
   function mapInventory(inv) {
+    if (!_loggedSample) {
+      console.log('📦 RAW INVENTORY SAMPLE:', JSON.stringify(inv, null, 2))
+      _loggedSample = true
+    }
     const loc = inv.location ?? {}
     const meta = inv.inventoryType ?? inv.inventoryTypeAndCity ?? {}
+    const itc  = inv.inventoryTypeAndCity ?? {}
     return {
       id: inv.id,
-      city: inv.inventoryTypeAndCity?.cityName
+      gid: inv.gid || inv.externalId || inv.code || itc.gid || '',
+      city: itc.cityName
         || (typeof loc.city === 'string' ? loc.city : loc.city?.name)
         || '',
       format: meta.format || meta.name || inv.type || '',
+      side: inv.sideId || meta.sideId || inv.side || meta.side || '',
+      size: formatSize(meta),
       address: loc.address || inv.name || '',
       lat: loc.latitude ?? NaN,
       lon: loc.longitude ?? NaN,
       minBid: inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? null,
       ots: inv.minBidInfo?.ots ?? null,
-      owner: inv.displayOwner?.name || '',
+      owner: inv.displayOwner?.name || inv.owner?.name || '',
+      photo: inv.photo || inv.photoUrl || inv.imageUrl || inv.thumbnailUrl
+        || meta.photo || meta.photoUrl || null,
       active: inv.enabled !== false,
     }
+  }
+
+  function formatSize(meta) {
+    const w = meta.width ?? meta.sizeWidth ?? meta.w
+    const h = meta.height ?? meta.sizeHeight ?? meta.h
+    if (w != null && h != null) {
+      const fmt = v => String(v).replace('.', ',')
+      return `${fmt(w)}×${fmt(h)}м`
+    }
+    return meta.size || meta.dimensions || ''
   }
 
   function initMap() {
@@ -410,23 +431,27 @@
                 on:change={toggleAll}
               />
             </th>
-            <th>Адрес</th>
-            <th>Город</th>
-            <th>Формат</th>
+            <th style="width:60px"></th>
+            <th>GID</th>
             <th>Оператор</th>
-            <th>OTS</th>
+            <th>Город</th>
+            <th>Сторона</th>
+            <th>Формат</th>
+            <th>Размер</th>
             <th>Мин. ставка</th>
+            <th>OTS</th>
+            <th style="width:32px"></th>
           </tr>
         </thead>
         <tbody>
           {#if loading}
-            <tr><td colspan="7" class="table-state-cell">
+            <tr><td colspan="11" class="table-state-cell">
               <div class="spinner"></div> Загрузка…
             </td></tr>
           {:else if error}
-            <tr><td colspan="7" class="table-state-cell" style="color:#EF4444">{error}</td></tr>
+            <tr><td colspan="11" class="table-state-cell" style="color:#EF4444">{error}</td></tr>
           {:else if tabRows.length === 0}
-            <tr><td colspan="7" class="table-state-cell">
+            <tr><td colspan="11" class="table-state-cell">
               {activeTab === 'selected' ? 'Нет выбранных экранов' : 'Экраны не найдены'}
             </td></tr>
           {:else}
@@ -435,12 +460,34 @@
                 <td on:click|stopPropagation>
                   <input type="checkbox" checked={isSelected(s.id)} on:change={() => { toggleScreen(s.id); renderMarkers(filtered) }} />
                 </td>
-                <td class="cell-addr">{s.address || '—'}</td>
-                <td class="cell-muted">{s.city || '—'}</td>
-                <td class="cell-muted">{s.format || '—'}</td>
+                <td class="cell-thumb">
+                  {#if s.photo}
+                    <img src={s.photo} alt="" class="screen-thumb" loading="lazy" />
+                  {:else}
+                    <div class="screen-thumb-placeholder">
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="color:var(--border)">
+                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
+                      </svg>
+                    </div>
+                  {/if}
+                </td>
+                <td class="cell-gid">{s.gid || s.id}</td>
                 <td class="cell-muted">{s.owner || '—'}</td>
+                <td class="cell-muted">{s.city || '—'}</td>
+                <td class="cell-muted">{s.side || '—'}</td>
+                <td class="cell-muted">{s.format || '—'}</td>
+                <td class="cell-muted">{s.size || '—'}</td>
+                <td class="cell-bid">{s.minBid != null ? s.minBid.toFixed(2) : '—'}</td>
                 <td class="cell-muted">{s.ots != null ? s.ots.toLocaleString('ru-RU') : '—'}</td>
-                <td class="cell-muted">{s.minBid != null ? formatMoney(s.minBid) : '—'}</td>
+                <td class="cell-remove" on:click|stopPropagation>
+                  {#if isSelected(s.id)}
+                    <button class="remove-btn" title="Убрать" on:click={() => { toggleScreen(s.id); renderMarkers(filtered) }}>
+                      <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                      </svg>
+                    </button>
+                  {/if}
+                </td>
               </tr>
             {/each}
           {/if}
@@ -845,6 +892,61 @@
   .screen-row { cursor: pointer; }
   .screen-row:hover td { background: var(--navy-light); }
   .screen-row.sel td { background: rgba(17,40,83,.05); }
+
+  .cell-thumb { padding: 4px 8px; }
+
+  .screen-thumb {
+    width: 56px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+  }
+
+  .screen-thumb-placeholder {
+    width: 56px;
+    height: 36px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cell-gid {
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    font-size: 11.5px;
+    font-family: monospace;
+  }
+
+  .cell-bid {
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cell-remove { padding: 4px 6px; }
+
+  .remove-btn {
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity .12s, background .12s;
+  }
+  .screen-row:hover .remove-btn { opacity: 1; }
+  .remove-btn:hover { background: #FEE2E2; color: #EF4444; opacity: 1; }
 
   .cell-addr {
     font-weight: 600;
