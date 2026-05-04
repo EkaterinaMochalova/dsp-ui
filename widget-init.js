@@ -755,6 +755,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   #planner-widget .ux-toggle-input:checked ~ .ux-toggle-thumb{ transform:translateX(16px); }
   #planner-widget .ux-toggle-input:checked + .ux-toggle-thumb{ transform:translateX(16px); }
   #planner-widget .ux-toggle-track:has(.ux-toggle-input:checked){ background:#5b3ef5; }
+  #planner-widget .reco-tier-btn{
+    display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
+    border-radius:10px;border:1.5px solid #e0d9fd;background:#f7f5ff;
+    cursor:pointer;font-size:13px;font-weight:600;color:#5b3ef5;
+    transition:background .15s,border-color .15s;
+  }
+  #planner-widget .reco-tier-btn input{ display:none; }
+  #planner-widget .reco-tier-btn:has(input:checked){ background:#5b3ef5;color:#fff;border-color:#5b3ef5; }
   #planner-widget .budget-tier-chip{
     display:inline-flex;flex-direction:column;align-items:flex-start;
     gap:1px;padding:7px 12px;border-radius:10px;border:1.5px solid #e0d9fd;
@@ -934,7 +942,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@42132c1b0e911e762cfc3e5a0bad854444b89099/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@b4d998235bbc1332b77af1f154cddc2e4d07976a/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -1203,6 +1211,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <!-- goal_reco -->
 <div id="budget-reco-hint" style="margin-top:6px; color:#667085;">
   Планировщик соберёт адреску для адекватного охвата региона.
+  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;" id="reco-tier-btns">
+    <label class="reco-tier-btn"><input type="radio" name="reco_tier" value="min"> Минимум</label>
+    <label class="reco-tier-btn"><input type="radio" name="reco_tier" value="optimal" checked> Оптимальный</label>
+    <label class="reco-tier-btn"><input type="radio" name="reco_tier" value="max"> Максимум</label>
+  </div>
 </div>
 
 <!-- НДС + Комиссия -->
@@ -3817,7 +3830,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     const perRegion = Array.isArray(detail?.perRegion) ? detail.perRegion : [];
 
-    const totalBudget  = perRegion.reduce((a,r)=> a + (Number(r.budget)||0), 0);
+    const spentBudget   = perRegion.reduce((a,r)=> a + (Number(r.budget)||0), 0);
+    const targetBudget  = Number(detail?.brief?.budget?.amount) || spentBudget;
+    const totalBudget   = targetBudget; // badge shows target; unspent is shown via warning
     const totalPlays   = perRegion.reduce((a,r)=> a + (Number(r.plays)||0), 0);
     const totalScreens = perRegion.reduce((a,r)=> a + (Number(r.screens)||0), 0);
 
