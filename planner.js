@@ -2175,24 +2175,14 @@ async function buildMediaPlanBlob() {
     r++;
   }
 
-  // Ссылка на карту всех экранов
+  // Ссылка на карту всех экранов (HTML-файл скачивается вместе с планом)
   const mapScreens = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
   if (mapScreens.length > 0) {
-    const MAX_MAP_POINTS = 100;
-    const pts = mapScreens.slice(0, MAX_MAP_POINTS)
-      .map(s => `${s.lon.toFixed(6)},${s.lat.toFixed(6)}`)
-      .join("~");
-    const mapUrl = `https://yandex.ru/maps/?pt=${pts}&l=map`;
     hdr(ws1, r, 1, "Карта экранов", { bg: GREY, border: true });
     ws1.mergeCells(r, 2, r, 4);
     const mapCell = ws1.getCell(r, 2);
-    mapCell.value = {
-      text: mapScreens.length > MAX_MAP_POINTS
-        ? `Открыть карту (первые ${MAX_MAP_POINTS} из ${mapScreens.length} экранов)`
-        : `Открыть карту (${mapScreens.length} экранов)`,
-      hyperlink: mapUrl
-    };
-    mapCell.font = { color: { argb: "2563EB" }, underline: true, size: 10 };
+    mapCell.value = `Скачивается вместе с планом — файл _map.html (${mapScreens.length} экранов)`;
+    mapCell.font = { color: { argb: "888888" }, italic: true, size: 10 };
     mapCell.alignment = { vertical: "middle", horizontal: "left" };
     mapCell.border = { top: { style: "thin", color: { argb: "CCCCCC" } }, left: { style: "thin", color: { argb: "CCCCCC" } }, bottom: { style: "thin", color: { argb: "CCCCCC" } }, right: { style: "thin", color: { argb: "CCCCCC" } } };
     ws1.getRow(r).height = 20;
@@ -2485,24 +2475,83 @@ async function buildMediaPlanBlob() {
   });
 
 
-  // Сохранение
+  // Сохранение XLSX
   const buf      = await wb.xlsx.writeBuffer();
   const mimeXlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   const blob     = new Blob([buf], { type: mimeXlsx });
-  const filename = `mediaplan_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateStr(brief.dates?.start)}.xlsx`;
-  return { blob, filename };
+  const baseName = `mediaplan_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateStr(brief.dates?.start)}`;
+  const filename = baseName + ".xlsx";
+
+  // HTML-карта всех экранов
+  const mapScreens2 = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
+  let mapBlob = null;
+  let mapFilename = null;
+  if (mapScreens2.length > 0) {
+    const pointsJson = JSON.stringify(mapScreens2.map(s => ({
+      lat: +s.lat.toFixed(6), lon: +s.lon.toFixed(6),
+      id: s.screen_id || "", fmt: s.format || "", city: s.city || "", addr: s.address || ""
+    })));
+    const mapHtml = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Карта экранов — ${(brief.geo?.regions || brief.selectedRegions || []).join(", ") || "план"}</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Inter,Arial,sans-serif;display:flex;flex-direction:column;height:100vh}
+    #toolbar{padding:10px 16px;background:#5B3EF5;color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;gap:12px}
+    #toolbar span{font-weight:400;opacity:.8}
+    #map{flex:1}
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    Карта экранов
+    <span id="cnt"></span>
+  </div>
+  <div id="map"></div>
+  <script>
+    const pts = ${pointsJson};
+    document.getElementById("cnt").textContent = pts.length + " экранов";
+    const map = L.map("map");
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap",
+      maxZoom: 19
+    }).addTo(map);
+    const markers = pts.map(p => {
+      const popup = \`<b>\${p.fmt}</b><br>\${p.city}<br>\${p.addr}<br><small>\${p.id}</small>\`;
+      return L.circleMarker([p.lat, p.lon], {radius:6, color:"#5B3EF5", fillColor:"#5B3EF5", fillOpacity:.8, weight:1.5}).bindPopup(popup);
+    });
+    const group = L.featureGroup(markers).addTo(map);
+    map.fitBounds(group.getBounds().pad(.05));
+  <\/script>
+</body>
+</html>`;
+    mapBlob = new Blob([mapHtml], { type: "text/html;charset=utf-8" });
+    mapFilename = baseName + "_map.html";
+  }
+
+  return { blob, filename, mapBlob, mapFilename };
 }
 
 async function downloadMediaPlan() {
   const result = await buildMediaPlanBlob();
   if (!result) return;
-  const { blob, filename } = result;
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement("a");
-  a.href    = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  const { blob, filename, mapBlob, mapFilename } = result;
+
+  function triggerDownload(b, name) {
+    const url = URL.createObjectURL(b);
+    const a   = document.createElement("a");
+    a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  triggerDownload(blob, filename);
+  if (mapBlob && mapFilename) {
+    setTimeout(() => triggerDownload(mapBlob, mapFilename), 300);
+  }
 }
 
 // ===== File import helpers =====
