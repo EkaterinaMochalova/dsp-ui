@@ -2206,8 +2206,23 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       rowsEl.querySelectorAll(".per-city-row").forEach(r => {
         existing[r.dataset.region] = r.querySelector("input")?.value || "";
       });
+      // Check if all existing values are empty (first open) — pre-populate from budget-input
+      const allEmpty = regions.every(r => !existing[r]);
+      const currentBudget = Number(el("budget-input")?.value || 0);
       rowsEl.innerHTML = "";
-      regions.forEach(region => {
+      regions.forEach((region, idx) => {
+        let defaultVal = existing[region] || "";
+        if (allEmpty && currentBudget > 0) {
+          if (_perCityMode === "pct") {
+            // Distribute evenly in %
+            const share = Math.floor(100 / regions.length);
+            defaultVal = String(idx === regions.length - 1 ? 100 - share * (regions.length - 1) : share);
+          } else {
+            // Distribute evenly in ₽
+            const share = Math.floor(currentBudget / regions.length);
+            defaultVal = String(idx === regions.length - 1 ? currentBudget - share * (regions.length - 1) : share);
+          }
+        }
         const row = document.createElement("div");
         row.className = "per-city-row";
         row.dataset.region = region;
@@ -2217,7 +2232,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         row.innerHTML = '<span class="per-city-row-label">' + region + '</span>'
           + '<div style="display:flex;align-items:center;gap:4px;">'
           + '<input type="number" class="ux-input" min="0" step="' + step + '" placeholder="0"' + maxAttr
-          + ' value="' + (existing[region] || '') + '" style="width:110px;text-align:right;">'
+          + ' value="' + defaultVal + '" style="width:110px;text-align:right;">'
           + '<span class="per-city-unit" style="font-size:13px;font-weight:600;color:#667085;min-width:14px;">' + unit + '</span>'
           + '</div>';
         row.querySelector("input").addEventListener("input", syncPerCityTotal);
@@ -2242,7 +2257,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       } else {
         if (totalEl) { totalEl.textContent = Math.floor(sum).toLocaleString("ru-RU") + " ₽"; totalEl.style.color = "#5b3ef5"; }
         const main = el("budget-input");
-        if (main) main.value = sum > 0 ? Math.floor(sum) : "";
+        if (main && sum > 0) main.value = Math.floor(sum);
       }
       renderProgress();
     }
