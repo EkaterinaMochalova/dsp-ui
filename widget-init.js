@@ -2181,6 +2181,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       document.querySelectorAll("#per-city-rows .per-city-row .per-city-unit").forEach(u => {
         u.textContent = mode === "pct" ? "%" : "₽";
       });
+      // Show/hide the total budget input depending on mode
+      const perCityOn = !!el("per-city-enabled")?.checked;
+      if (perCityOn) {
+        el("budget-input").style.display = mode === "pct" ? "block" : "none";
+      }
       syncPerCityTotal();
     }
 
@@ -2197,7 +2202,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if (!enabled?.checked) { el("per-city-budget-wrap").style.display = "none"; return; }
       el("per-city-budget-wrap").style.display = "block";
       el("budget-distrib-note").style.display = "none";
-      el("budget-input").style.display = "none";
+      // In % mode keep budget-input visible — it holds the total ₽ the percentages apply to.
+      // In ₽ absolute mode hide it — the sum of per-city fields is the total.
+      el("budget-input").style.display = _perCityMode === "pct" ? "block" : "none";
       // Only rebuild rows if regions changed — avoids focus loss on interval tick
       const sig = regions.slice().sort().join("||");
       if (sig === _lastPerCityRegionsSig) return;
