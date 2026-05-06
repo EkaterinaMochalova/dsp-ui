@@ -86,8 +86,8 @@
       color: '#2563EB', weight: 2, fillColor: '#2563EB', fillOpacity: 0.08,
     }).addTo(drawLayer)
 
-    // Select all screens whose lat/lon fall inside the polygon
-    const hits = screens.filter(s =>
+    // Select only from currently filtered screens (respects OTS/camera toggles)
+    const hits = filtered.filter(s =>
       Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
       pointInPolygon(s.lat, s.lon, drawPoints)
     )
