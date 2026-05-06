@@ -153,8 +153,8 @@
     openFilterCol = ''
   }
 
-  // Close filter dropdown on outside click
-  function onDocClick() { openFilterCol = '' }
+  // Close filter dropdown / col picker on outside click
+  function onDocClick() { openFilterCol = ''; colPickerOpen = false }
 
   // Unique values per filterable column (from ALL screens, not filtered)
   $: colOptions = {
@@ -247,6 +247,8 @@
     if (map) { map.remove(); map = null }
     window.removeEventListener('mousemove', onDragMove)
     window.removeEventListener('mouseup', onDragEnd)
+    window.removeEventListener('mousemove', onColResizeMove)
+    window.removeEventListener('mouseup',   onColResizeEnd)
   })
 
   async function loadScreens() {
@@ -445,6 +447,148 @@
     window.removeEventListener('mousemove', onDragMove)
     window.removeEventListener('mouseup', onDragEnd)
   }
+
+  // ── Column configuration ──────────────────────────────────────────────
+  const COL_STATE_KEY = 'dsp_screens_cols_v2'
+
+  let cols = [
+    { id:'gid',              label:'GID',                                   visible: true,  width: 90  },
+    { id:'owner',            label:'Оператор',        filterType:'dropdown', visible: true,  width: 130 },
+    { id:'city',             label:'Город',           filterType:'dropdown', visible: true,  width: 100 },
+    { id:'side',             label:'Сторона',         filterType:'dropdown', visible: true,  width: 80  },
+    { id:'format',           label:'Формат',          filterType:'dropdown', visible: true,  width: 120 },
+    { id:'size',             label:'Размер',                                 visible: true,  width: 100 },
+    { id:'minBid',           label:'Мин. ставка',     filterType:'range',    visible: true,  width: 110 },
+    { id:'ots',              label:'OTS',             filterType:'range',    visible: true,  width: 90  },
+    { id:'grp',              label:'GRP',             filterType:'range',    visible: false, width: 80  },
+    { id:'duration',         label:'Длительность, с', filterType:'range',    visible: false, width: 130 },
+    { id:'requestHourlyAvg', label:'Запросы/час',     filterType:'range',    visible: true,  width: 110 },
+    { id:'resolution',       label:'Разрешение',                             visible: false, width: 110 },
+    { id:'address',          label:'Адрес',                                  visible: true,  width: 200 },
+    { id:'lat',              label:'Широта',          filterType:'range',    visible: false, width: 90  },
+    { id:'lon',              label:'Долгота',         filterType:'range',    visible: false, width: 90  },
+    { id:'photoReport',      label:'Фотоотчёт',       filterType:'dropdown', visible: false, width: 100 },
+    { id:'description',      label:'Описание',                               visible: false, width: 160 },
+  ];
+
+  // Load persisted order/visibility/widths
+  (function loadColState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COL_STATE_KEY) || 'null')
+      if (!saved || !Array.isArray(saved)) return
+      const savedMap = Object.fromEntries(saved.map(c => [c.id, c]))
+      const savedIds = saved.map(c => c.id).filter(id => cols.some(c => c.id === id))
+      const reordered = savedIds.map(id => {
+        const col = cols.find(c => c.id === id)
+        const s   = savedMap[id]
+        return { ...col, visible: s.visible ?? col.visible, width: s.width ?? col.width }
+      })
+      for (const col of cols) {
+        if (!savedIds.includes(col.id)) reordered.push(col)
+      }
+      cols = reordered
+    } catch {}
+  })()
+
+  function saveColState() {
+    try {
+      localStorage.setItem(COL_STATE_KEY, JSON.stringify(
+        cols.map(c => ({ id: c.id, visible: c.visible, width: c.width }))
+      ))
+    } catch {}
+  }
+
+  $: visibleCols = cols.filter(c => c.visible)
+  $: colSpan     = visibleCols.length + 3   // checkbox + thumb + N data + remove
+
+  function cellClass(col) {
+    if (col.id === 'gid')    return 'cell-gid'
+    if (col.id === 'minBid') return 'cell-bid'
+    return 'cell-muted'
+  }
+
+  function cellValue(s, col) {
+    switch (col.id) {
+      case 'gid':              return s.gid || s.id
+      case 'owner':            return s.owner || '—'
+      case 'city':             return s.city  || '—'
+      case 'side':             return s.side  || '—'
+      case 'format':           return s.format || '—'
+      case 'size':             return s.size   || '—'
+      case 'minBid':           return s.minBid != null ? s.minBid.toFixed(2) : '—'
+      case 'ots':              return s.ots    != null ? s.ots.toLocaleString('ru-RU') : '—'
+      case 'grp':              return s.grp    != null ? s.grp.toLocaleString('ru-RU') : '—'
+      case 'duration':         return s.duration != null ? s.duration.toLocaleString('ru-RU') : '—'
+      case 'requestHourlyAvg': return s.requestHourlyAvg != null ? s.requestHourlyAvg.toLocaleString('ru-RU') : '—'
+      case 'resolution':       return s.resolution || '—'
+      case 'address':          return s.address || '—'
+      case 'lat':              return Number.isFinite(s.lat) ? s.lat.toFixed(5) : '—'
+      case 'lon':              return Number.isFinite(s.lon) ? s.lon.toFixed(5) : '—'
+      case 'photoReport':      return s.photoReport || '—'
+      case 'description':      return s.description || '—'
+      default:                 return '—'
+    }
+  }
+
+  // Column picker
+  let colPickerOpen = false
+
+  // Drag-to-reorder columns
+  let colDragId     = null
+  let colDragOverId = null
+
+  function onColDragStart(e, col) {
+    colDragId = col.id
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  function onColDragOver(e, col) {
+    if (!colDragId || colDragId === col.id) return
+    e.preventDefault()
+    colDragOverId = col.id
+  }
+  function onColDragLeave(col) {
+    if (colDragOverId === col.id) colDragOverId = null
+  }
+  function onColDrop(e, col) {
+    e.preventDefault()
+    if (!colDragId || colDragId === col.id) { colDragId = colDragOverId = null; return }
+    const from = cols.findIndex(c => c.id === colDragId)
+    const to   = cols.findIndex(c => c.id === col.id)
+    const arr  = [...cols]
+    const [item] = arr.splice(from, 1)
+    arr.splice(to, 0, item)
+    cols = arr
+    colDragId = colDragOverId = null
+    saveColState()
+  }
+  function onColDragEnd() { colDragId = colDragOverId = null }
+
+  // Column resize
+  let resizingColId = null
+  let resizeStartX  = 0
+  let resizeStartW  = 0
+
+  function onColResizeStart(e, col) {
+    e.preventDefault(); e.stopPropagation()
+    resizingColId = col.id
+    resizeStartX  = e.clientX
+    resizeStartW  = col.width || 100
+    window.addEventListener('mousemove', onColResizeMove)
+    window.addEventListener('mouseup',   onColResizeEnd)
+  }
+  function onColResizeMove(e) {
+    if (!resizingColId) return
+    const idx = cols.findIndex(c => c.id === resizingColId)
+    if (idx < 0) return
+    cols[idx] = { ...cols[idx], width: Math.max(50, resizeStartW + e.clientX - resizeStartX) }
+    cols = cols
+  }
+  function onColResizeEnd() {
+    if (resizingColId) saveColState()
+    resizingColId = null
+    window.removeEventListener('mousemove', onColResizeMove)
+    window.removeEventListener('mouseup',   onColResizeEnd)
+  }
 </script>
 
 <svelte:window on:click={onDocClick}/>
@@ -572,6 +716,27 @@
           />
         </div>
       </div>
+      <!-- Column picker -->
+      <!-- svelte-ignore a11y-click-events-have-key-events -->
+      <div class="col-picker-wrap" on:click|stopPropagation>
+        <button class="panel-expand-btn" class:col-picker-active={colPickerOpen} title="Настройка столбцов" on:click={() => colPickerOpen = !colPickerOpen}>
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z"/>
+          </svg>
+        </button>
+        {#if colPickerOpen}
+          <div class="col-picker-drop">
+            <div class="col-picker-header">Столбцы</div>
+            {#each cols as col}
+              <label class="col-picker-item">
+                <input type="checkbox" bind:checked={col.visible} on:change={() => { cols = cols; saveColState() }} />
+                <span>{col.label}</span>
+              </label>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
       <button class="panel-expand-btn" title="Развернуть" on:click={() => panelHeight = panelHeight < 400 ? 500 : 280}>
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clip-rule="evenodd"/>
@@ -604,26 +769,19 @@
               <input type="checkbox" checked={allVisible} indeterminate={someVisible && !allVisible} on:change={toggleAll}/>
             </th>
             <th style="width:60px"></th>
-            {#each [
-              { id:'gid',              label:'GID' },
-              { id:'owner',            label:'Оператор',        filterType: 'dropdown' },
-              { id:'city',             label:'Город',           filterType: 'dropdown' },
-              { id:'side',             label:'Сторона',         filterType: 'dropdown' },
-              { id:'format',           label:'Формат',          filterType: 'dropdown' },
-              { id:'size',             label:'Размер' },
-              { id:'minBid',           label:'Мин. ставка',     filterType: 'range' },
-              { id:'ots',              label:'OTS',             filterType: 'range' },
-              { id:'grp',              label:'GRP',             filterType: 'range' },
-              { id:'duration',         label:'Длительность, с', filterType: 'range' },
-              { id:'requestHourlyAvg', label:'Запросы/час',     filterType: 'range' },
-              { id:'resolution',       label:'Разрешение' },
-              { id:'address',          label:'Адрес' },
-              { id:'lat',              label:'Широта',           filterType: 'range' },
-              { id:'lon',              label:'Долгота',          filterType: 'range' },
-              { id:'photoReport',      label:'Фотоотчёт',       filterType: 'dropdown' },
-              { id:'description',      label:'Описание' },
-            ] as col (col.id)}
-              <th class="col-hd" on:click={() => toggleSort(col.id)}>
+            {#each visibleCols as col (col.id)}
+              <th
+                class="col-hd"
+                class:col-drag-over={colDragOverId === col.id}
+                style="width:{col.width}px;min-width:{col.width}px;position:relative;overflow:visible"
+                draggable="true"
+                on:click={() => toggleSort(col.id)}
+                on:dragstart={(e) => onColDragStart(e, col)}
+                on:dragover={(e) => onColDragOver(e, col)}
+                on:dragleave={() => onColDragLeave(col)}
+                on:drop={(e) => onColDrop(e, col)}
+                on:dragend={onColDragEnd}
+              >
                 <span class="col-hd-inner">
                   <span class="col-hd-label"
                     class:col-active={sortCol===col.id
@@ -683,6 +841,9 @@
                     {/if}
                   {/if}
                 </span>
+                <!-- Resize handle -->
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <div class="col-resize-handle" on:mousedown={(e) => onColResizeStart(e, col)}></div>
               </th>
             {/each}
             <th style="width:32px"></th>
@@ -690,13 +851,13 @@
         </thead>
         <tbody>
           {#if loading}
-            <tr><td colspan="18" class="table-state-cell">
+            <tr><td colspan={colSpan} class="table-state-cell">
               <div class="spinner"></div> Загрузка…
             </td></tr>
           {:else if error}
-            <tr><td colspan="18" class="table-state-cell" style="color:#EF4444">{error}</td></tr>
+            <tr><td colspan={colSpan} class="table-state-cell" style="color:#EF4444">{error}</td></tr>
           {:else if tabRows.length === 0}
-            <tr><td colspan="18" class="table-state-cell">
+            <tr><td colspan={colSpan} class="table-state-cell">
               {activeTab === 'selected' ? 'Нет выбранных экранов' : 'Экраны не найдены'}
             </td></tr>
           {:else}
@@ -716,23 +877,11 @@
                     </div>
                   {/if}
                 </td>
-                <td class="cell-gid">{s.gid || s.id}</td>
-                <td class="cell-muted">{s.owner || '—'}</td>
-                <td class="cell-muted">{s.city || '—'}</td>
-                <td class="cell-muted">{s.side || '—'}</td>
-                <td class="cell-muted">{s.format || '—'}</td>
-                <td class="cell-muted">{s.size || '—'}</td>
-                <td class="cell-bid">{s.minBid != null ? s.minBid.toFixed(2) : '—'}</td>
-                <td class="cell-muted">{s.ots != null ? s.ots.toLocaleString('ru-RU') : '—'}</td>
-                <td class="cell-muted">{s.grp != null ? s.grp.toLocaleString('ru-RU') : '—'}</td>
-                <td class="cell-muted">{s.duration != null ? s.duration.toLocaleString('ru-RU') : '—'}</td>
-                <td class="cell-muted">{s.requestHourlyAvg != null ? s.requestHourlyAvg.toLocaleString('ru-RU') : '—'}</td>
-                <td class="cell-muted">{s.resolution || '—'}</td>
-                <td class="cell-muted">{s.address || '—'}</td>
-                <td class="cell-muted">{Number.isFinite(s.lat) ? s.lat.toFixed(5) : '—'}</td>
-                <td class="cell-muted">{Number.isFinite(s.lon) ? s.lon.toFixed(5) : '—'}</td>
-                <td class="cell-muted">{s.photoReport || '—'}</td>
-                <td class="cell-muted">{s.description || '—'}</td>
+                {#each visibleCols as col (col.id)}
+                  <td class={cellClass(col)} style="width:{col.width}px;min-width:{col.width}px;max-width:{col.width}px;overflow:hidden;text-overflow:ellipsis">
+                    {cellValue(s, col)}
+                  </td>
+                {/each}
                 <td class="cell-remove" on:click|stopPropagation>
                   {#if isSelected(s.id)}
                     <button class="remove-btn" title="Убрать" on:click={() => { toggleScreen(s.id); renderMarkers(filtered) }}>
@@ -1376,4 +1525,97 @@
     margin-top: 2px;
   }
   .range-clear:hover { color: #EF4444; border-color: #EF4444; background: #FEF2F2; }
+
+  /* ── Column picker ── */
+  .col-picker-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .col-picker-active {
+    background: var(--navy-light) !important;
+    border-color: var(--navy) !important;
+    color: var(--navy) !important;
+  }
+
+  .col-picker-drop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 300;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.14);
+    min-width: 200px;
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 6px;
+  }
+
+  .col-picker-header {
+    padding: 4px 10px 6px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+
+  .col-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+    user-select: none;
+    transition: background .1s;
+  }
+  .col-picker-item:hover { background: var(--navy-light); }
+  .col-picker-item input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    accent-color: var(--navy);
+    cursor: pointer;
+  }
+
+  /* ── Column resize handle ── */
+  .col-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 10;
+  }
+  .col-resize-handle::after {
+    content: '';
+    position: absolute;
+    right: 2px;
+    top: 20%;
+    height: 60%;
+    width: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    transition: background .12s;
+  }
+  .col-resize-handle:hover::after,
+  .col-resize-handle:active::after {
+    background: var(--navy);
+  }
+
+  /* ── Column drag-to-reorder ── */
+  .col-hd[draggable] { cursor: grab; }
+  .col-hd[draggable]:active { cursor: grabbing; }
+  .col-drag-over {
+    background: #EFF6FF !important;
+    box-shadow: inset 3px 0 0 var(--navy);
+  }
 </style>
