@@ -113,18 +113,28 @@
   // Table state
   let activeTab = 'all'   // 'all' | 'selected'
   let tableSearch = ''
-  let filterDistrict = ''
-  let filterIndex = ''
+  let filterCity   = ''
+  let filterOwner  = ''
+  let filterFormat = ''
 
-  // Derived — apply OTS/camera overlays + text search
+  // Derived filter option lists (populated once screens load)
+  $: cityOptions   = [...new Set(screens.map(s => s.city).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'))
+  $: ownerOptions  = [...new Set(screens.map(s => s.owner).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'))
+  $: formatOptions = [...new Set(screens.map(s => s.format).filter(Boolean))].sort()
+
+  // Derived — apply OTS/camera overlays + dropdown filters + text search
   $: filtered = screens.filter(s => {
     if (otsOverlay    && !(s.ots > 0))   return false
     if (cameraOverlay && !s.hasCamera)   return false
+    if (filterCity   && s.city   !== filterCity)   return false
+    if (filterOwner  && s.owner  !== filterOwner)  return false
+    if (filterFormat && s.format !== filterFormat) return false
     if (!tableSearch) return true
     const q = tableSearch.toLowerCase()
     return s.address.toLowerCase().includes(q)
       || s.city.toLowerCase().includes(q)
       || s.owner.toLowerCase().includes(q)
+      || s.gid.toLowerCase().includes(q)
   })
 
   $: tabRows = activeTab === 'selected'
@@ -460,12 +470,25 @@
             bind:value={tableSearch}
           />
         </div>
-        <select class="panel-select" bind:value={filterDistrict}>
-          <option value="">Район</option>
+        <select class="panel-select" bind:value={filterCity}>
+          <option value="">Город</option>
+          {#each cityOptions as c}<option value={c}>{c}</option>{/each}
         </select>
-        <select class="panel-select" bind:value={filterIndex}>
-          <option value="">Индекс</option>
+        <select class="panel-select" bind:value={filterOwner}>
+          <option value="">Оператор</option>
+          {#each ownerOptions as o}<option value={o}>{o}</option>{/each}
         </select>
+        <select class="panel-select" bind:value={filterFormat}>
+          <option value="">Формат</option>
+          {#each formatOptions as f}<option value={f}>{f}</option>{/each}
+        </select>
+        {#if filterCity || filterOwner || filterFormat}
+          <button class="filter-clear-btn" title="Сбросить фильтры" on:click={() => { filterCity=''; filterOwner=''; filterFormat='' }}>
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        {/if}
       </div>
       <button class="panel-expand-btn" title="Развернуть" on:click={() => panelHeight = panelHeight < 400 ? 500 : 280}>
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
@@ -863,6 +886,21 @@
     flex-shrink: 0;
   }
   .panel-select:focus { border-color: var(--navy); color: var(--text); }
+
+  .filter-clear-btn {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    background: #FEF2F2;
+    color: #EF4444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .filter-clear-btn:hover { background: #FEE2E2; }
 
   .panel-expand-btn {
     width: 30px;
