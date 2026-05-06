@@ -6,7 +6,11 @@
 
   // Баер = manual input OR forecast (manual takes priority)
   $: forecastBudget = metrics.budget ?? 0
-  $: baer = Number(draft.customBudgetTotal) || forecastBudget
+  $: customBudget   = Number(draft.customBudgetTotal) || 0
+  $: baer = customBudget || forecastBudget
+
+  // Warn when user's budget exceeds what the selected screens can deliver
+  $: capacityExceeded = customBudget > 0 && forecastBudget > 0 && customBudget > forecastBudget
   $: markupPct = Number(draft.buyerMarkup) || 0
   $: markupAmt = baer * (markupPct / 100)
   $: clientBase = baer + markupAmt
@@ -78,6 +82,18 @@
       bind:value={draft.customBudgetTotal}
       min="0"
     />
+
+    {#if capacityExceeded}
+      <div class="capacity-warning">
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;margin-top:1px">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        <span>
+          Ёмкость выбранных экранов не позволяет реализовать бюджет {customBudget.toLocaleString('ru-RU')} ₽.
+          Максимальный реализуемый бюджет: <strong>{forecastBudget.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽</strong>.
+        </span>
+      </div>
+    {/if}
   </div>
 
   <!-- Disclaimer -->
@@ -159,6 +175,25 @@
 </div>
 
 <style>
+  .capacity-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: #FEF3C7;
+    border: 1px solid #F59E0B;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #92400E;
+    line-height: 1.45;
+  }
+
+  .capacity-warning strong {
+    font-weight: 700;
+    color: #78350F;
+  }
+
   .forecast-hint {
     font-size: 12px;
     color: var(--text-muted);
