@@ -43,7 +43,7 @@
 
   // Steps definition — order matches Figma
   const STEPS = [
-    { id: 'basic',     label: 'Основные параметры',              subs: ['Рекламодатель', 'Бренд', 'Ставка'] },
+    { id: 'basic',     label: 'Основные параметры',              subs: [] },
     { id: 'budget',    label: 'Бюджет',                          subs: [] },
     { id: 'screens',   label: 'Экраны',                          subs: ['Выбор экранов', 'Ставки', 'График показов'] },
     { id: 'settings',  label: 'Ограничения показов',             subs: [] },
@@ -128,6 +128,39 @@
       <span class="wizard-type-badge">{typeBadgeLabel}</span>
     </div>
 
+    <!-- Forecast metrics — above steps -->
+    <div class="wizard-metrics">
+      {#if !hasScreensAndDates}
+        <div class="wizard-hint">
+          <svg class="wizard-hint-icon" width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+          </svg>
+          <div class="wizard-hint-text">Выберите даты и хотя бы один экран для расчёта прогноза</div>
+        </div>
+      {/if}
+
+      <div class="wizard-metric-row">
+        <span>Количество выходов</span>
+        <span class="wizard-metric-val">{metrics.impressions.toLocaleString('ru-RU')}</span>
+      </div>
+      <div class="wizard-metric-row">
+        <span>Количество OTS</span>
+        <span class="wizard-metric-val">{metrics.ots.toLocaleString('ru-RU')}</span>
+      </div>
+      {#if metrics.budget !== null}
+        <div class="wizard-metric-row highlight">
+          <span>Бюджет, ₽</span>
+          <span class="wizard-metric-val">{metrics.budget.toLocaleString('ru-RU')}</span>
+        </div>
+      {:else}
+        <div class="wizard-metric-row">
+          <span>Бюджет, ₽</span>
+          <span class="wizard-metric-val">0</span>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Steps list -->
     <div class="wizard-steps">
       {#each stepRows as step (step.id)}
         <div class="wizard-step">
@@ -164,50 +197,10 @@
       {/each}
     </div>
 
-    <!-- Bottom metrics -->
-    <div class="wizard-metrics">
-      {#if dateLabel}
-        <div class="wizard-dates">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="color:var(--text-muted)">
-            <path d="M11 3a1 1 0 10-2 0v1H7V3a1 1 0 10-2 0v1H4a2 2 0 00-2 2v7a2 2 0 002 2h8a2 2 0 002-2V6a2 2 0 00-2-2h-1V3zM4 7h8v5H4V7z"/>
-          </svg>
-          {dateLabel}
-        </div>
-      {/if}
-
-      {#if !hasScreensAndDates}
-        <div class="wizard-hint">
-          <svg class="wizard-hint-icon" width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-          </svg>
-          <div class="wizard-hint-text">Выберите даты и хотя бы один экран для расчёта прогноза</div>
-        </div>
-      {/if}
-
-      <div class="wizard-metric-row">
-        <span>Количество выходов</span>
-        <span class="wizard-metric-val">{metrics.impressions.toLocaleString('ru-RU')}</span>
-      </div>
-      <div class="wizard-metric-row">
-        <span>Количество OTS</span>
-        <span class="wizard-metric-val">{metrics.ots.toLocaleString('ru-RU')}</span>
-      </div>
-      {#if metrics.budget !== null}
-        <div class="wizard-metric-row highlight">
-          <span>Рекомендованный бюджет</span>
-          <span class="wizard-metric-val">₽ {metrics.budget.toLocaleString('ru-RU')}</span>
-        </div>
-      {:else}
-        <div class="wizard-metric-row">
-          <span>Бюджет, ₽</span>
-          <span class="wizard-metric-val">0</span>
-        </div>
-      {/if}
-
-      <div class="wizard-actions">
-        <button class="btn-save">Сохранить</button>
-        <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1}>Запустить</button>
-      </div>
+    <!-- Save / Launch -->
+    <div class="wizard-actions">
+      <button class="btn-save">Сохранить</button>
+      <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1}>Запустить</button>
     </div>
   </div>
 
