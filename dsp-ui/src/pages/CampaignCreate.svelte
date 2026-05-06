@@ -66,12 +66,14 @@
         startDate: draft.startDate + 'T00:00:00',
         endDate:   draft.endDate   + 'T23:59:59',
         bidType:   draft.bidType,
-        // omit customBid so server uses recommended bid
-        inventoryList: draft.screenIds.map(id => ({ inventory: { id } })),
+        inventoryList: draft.screenIds.map(id => ({
+          inventory: { id },
+          timeSettings: null,   // required field even when empty
+        })),
       }
-      console.log('📊 Forecast request:', payload)
+      console.log('📊 Forecast request:', JSON.stringify(payload))
       const res = await api.campaigns.forecast(payload)
-      console.log('📊 Forecast response:', res)
+      console.log('📊 Forecast response:', JSON.stringify(res))
       const stat = res?.summary?.statistic ?? {}
       metrics = {
         impressions: stat.totalCount  ?? 0,
@@ -79,7 +81,7 @@
         budget:      stat.totalPrice  ?? null,
       }
     } catch (e) {
-      console.warn('📊 Forecast error:', e)
+      console.warn('📊 Forecast error:', e?.data ?? e)
     } finally {
       forecastLoading = false
     }

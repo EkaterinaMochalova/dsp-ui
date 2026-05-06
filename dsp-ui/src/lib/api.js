@@ -22,7 +22,14 @@ async function request(path, options = {}) {
   }
 
   const text = await res.text()
-  const data = text ? JSON.parse(text) : null
+  let data = null
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    // Server returned non-JSON (e.g. plain-text Spring error)
+    if (!res.ok) throw { status: res.status, data: text }
+    return null
+  }
 
   if (!res.ok) throw { status: res.status, data }
   return data
