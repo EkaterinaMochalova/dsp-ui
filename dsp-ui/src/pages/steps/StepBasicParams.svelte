@@ -145,7 +145,7 @@
       <div class="field-label">Тип ставки</div>
       <div class="radio-group">
         <label class="radio-label">
-          <input type="radio" bind:group={draft.bidType} value="IMPRESSIONS" />
+          <input type="radio" bind:group={draft.bidType} value="BID" />
           По выходам
         </label>
         <label class="radio-label">

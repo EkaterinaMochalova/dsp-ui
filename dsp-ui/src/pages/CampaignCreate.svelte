@@ -21,7 +21,7 @@
     name: '',
     customerId: null,
     brandId: null,
-    bidType: 'IMPRESSIONS', // IMPRESSIONS | OTS
+    bidType: 'BID', // BID | OTS
     startDate: null,
     endDate: null,
     optimalStrategy: false,
