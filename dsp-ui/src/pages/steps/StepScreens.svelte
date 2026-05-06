@@ -159,8 +159,7 @@
       owner: inv.displayOwner?.name || '',
       photo: inv.images?.[0]?.preview ?? null,
       active: inv.enabled !== false,
-      // photoReportOption: NO | YES | AUTO — used for camera filter
-      hasCamera: inv.photoReportOption != null && inv.photoReportOption !== 'NO',
+      hasCamera: inv.hasCamera === true,
     }
   }
 
