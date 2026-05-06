@@ -63,13 +63,10 @@
     try {
       // Use date string directly — avoids UTC shift for Russian timezone
       const payload = {
-        startDate: draft.startDate + 'T00:00:00',
-        endDate:   draft.endDate   + 'T23:59:59',
-        bidType:   draft.bidType,
-        inventoryList: draft.screenIds.map(id => ({
-          inventory: { id },
-          timeSettings: null,   // required field even when empty
-        })),
+        startDate:    draft.startDate + 'T00:00:00',
+        endDate:      draft.endDate   + 'T23:59:59',
+        bidType:      draft.bidType,
+        inventoryIds: draft.screenIds,
       }
       console.log('📊 Forecast request:', JSON.stringify(payload))
       const res = await api.campaigns.forecast(payload)
