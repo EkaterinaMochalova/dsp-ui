@@ -62,24 +62,6 @@ export const api = {
     forecast(data) {
       return request('/clients/campaigns/forecast', { method: 'POST', body: JSON.stringify(data) })
     },
-    forecastAnalytics(data) {
-      // This endpoint lives outside the /v1.0 namespace
-      const token = getToken()
-      return fetch('/api/externals/analytics/campaign-forecast', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(data),
-      }).then(async res => {
-        const text = await res.text()
-        let data = null
-        try { data = text ? JSON.parse(text) : null } catch { if (!res.ok) throw { status: res.status, data: text }; return null }
-        if (!res.ok) throw { status: res.status, data }
-        return data
-      })
-    },
   },
 
   customers: {

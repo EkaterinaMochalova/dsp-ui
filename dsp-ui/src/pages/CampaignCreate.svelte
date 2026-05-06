@@ -71,13 +71,12 @@
         inventoryIds: draft.screenIds,
         budgetLimit:  { total: budgetTotal },
       }
-      const res = await api.campaigns.forecastAnalytics(payload)
-      console.log('📊 campaign-forecast response:', JSON.stringify(res))
-      // Parse response — discover shape from logs
-      const groups = Array.isArray(res) ? res : (res?.groups ?? res?.statistic ?? [])
-      const impressions = groups.reduce((s, g) => s + (g.view?.amounts ?? g.amounts ?? g.impressions ?? 0), 0)
-      const ots         = groups.reduce((s, g) => s + (g.view?.ots    ?? g.ots    ?? 0), 0)
-      const budgetVal   = groups.reduce((s, g) => s + (g.view?.price  ?? g.price  ?? g.budget ?? 0), 0)
+      const res = await api.campaigns.forecast(payload)
+      console.log('📊 forecast response:', JSON.stringify(res))
+      const groups = Array.isArray(res) ? res : (res?.groups ?? [])
+      const impressions = groups.reduce((s, g) => s + (g.view?.amounts ?? 0), 0)
+      const ots         = groups.reduce((s, g) => s + (g.view?.ots    ?? 0), 0)
+      const budgetVal   = groups.reduce((s, g) => s + (g.view?.price  ?? 0), 0)
       metrics = {
         impressions,
         ots,
