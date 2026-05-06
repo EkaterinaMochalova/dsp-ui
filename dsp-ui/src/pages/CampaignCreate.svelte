@@ -1,14 +1,16 @@
 <script>
   import { onMount } from 'svelte'
   import RightBar from '../components/RightBar.svelte'
-  import StepStart       from './steps/StepStart.svelte'
-  import StepBasicParams from './steps/StepBasicParams.svelte'
-  import StepScreens     from './steps/StepScreens.svelte'
+  import StepStart        from './steps/StepStart.svelte'
+  import StepBasicParams  from './steps/StepBasicParams.svelte'
+  import StepBudget       from './steps/StepBudget.svelte'
+  import StepScreens      from './steps/StepScreens.svelte'
   import StepShowSettings from './steps/StepShowSettings.svelte'
-  import StepBudget      from './steps/StepBudget.svelte'
-  import StepCreatives   from './steps/StepCreatives.svelte'
-  import StepAnalytics   from './steps/StepAnalytics.svelte'
-  import StepSummary     from './steps/StepSummary.svelte'
+  import StepCreatives    from './steps/StepCreatives.svelte'
+  import StepPhotos       from './steps/StepPhotos.svelte'
+  import StepAnalytics    from './steps/StepAnalytics.svelte'
+  import StepSummary      from './steps/StepSummary.svelte'
+  import StepStats        from './steps/StepStats.svelte'
 
   export let campaignType = 'RTB'
 
@@ -29,6 +31,7 @@
     interval: '',
     intervalUnit: 'SEC',
     buyerMarkup: '',
+    customBudgetTotal: '',
     cities: [],
     cityIds: [],
     screenIds: [],
@@ -38,15 +41,17 @@
   let metrics = { impressions: 0, ots: 0, budget: null }
   let hasScreensAndDates = false
 
-  // Steps definition
+  // Steps definition — order matches Figma
   const STEPS = [
-    { id: 'basic',     label: 'Основные параметры', subs: ['Рекламодатель', 'Бренд', 'Ставка'] },
-    { id: 'screens',   label: 'Экраны',             subs: [] },
-    { id: 'settings',  label: 'Настройка показов',  subs: ['Стратегия показов', 'Ограничения показов', 'Интервал'] },
-    { id: 'budget',    label: 'Бюджет',             subs: [] },
+    { id: 'basic',     label: 'Основные параметры',              subs: ['Рекламодатель', 'Бренд', 'Ставка'] },
+    { id: 'budget',    label: 'Бюджет',                          subs: [] },
+    { id: 'screens',   label: 'Экраны',                          subs: ['Выбор экранов', 'Ставки', 'График показов'] },
+    { id: 'settings',  label: 'Ограничения показов',             subs: [] },
     { id: 'creatives', label: 'Рекламные материалы и таргетинг', subs: [] },
-    { id: 'analytics', label: 'Фотоотчёты и аналитика', subs: ['Настройка фотоотчётов', 'Настройка аналитики'] },
-    { id: 'summary',   label: 'Сводка',             subs: [] },
+    { id: 'photos',    label: 'Фотоотчёты',                      subs: [] },
+    { id: 'analytics', label: 'Аналитика',                       subs: [] },
+    { id: 'summary',   label: 'Сводка',                          subs: [] },
+    { id: 'stats',     label: 'Статистика',                      subs: [] },
   ]
 
   let currentStep = 'start'
@@ -233,18 +238,22 @@
       <StepStart on:start={() => goToStep('basic')} on:explore={() => goToStep('screens')} />
     {:else if currentStep === 'basic'}
       <StepBasicParams bind:draft on:next={() => completeStep('basic')} on:back={() => goToStep('start')} />
+    {:else if currentStep === 'budget'}
+      <StepBudget bind:draft {metrics} on:next={() => completeStep('budget')} on:back={() => prevStep('budget')} />
     {:else if currentStep === 'screens'}
       <StepScreens bind:draft on:next={() => completeStep('screens')} on:back={() => prevStep('screens')} />
     {:else if currentStep === 'settings'}
       <StepShowSettings bind:draft on:next={() => completeStep('settings')} on:back={() => prevStep('settings')} />
-    {:else if currentStep === 'budget'}
-      <StepBudget bind:draft {metrics} on:next={() => completeStep('budget')} on:back={() => prevStep('budget')} />
     {:else if currentStep === 'creatives'}
       <StepCreatives bind:draft on:next={() => completeStep('creatives')} on:back={() => prevStep('creatives')} />
+    {:else if currentStep === 'photos'}
+      <StepPhotos bind:draft on:next={() => completeStep('photos')} on:back={() => prevStep('photos')} />
     {:else if currentStep === 'analytics'}
       <StepAnalytics bind:draft on:next={() => completeStep('analytics')} on:back={() => prevStep('analytics')} />
     {:else if currentStep === 'summary'}
       <StepSummary bind:draft {metrics} on:back={() => prevStep('summary')} />
+    {:else if currentStep === 'stats'}
+      <StepStats bind:draft on:back={() => prevStep('stats')} />
     {/if}
   </div>
 

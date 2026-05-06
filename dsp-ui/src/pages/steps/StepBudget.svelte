@@ -4,8 +4,9 @@
   export let draft
   export let metrics
 
-  // Баер = recommended budget from forecast
-  $: baer = metrics.budget ?? 0
+  // Баер = manual input OR forecast (manual takes priority)
+  $: forecastBudget = metrics.budget ?? 0
+  $: baer = Number(draft.customBudgetTotal) || forecastBudget
   $: markupPct = Number(draft.buyerMarkup) || 0
   $: markupAmt = baer * (markupPct / 100)
   $: clientBase = baer + markupAmt
@@ -23,7 +24,7 @@
   // Totals incl. VAT 20%
   $: baerTotal   = baer * 1.20
   $: baerVat     = baer * 0.20
-  $: clientTotal = baerTotal + markupAmt   // = (baer + markup) incl same VAT base
+  $: clientTotal = baerTotal + markupAmt
   $: clientVat   = clientBase * 0.20
 
   $: hasData = baer > 0
@@ -62,6 +63,21 @@
         <span class="markup-pct-badge">{draft.buyerMarkup}%</span>
       {/if}
     </div>
+  </div>
+
+  <!-- Manual budget input -->
+  <div class="step-card">
+    <div class="step-card-title" style="margin-bottom:6px">Бюджет размещения, ₽</div>
+    {#if forecastBudget > 0}
+      <div class="forecast-hint">Рекомендованный бюджет: {forecastBudget.toLocaleString('ru-RU')} ₽ — вы можете указать свой</div>
+    {/if}
+    <input
+      class="field-input"
+      type="number"
+      placeholder={forecastBudget > 0 ? forecastBudget.toLocaleString('ru-RU') : 'Введите бюджет'}
+      bind:value={draft.customBudgetTotal}
+      min="0"
+    />
   </div>
 
   <!-- Disclaimer -->
@@ -143,6 +159,12 @@
 </div>
 
 <style>
+  .forecast-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
   .markup-input-wrap {
     position: relative;
   }
