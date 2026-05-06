@@ -62,6 +62,9 @@ export const api = {
     forecast(data) {
       return request('/clients/campaigns/forecast', { method: 'POST', body: JSON.stringify(data) })
     },
+    forecastCampaign(data) {
+      return request('/clients/analytics/campaign-forecast', { method: 'POST', body: JSON.stringify(data) })
+    },
   },
 
   customers: {

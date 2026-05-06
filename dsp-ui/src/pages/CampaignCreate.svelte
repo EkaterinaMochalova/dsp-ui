@@ -62,25 +62,28 @@
     forecastLoading = true
     try {
       // Use date string directly — avoids UTC shift for Russian timezone
+      // Use clients/analytics/campaign-forecast — the real forecast endpoint.
+      // Payload mirrors the Angular app: forecastPeriod + limits + bidType + inventoryList.
       const customBudget = Number(draft.customBudgetTotal) || 0
-      const budgetTotal = customBudget > 0 ? customBudget : 10_000_000
+      const budgetTotal  = customBudget > 0 ? customBudget : 10_000_000
       const payload = {
-        startDate:    draft.startDate + 'T00:00:00',
-        endDate:      draft.endDate   + 'T23:59:59',
-        bidType:      draft.bidType,
-        inventoryIds: draft.screenIds,
-        budgetLimit:  { total: budgetTotal },
+        forecastPeriod: {
+          start: draft.startDate + 'T00:00:00',
+          end:   draft.endDate   + 'T23:59:59',
+        },
+        limits: {
+          budgetLimit: { total: budgetTotal },
+        },
+        bidType:       draft.bidType,
+        inventoryList: draft.screenIds.map(id => ({ inventory: { id } })),
       }
-      const res = await api.campaigns.forecast(payload)
-      console.log('📊 forecast response:', JSON.stringify(res))
-      const groups = Array.isArray(res) ? res : (res?.groups ?? [])
-      const impressions = groups.reduce((s, g) => s + (g.view?.amounts ?? 0), 0)
-      const ots         = groups.reduce((s, g) => s + (g.view?.ots    ?? 0), 0)
-      const budgetVal   = groups.reduce((s, g) => s + (g.view?.price  ?? 0), 0)
+      const res = await api.campaigns.forecastCampaign(payload)
+      // Response: { summary: { statistic: { totalCount, totalOts, totalPrice } }, groupByTypeAndCity: [...] }
+      const stat = res?.summary?.statistic ?? {}
       metrics = {
-        impressions,
-        ots,
-        budget: budgetVal > 0 ? budgetVal : null,
+        impressions: stat.totalCount ?? 0,
+        ots:         stat.totalOts   ?? 0,
+        budget:      stat.totalPrice  > 0 ? stat.totalPrice : null,
       }
     } catch (e) {
       console.warn('Forecast error:', e?.data ?? e)
