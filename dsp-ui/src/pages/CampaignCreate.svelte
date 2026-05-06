@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte'
+  import { api } from '../lib/api.js'
   import RightBar from '../components/RightBar.svelte'
   import StepStart        from './steps/StepStart.svelte'
   import StepBasicParams  from './steps/StepBasicParams.svelte'
@@ -40,6 +41,50 @@
   // Forecast metrics (updated when screens/dates change)
   let metrics = { impressions: 0, ots: 0, budget: null }
   let hasScreensAndDates = false
+  let forecastLoading = false
+  let forecastTimer = null
+
+  // Reactive trigger — debounced so rapid changes don't flood the API
+  $: {
+    const { screenIds, startDate, endDate, bidType } = draft
+    hasScreensAndDates = screenIds.length > 0 && !!startDate && !!endDate
+    if (hasScreensAndDates) scheduleForecast()
+    else metrics = { impressions: 0, ots: 0, budget: null }
+  }
+
+  function scheduleForecast() {
+    clearTimeout(forecastTimer)
+    forecastTimer = setTimeout(loadForecast, 600)
+  }
+
+  async function loadForecast() {
+    if (!draft.screenIds.length || !draft.startDate || !draft.endDate) return
+    forecastLoading = true
+    try {
+      const fmt = d => new Date(d).toISOString().slice(0, 19)
+      const payload = {
+        startDate: fmt(draft.startDate),
+        endDate:   fmt(draft.endDate),
+        bidType:   draft.bidType,
+        inventoryList: draft.screenIds.map(id => ({
+          inventory: { id },
+          timeSettings: null,
+          customBid: null,
+        })),
+      }
+      const res = await api.campaigns.forecast(payload)
+      const stat = res?.summary?.statistic ?? {}
+      metrics = {
+        impressions: stat.totalCount  ?? 0,
+        ots:         stat.totalOts    ?? 0,
+        budget:      stat.totalPrice  ?? null,
+      }
+    } catch (e) {
+      console.warn('Forecast error:', e)
+    } finally {
+      forecastLoading = false
+    }
+  }
 
   // Steps definition — order matches Figma
   const STEPS = [
@@ -129,7 +174,7 @@
     </div>
 
     <!-- Forecast metrics — above steps -->
-    <div class="wizard-metrics">
+    <div class="wizard-metrics" class:loading={forecastLoading}>
       {#if !hasScreensAndDates}
         <div class="wizard-hint">
           <svg class="wizard-hint-icon" width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
