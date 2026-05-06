@@ -61,18 +61,17 @@
     if (!draft.screenIds.length || !draft.startDate || !draft.endDate) return
     forecastLoading = true
     try {
-      const fmt = d => new Date(d).toISOString().slice(0, 19)
+      // Use date string directly — avoids UTC shift for Russian timezone
       const payload = {
-        startDate: fmt(draft.startDate),
-        endDate:   fmt(draft.endDate),
+        startDate: draft.startDate + 'T00:00:00',
+        endDate:   draft.endDate   + 'T23:59:59',
         bidType:   draft.bidType,
-        inventoryList: draft.screenIds.map(id => ({
-          inventory: { id },
-          timeSettings: null,
-          customBid: null,
-        })),
+        // omit customBid so server uses recommended bid
+        inventoryList: draft.screenIds.map(id => ({ inventory: { id } })),
       }
+      console.log('📊 Forecast request:', payload)
       const res = await api.campaigns.forecast(payload)
+      console.log('📊 Forecast response:', res)
       const stat = res?.summary?.statistic ?? {}
       metrics = {
         impressions: stat.totalCount  ?? 0,
@@ -80,7 +79,7 @@
         budget:      stat.totalPrice  ?? null,
       }
     } catch (e) {
-      console.warn('Forecast error:', e)
+      console.warn('📊 Forecast error:', e)
     } finally {
       forecastLoading = false
     }
