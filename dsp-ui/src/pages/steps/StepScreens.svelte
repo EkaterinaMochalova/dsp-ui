@@ -6,7 +6,7 @@
   import { formatMoney } from '../../lib/utils.js'
 
   // Persist cache on window so it survives HMR reloads and component re-mounts
-  if (!window._dspScreensCache) window._dspScreensCache = {}
+  window._dspScreensCache = {}
 
   const dispatch = createEventDispatcher()
   export let draft
@@ -115,7 +115,16 @@
   let tableSearch = ''
 
   // Column filters — keyed by column id
-  let colFilters = { owner: '', city: '', side: '', format: '' }
+  let colFilters = {
+    // dropdown
+    owner: '', city: '', side: '', format: '', photoReport: '',
+    // range (stored as { min: '', max: '' })
+    minBid: { min: '', max: '' },
+    ots:    { min: '', max: '' },
+    grp:    { min: '', max: '' },
+    duration: { min: '', max: '' },
+    requestHourlyAvg: { min: '', max: '' },
+  }
 
   // Sort state
   let sortCol = ''   // 'gid'|'owner'|'city'|'side'|'format'|'size'|'minBid'|'ots'
@@ -144,10 +153,18 @@
 
   // Unique values per filterable column (from ALL screens, not filtered)
   $: colOptions = {
-    owner:  [...new Set(screens.map(s => s.owner).filter(Boolean))].sort((a,b) => a.localeCompare(b,'ru')),
-    city:   [...new Set(screens.map(s => s.city).filter(Boolean))].sort((a,b) => a.localeCompare(b,'ru')),
-    side:   [...new Set(screens.map(s => s.side).filter(Boolean))].sort(),
-    format: [...new Set(screens.map(s => s.format).filter(Boolean))].sort(),
+    owner:       [...new Set(screens.map(s => s.owner).filter(Boolean))].sort((a,b) => a.localeCompare(b,'ru')),
+    city:        [...new Set(screens.map(s => s.city).filter(Boolean))].sort((a,b) => a.localeCompare(b,'ru')),
+    side:        [...new Set(screens.map(s => s.side).filter(Boolean))].sort(),
+    format:      [...new Set(screens.map(s => s.format).filter(Boolean))].sort(),
+    photoReport: [...new Set(screens.map(s => s.photoReport).filter(Boolean))].sort(),
+  }
+
+  // Range filter helper
+  function inRange(val, f) {
+    if (f.min !== '' && val != null && val < Number(f.min)) return false
+    if (f.max !== '' && val != null && val > Number(f.max)) return false
+    return true
   }
 
   // Derived — OTS/camera map toggles + column filters + text search
@@ -158,6 +175,12 @@
     if (colFilters.city   && s.city   !== colFilters.city)   return false
     if (colFilters.side   && s.side   !== colFilters.side)   return false
     if (colFilters.format && s.format !== colFilters.format) return false
+    if (!inRange(s.minBid, colFilters.minBid)) return false
+    if (!inRange(s.ots,    colFilters.ots))    return false
+    if (!inRange(s.grp,    colFilters.grp))    return false
+    if (!inRange(s.duration, colFilters.duration)) return false
+    if (!inRange(s.requestHourlyAvg, colFilters.requestHourlyAvg)) return false
+    if (colFilters.photoReport && s.photoReport !== colFilters.photoReport) return false
     if (!tableSearch) return true
     const q = tableSearch.toLowerCase()
     return s.address.toLowerCase().includes(q)
@@ -168,8 +191,8 @@
 
   // Sort comparator
   function cmpVal(s, col) {
-    if (col === 'minBid') return s.minBid ?? -Infinity
-    if (col === 'ots')    return s.ots    ?? -Infinity
+    const numCols = ['minBid','ots','grp','duration','requestHourlyAvg']
+    if (numCols.includes(col)) return s[col] ?? -Infinity
     return (s[col] ?? '').toString().toLowerCase()
   }
 
@@ -290,6 +313,15 @@
       photo: inv.images?.[0]?.preview ?? null,
       active: inv.enabled !== false,
       hasCamera: inv.photoReportOption != null && inv.photoReportOption !== 'NO',
+      duration: inv.duration ?? null,
+      grp: inv.metadata?.grp ?? null,
+      requestHourlyAvg: inv.requestHourlyAvg ?? null,
+      resolution: inv.screenResolutionPx?.width
+        ? `${inv.screenResolutionPx.width}×${inv.screenResolutionPx.height}`
+        : '',
+      photoReport: inv.photoReportOption ?? '',
+      description: inv.description ?? '',
+      lastShot: inv.lastShotTime ?? null,
     }
   }
 
@@ -549,18 +581,28 @@
             </th>
             <th style="width:60px"></th>
             {#each [
-              { id:'gid',    label:'GID' },
-              { id:'owner',  label:'Оператор',    filterable: true },
-              { id:'city',   label:'Город',        filterable: true },
-              { id:'side',   label:'Сторона',      filterable: true },
-              { id:'format', label:'Формат',       filterable: true },
-              { id:'size',   label:'Размер' },
-              { id:'minBid', label:'Мин. ставка' },
-              { id:'ots',    label:'OTS' },
+              { id:'gid',              label:'GID' },
+              { id:'owner',            label:'Оператор',        filterType: 'dropdown' },
+              { id:'city',             label:'Город',           filterType: 'dropdown' },
+              { id:'side',             label:'Сторона',         filterType: 'dropdown' },
+              { id:'format',           label:'Формат',          filterType: 'dropdown' },
+              { id:'size',             label:'Размер' },
+              { id:'minBid',           label:'Мин. ставка',     filterType: 'range' },
+              { id:'ots',              label:'OTS',             filterType: 'range' },
+              { id:'grp',              label:'GRP',             filterType: 'range' },
+              { id:'duration',         label:'Длительность, с', filterType: 'range' },
+              { id:'requestHourlyAvg', label:'Запросы/час',     filterType: 'range' },
+              { id:'resolution',       label:'Разрешение' },
+              { id:'photoReport',      label:'Фотоотчёт',       filterType: 'dropdown' },
+              { id:'description',      label:'Описание' },
             ] as col (col.id)}
               <th class="col-hd" on:click={() => toggleSort(col.id)}>
                 <span class="col-hd-inner">
-                  <span class="col-hd-label" class:col-active={sortCol===col.id || colFilters[col.id]}>
+                  <span class="col-hd-label"
+                    class:col-active={sortCol===col.id
+                      || (col.filterType==='range'
+                          ? (colFilters[col.id]?.min !== '' || colFilters[col.id]?.max !== '')
+                          : colFilters[col.id])}>
                     {col.label}
                   </span>
                   <!-- Sort indicator -->
@@ -572,10 +614,12 @@
                     {/if}
                   </span>
                   <!-- Filter button (filterable columns only) -->
-                  {#if col.filterable}
+                  {#if col.filterType}
                     <button
                       class="col-filter-btn"
-                      class:col-filter-active={colFilters[col.id]}
+                      class:col-filter-active={col.filterType==='range'
+                        ? (colFilters[col.id]?.min !== '' || colFilters[col.id]?.max !== '')
+                        : colFilters[col.id]}
                       title="Фильтр"
                       on:click|stopPropagation={(e) => toggleFilter(col.id, e)}
                     >
@@ -583,18 +627,32 @@
                         <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/>
                       </svg>
                     </button>
-                    <!-- Dropdown -->
+                    <!-- Filter panel -->
                     {#if openFilterCol === col.id}
-                      <div class="col-filter-drop" on:click|stopPropagation>
-                        <button class="col-filter-opt" class:sel={!colFilters[col.id]} on:click={() => setColFilter(col.id, '')}>
-                          Все
-                        </button>
-                        {#each colOptions[col.id] ?? [] as opt}
-                          <button class="col-filter-opt" class:sel={colFilters[col.id]===opt} on:click={() => setColFilter(col.id, opt)}>
-                            {opt || '—'}
+                      {#if col.filterType === 'range'}
+                        <div class="col-filter-drop range-drop" on:click|stopPropagation>
+                          <label class="range-label">От
+                            <input class="range-input" type="number" placeholder="—"
+                              bind:value={colFilters[col.id].min} />
+                          </label>
+                          <label class="range-label">До
+                            <input class="range-input" type="number" placeholder="—"
+                              bind:value={colFilters[col.id].max} />
+                          </label>
+                          <button class="range-clear" on:click={() => { colFilters[col.id] = {min:'',max:''}; openFilterCol='' }}>Сброс</button>
+                        </div>
+                      {:else}
+                        <div class="col-filter-drop" on:click|stopPropagation>
+                          <button class="col-filter-opt" class:sel={!colFilters[col.id]} on:click={() => setColFilter(col.id, '')}>
+                            Все
                           </button>
-                        {/each}
-                      </div>
+                          {#each colOptions[col.id] ?? [] as opt}
+                            <button class="col-filter-opt" class:sel={colFilters[col.id]===opt} on:click={() => setColFilter(col.id, opt)}>
+                              {opt || '—'}
+                            </button>
+                          {/each}
+                        </div>
+                      {/if}
                     {/if}
                   {/if}
                 </span>
@@ -639,6 +697,12 @@
                 <td class="cell-muted">{s.size || '—'}</td>
                 <td class="cell-bid">{s.minBid != null ? s.minBid.toFixed(2) : '—'}</td>
                 <td class="cell-muted">{s.ots != null ? s.ots.toLocaleString('ru-RU') : '—'}</td>
+                <td class="cell-muted">{s.grp != null ? s.grp.toLocaleString('ru-RU') : '—'}</td>
+                <td class="cell-muted">{s.duration != null ? s.duration.toLocaleString('ru-RU') : '—'}</td>
+                <td class="cell-muted">{s.requestHourlyAvg != null ? s.requestHourlyAvg.toLocaleString('ru-RU') : '—'}</td>
+                <td class="cell-muted">{s.resolution || '—'}</td>
+                <td class="cell-muted">{s.photoReport || '—'}</td>
+                <td class="cell-muted">{s.description || '—'}</td>
                 <td class="cell-remove" on:click|stopPropagation>
                   {#if isSelected(s.id)}
                     <button class="remove-btn" title="Убрать" on:click={() => { toggleScreen(s.id); renderMarkers(filtered) }}>
@@ -1239,4 +1303,47 @@
     font-weight: 500;
   }
   .nav-action-btn:hover { background: var(--bg); border-color: var(--navy); color: var(--navy); }
+
+  /* ── Range filter ── */
+  .range-drop {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 180px;
+  }
+  .range-label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .range-input {
+    height: 28px;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    padding: 0 8px;
+    font-size: 12.5px;
+    font-family: inherit;
+    color: var(--text);
+    outline: none;
+    width: 100%;
+  }
+  .range-input:focus { border-color: var(--navy); }
+  .range-clear {
+    height: 26px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--bg);
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-top: 2px;
+  }
+  .range-clear:hover { color: #EF4444; border-color: #EF4444; background: #FEF2F2; }
 </style>
