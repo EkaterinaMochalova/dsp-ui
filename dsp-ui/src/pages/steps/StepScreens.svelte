@@ -159,7 +159,7 @@
       owner: inv.displayOwner?.name || '',
       photo: inv.images?.[0]?.preview ?? null,
       active: inv.enabled !== false,
-      hasCamera: inv.hasCamera === true,
+      hasCamera: inv.photoReportOption != null && inv.photoReportOption !== 'NO',
     }
   }
 
