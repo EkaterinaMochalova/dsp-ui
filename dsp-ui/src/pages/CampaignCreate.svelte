@@ -62,13 +62,17 @@
     forecastLoading = true
     try {
       // Use date string directly — avoids UTC shift for Russian timezone
-      const budgetLimit = Number(draft.customBudgetTotal) || null
+      // Always send budgetLimit — without it the server returns amounts=0, ots=0.
+      // If user hasn't set a custom budget, use a large ceiling so we get
+      // real impression counts (the returned price becomes the "recommended budget").
+      const customBudget = Number(draft.customBudgetTotal) || 0
+      const budgetLimit = customBudget > 0 ? customBudget : 10_000_000
       const payload = {
         startDate:    draft.startDate + 'T00:00:00',
         endDate:      draft.endDate   + 'T23:59:59',
         bidType:      draft.bidType,
         inventoryIds: draft.screenIds,
-        ...(budgetLimit ? { budgetLimit: { total: budgetLimit } } : {}),
+        budgetLimit:  { total: budgetLimit },
       }
       const res = await api.campaigns.forecast(payload)
       // Response is array of { group, view: { amounts, ots, price } }
