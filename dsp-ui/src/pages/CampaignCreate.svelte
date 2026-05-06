@@ -62,27 +62,27 @@
     forecastLoading = true
     try {
       // Use date string directly — avoids UTC shift for Russian timezone
+      const budgetLimit = Number(draft.customBudgetTotal) || null
       const payload = {
         startDate:    draft.startDate + 'T00:00:00',
         endDate:      draft.endDate   + 'T23:59:59',
         bidType:      draft.bidType,
         inventoryIds: draft.screenIds,
+        ...(budgetLimit ? { budgetLimit: { total: budgetLimit } } : {}),
       }
-      console.log('📊 Forecast request:', JSON.stringify(payload))
       const res = await api.campaigns.forecast(payload)
-      console.log('📊 Forecast response:', JSON.stringify(res))
       // Response is array of { group, view: { amounts, ots, price } }
       const groups = Array.isArray(res) ? res : (res?.groups ?? [])
       const impressions = groups.reduce((s, g) => s + (g.view?.amounts ?? 0), 0)
       const ots         = groups.reduce((s, g) => s + (g.view?.ots    ?? 0), 0)
-      const budget      = groups.reduce((s, g) => s + (g.view?.price  ?? 0), 0)
+      const budgetVal   = groups.reduce((s, g) => s + (g.view?.price  ?? 0), 0)
       metrics = {
         impressions,
         ots,
-        budget: budget > 0 ? budget : null,
+        budget: budgetVal > 0 ? budgetVal : null,
       }
     } catch (e) {
-      console.warn('📊 Forecast error:', e?.data ?? e)
+      console.warn('Forecast error:', e?.data ?? e)
     } finally {
       forecastLoading = false
     }
