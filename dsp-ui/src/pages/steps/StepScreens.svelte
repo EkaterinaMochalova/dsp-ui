@@ -113,22 +113,51 @@
   // Table state
   let activeTab = 'all'   // 'all' | 'selected'
   let tableSearch = ''
-  let filterCity   = ''
-  let filterOwner  = ''
-  let filterFormat = ''
 
-  // Derived filter option lists (populated once screens load)
-  $: cityOptions   = [...new Set(screens.map(s => s.city).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'))
-  $: ownerOptions  = [...new Set(screens.map(s => s.owner).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'))
-  $: formatOptions = [...new Set(screens.map(s => s.format).filter(Boolean))].sort()
+  // Column filters — keyed by column id
+  let colFilters = { owner: '', city: '', side: '', format: '' }
 
-  // Derived — apply OTS/camera overlays + dropdown filters + text search
+  // Sort state
+  let sortCol = ''   // 'gid'|'owner'|'city'|'side'|'format'|'size'|'minBid'|'ots'
+  let sortDir = 1    // 1 = asc, -1 = desc
+
+  // Open filter dropdown
+  let openFilterCol = ''
+
+  function toggleSort(col) {
+    if (sortCol === col) sortDir = -sortDir
+    else { sortCol = col; sortDir = 1 }
+  }
+
+  function toggleFilter(col, e) {
+    e.stopPropagation()
+    openFilterCol = openFilterCol === col ? '' : col
+  }
+
+  function setColFilter(col, val) {
+    colFilters = { ...colFilters, [col]: val }
+    openFilterCol = ''
+  }
+
+  // Close filter dropdown on outside click
+  function onDocClick() { openFilterCol = '' }
+
+  // Unique values per filterable column (from ALL screens, not filtered)
+  $: colOptions = {
+    owner:  [...new Set(screens.map(s => s.owner).filter(Boolean))].sort((a,b) => a.localeCompare(b,'ru')),
+    city:   [...new Set(screens.map(s => s.city).filter(Boolean))].sort((a,b) => a.localeCompare(b,'ru')),
+    side:   [...new Set(screens.map(s => s.side).filter(Boolean))].sort(),
+    format: [...new Set(screens.map(s => s.format).filter(Boolean))].sort(),
+  }
+
+  // Derived — OTS/camera map toggles + column filters + text search
   $: filtered = screens.filter(s => {
-    if (otsOverlay    && !(s.ots > 0))   return false
-    if (cameraOverlay && !s.hasCamera)   return false
-    if (filterCity   && s.city   !== filterCity)   return false
-    if (filterOwner  && s.owner  !== filterOwner)  return false
-    if (filterFormat && s.format !== filterFormat) return false
+    if (otsOverlay    && !(s.ots > 0))             return false
+    if (cameraOverlay && !s.hasCamera)             return false
+    if (colFilters.owner  && s.owner  !== colFilters.owner)  return false
+    if (colFilters.city   && s.city   !== colFilters.city)   return false
+    if (colFilters.side   && s.side   !== colFilters.side)   return false
+    if (colFilters.format && s.format !== colFilters.format) return false
     if (!tableSearch) return true
     const q = tableSearch.toLowerCase()
     return s.address.toLowerCase().includes(q)
@@ -137,9 +166,23 @@
       || s.gid.toLowerCase().includes(q)
   })
 
-  $: tabRows = activeTab === 'selected'
-    ? filtered.filter(s => draft.screenIds.includes(s.id))
+  // Sort comparator
+  function cmpVal(s, col) {
+    if (col === 'minBid') return s.minBid ?? -Infinity
+    if (col === 'ots')    return s.ots    ?? -Infinity
+    return (s[col] ?? '').toString().toLowerCase()
+  }
+
+  $: sortedFiltered = sortCol
+    ? [...filtered].sort((a, b) => {
+        const av = cmpVal(a, sortCol), bv = cmpVal(b, sortCol)
+        return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir
+      })
     : filtered
+
+  $: tabRows = activeTab === 'selected'
+    ? sortedFiltered.filter(s => draft.screenIds.includes(s.id))
+    : sortedFiltered
 
   $: if (map && markersLayer) renderMarkers(filtered)
 
@@ -360,6 +403,8 @@
   }
 </script>
 
+<svelte:window on:click={onDocClick}/>
+
 <div class="screens-shell">
   <!-- Map fills all remaining space -->
   <div class="map-area">
@@ -470,25 +515,6 @@
             bind:value={tableSearch}
           />
         </div>
-        <select class="panel-select" bind:value={filterCity}>
-          <option value="">Город</option>
-          {#each cityOptions as c}<option value={c}>{c}</option>{/each}
-        </select>
-        <select class="panel-select" bind:value={filterOwner}>
-          <option value="">Оператор</option>
-          {#each ownerOptions as o}<option value={o}>{o}</option>{/each}
-        </select>
-        <select class="panel-select" bind:value={filterFormat}>
-          <option value="">Формат</option>
-          {#each formatOptions as f}<option value={f}>{f}</option>{/each}
-        </select>
-        {#if filterCity || filterOwner || filterFormat}
-          <button class="filter-clear-btn" title="Сбросить фильтры" on:click={() => { filterCity=''; filterOwner=''; filterFormat='' }}>
-            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            </svg>
-          </button>
-        {/if}
       </div>
       <button class="panel-expand-btn" title="Развернуть" on:click={() => panelHeight = panelHeight < 400 ? 500 : 280}>
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
@@ -519,22 +545,61 @@
         <thead>
           <tr>
             <th style="width:36px">
-              <input
-                type="checkbox"
-                checked={allVisible}
-                indeterminate={someVisible && !allVisible}
-                on:change={toggleAll}
-              />
+              <input type="checkbox" checked={allVisible} indeterminate={someVisible && !allVisible} on:change={toggleAll}/>
             </th>
             <th style="width:60px"></th>
-            <th>GID</th>
-            <th>Оператор</th>
-            <th>Город</th>
-            <th>Сторона</th>
-            <th>Формат</th>
-            <th>Размер</th>
-            <th>Мин. ставка</th>
-            <th>OTS</th>
+            {#each [
+              { id:'gid',    label:'GID' },
+              { id:'owner',  label:'Оператор',    filterable: true },
+              { id:'city',   label:'Город',        filterable: true },
+              { id:'side',   label:'Сторона',      filterable: true },
+              { id:'format', label:'Формат',       filterable: true },
+              { id:'size',   label:'Размер' },
+              { id:'minBid', label:'Мин. ставка' },
+              { id:'ots',    label:'OTS' },
+            ] as col (col.id)}
+              <th class="col-hd" on:click={() => toggleSort(col.id)}>
+                <span class="col-hd-inner">
+                  <span class="col-hd-label" class:col-active={sortCol===col.id || colFilters[col.id]}>
+                    {col.label}
+                  </span>
+                  <!-- Sort indicator -->
+                  <span class="col-sort" class:visible={sortCol===col.id}>
+                    {#if sortCol===col.id}
+                      {sortDir===1 ? '↑' : '↓'}
+                    {:else}
+                      <span style="opacity:.3">⇅</span>
+                    {/if}
+                  </span>
+                  <!-- Filter button (filterable columns only) -->
+                  {#if col.filterable}
+                    <button
+                      class="col-filter-btn"
+                      class:col-filter-active={colFilters[col.id]}
+                      title="Фильтр"
+                      on:click|stopPropagation={(e) => toggleFilter(col.id, e)}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/>
+                      </svg>
+                    </button>
+                    <!-- Dropdown -->
+                    {#if openFilterCol === col.id}
+                      <div class="col-filter-drop" on:click|stopPropagation>
+                        <button class="col-filter-opt" class:sel={!colFilters[col.id]} on:click={() => setColFilter(col.id, '')}>
+                          Все
+                        </button>
+                        {#each colOptions[col.id] ?? [] as opt}
+                          <button class="col-filter-opt" class:sel={colFilters[col.id]===opt} on:click={() => setColFilter(col.id, opt)}>
+                            {opt || '—'}
+                          </button>
+                        {/each}
+                      </div>
+                    {/if}
+                  {/if}
+                </span>
+              </th>
+            {/each}
             <th style="width:32px"></th>
           </tr>
         </thead>
@@ -887,20 +952,83 @@
   }
   .panel-select:focus { border-color: var(--navy); color: var(--text); }
 
-  .filter-clear-btn {
-    width: 26px;
-    height: 26px;
-    flex-shrink: 0;
-    border: 1.5px solid var(--border);
-    border-radius: 6px;
-    background: #FEF2F2;
-    color: #EF4444;
+  /* ── Column header sort + filter ── */
+  .col-hd {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .col-hd:hover .col-hd-label { color: var(--navy); }
+  .col-hd:hover .col-sort { opacity: 1; }
+
+  .col-hd-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+  }
+
+  .col-hd-label { transition: color .1s; }
+  .col-hd-label.col-active { color: var(--navy); }
+
+  .col-sort {
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity .1s;
+    line-height: 1;
+  }
+  .col-sort.visible { opacity: 1; }
+
+  .col-filter-btn {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    border-radius: 3px;
+    flex-shrink: 0;
   }
-  .filter-clear-btn:hover { background: #FEE2E2; }
+  .col-filter-btn:hover { color: var(--navy); background: var(--chip-bg); }
+  .col-filter-btn.col-filter-active { color: var(--navy); }
+
+  .col-filter-drop {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 200;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.14);
+    min-width: 160px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+
+  .col-filter-opt {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 10px;
+    font-size: 12.5px;
+    font-family: inherit;
+    color: var(--text);
+    background: none;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .col-filter-opt:hover { background: var(--bg); }
+  .col-filter-opt.sel { background: #EFF6FF; color: var(--navy); font-weight: 600; }
 
   .panel-expand-btn {
     width: 30px;
