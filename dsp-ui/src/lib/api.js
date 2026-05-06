@@ -93,6 +93,25 @@ export const api = {
       const q = new URLSearchParams({ enabled: 'true', ...params })
       return request(`/clients/inventories?${q}`)
     },
+    parsePoi(file) {
+      const fd = new FormData()
+      fd.append('file', file)
+      const token = getToken()
+      return fetch(`${BASE}/clients/inventories/parse-poi`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      }).then(async res => {
+        if (res.status === 401) {
+          localStorage.removeItem('dsp_token')
+          window.location.hash = '#/login'
+          throw { status: 401 }
+        }
+        const data = await res.json()
+        if (!res.ok) throw { status: res.status, data }
+        return data
+      })
+    },
     async cities() {
       // Fetch several pages and extract unique city names + IDs from inventory data
       const PAGE = 500

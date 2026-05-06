@@ -589,6 +589,109 @@
     window.removeEventListener('mousemove', onColResizeMove)
     window.removeEventListener('mouseup',   onColResizeEnd)
   }
+
+  // ── POI import ────────────────────────────────────────────────────────
+  let poiItems   = []       // [{ name, lat, lon, pos, enabled }]
+  let poiRadius  = 500      // metres
+  let poiLoading = false
+  let poiError   = ''
+  let poiLayer   = null     // Leaflet LayerGroup
+  let poiFileInput          // bound to hidden <input type="file">
+
+  // Haversine distance in metres
+  function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371000
+    const toRad = d => d * Math.PI / 180
+    const dLat = toRad(lat2 - lat1)
+    const dLon = toRad(lon2 - lon1)
+    const a = Math.sin(dLat/2)**2
+            + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  }
+
+  function renderPoiLayer() {
+    if (!map) return
+    if (!poiLayer) {
+      poiLayer = L.layerGroup().addTo(map)
+    }
+    poiLayer.clearLayers()
+    for (const poi of poiItems) {
+      if (!poi.enabled) continue
+      // Filled circle radius
+      L.circle([poi.lat, poi.lon], {
+        radius: poiRadius,
+        color:       '#16A34A',
+        fillColor:   '#16A34A',
+        weight:      2,
+        fillOpacity: 0.12,
+        dashArray:   '4 4',
+      }).addTo(poiLayer)
+      // Centre pin
+      L.circleMarker([poi.lat, poi.lon], {
+        radius:      7,
+        fillColor:   '#16A34A',
+        color:       '#166534',
+        weight:      2,
+        fillOpacity: 0.95,
+      }).bindTooltip(`<strong>${poi.name}</strong><br/>Радиус: ${poiRadius} м`, {
+        direction: 'top', offset: [0, -8],
+      }).addTo(poiLayer)
+    }
+  }
+
+  function selectScreensInPoi() {
+    const hits = screens.filter(s => {
+      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return false
+      return poiItems.some(poi =>
+        poi.enabled && haversine(s.lat, s.lon, poi.lat, poi.lon) <= poiRadius
+      )
+    })
+    draft.screenIds = [...new Set([...draft.screenIds, ...hits.map(s => s.id)])]
+    renderMarkers(filtered)
+  }
+
+  async function onPoiFileChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    poiError = ''
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (!['xls', 'xlsx'].includes(ext)) {
+      poiError = 'Поддерживаются только файлы .xls и .xlsx'
+      poiFileInput.value = ''
+      return
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      poiError = 'Файл слишком большой (максимум 100 МБ)'
+      poiFileInput.value = ''
+      return
+    }
+    poiLoading = true
+    try {
+      const res = await api.inventories.parsePoi(file)
+      poiItems = (res.result ?? []).map(p => ({ ...p, enabled: true }))
+      renderPoiLayer()
+      selectScreensInPoi()
+      // Fit map to POI bounds
+      if (map && poiItems.length > 0) {
+        const pts = poiItems.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon))
+        if (pts.length) map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lon])), { padding: [60, 60], maxZoom: 12 })
+      }
+    } catch (err) {
+      poiError = 'Ошибка при загрузке POI'
+      console.error(err)
+    } finally {
+      poiLoading = false
+      poiFileInput.value = ''
+    }
+  }
+
+  function clearPoi() {
+    poiItems = []
+    poiLayer?.clearLayers()
+  }
+
+  // Re-render circles whenever radius changes or items toggle
+  $: if (map && poiItems.length > 0) renderPoiLayer()
 </script>
 
 <svelte:window on:click={onDocClick}/>
@@ -647,11 +750,28 @@
       <div class="map-tools-divider"></div>
 
       <!-- Import POI -->
-      <button class="map-float-btn map-float-btn-sm">
-        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
-        </svg>
-        Импортировать POI
+      <input
+        bind:this={poiFileInput}
+        type="file"
+        accept=".xls,.xlsx"
+        style="display:none"
+        on:change={onPoiFileChange}
+      />
+      <button
+        class="map-float-btn map-float-btn-sm"
+        class:poi-loading={poiLoading}
+        class:poi-active={poiItems.length > 0}
+        disabled={poiLoading}
+        on:click={() => poiFileInput.click()}
+      >
+        {#if poiLoading}
+          <div class="mini-spinner"></div>
+        {:else}
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+          </svg>
+        {/if}
+        {poiItems.length > 0 ? `POI: ${poiItems.filter(p=>p.enabled).length}/${poiItems.length}` : 'Импортировать POI'}
       </button>
 
       <div class="map-tools-divider"></div>
@@ -692,6 +812,65 @@
         </button>
       </label>
     </div>
+
+    <!-- POI error toast -->
+    {#if poiError}
+      <div class="poi-error-toast">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0">
+          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        {poiError}
+        <button class="poi-error-close" on:click={() => poiError = ''}>×</button>
+      </div>
+    {/if}
+
+    <!-- POI control panel (shown after import) -->
+    {#if poiItems.length > 0}
+      <div class="poi-panel">
+        <div class="poi-panel-header">
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" style="color:#16A34A;flex-shrink:0">
+            <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
+          </svg>
+          <span class="poi-panel-title">POI — {poiItems.length} точ.</span>
+          <button class="poi-clear-btn" title="Удалить POI" on:click={clearPoi}>×</button>
+        </div>
+
+        <!-- Radius -->
+        <div class="poi-radius-row">
+          <label class="poi-radius-label">Радиус, м</label>
+          <input
+            class="poi-radius-input"
+            type="number"
+            min="50" max="50000" step="50"
+            bind:value={poiRadius}
+            on:change={() => { renderPoiLayer(); selectScreensInPoi() }}
+          />
+        </div>
+
+        <!-- POI list -->
+        <div class="poi-list">
+          {#each poiItems as poi, i}
+            <label class="poi-item" class:poi-disabled={!poi.enabled}>
+              <input
+                type="checkbox"
+                bind:checked={poi.enabled}
+                on:change={() => { poiItems = poiItems; renderPoiLayer(); selectScreensInPoi() }}
+              />
+              <span class="poi-item-name" title={poi.name}>{poi.name}</span>
+              <span class="poi-item-coords">{poi.lat?.toFixed(3)}, {poi.lon?.toFixed(3)}</span>
+            </label>
+          {/each}
+        </div>
+
+        <!-- Re-select button -->
+        <button class="poi-select-btn" on:click={selectScreensInPoi}>
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
+          Выбрать экраны в радиусе
+        </button>
+      </div>
+    {/if}
   </div>
 
   <!-- Bottom screens panel -->
@@ -1525,6 +1704,162 @@
     margin-top: 2px;
   }
   .range-clear:hover { color: #EF4444; border-color: #EF4444; background: #FEF2F2; }
+
+  /* ── POI ── */
+  .poi-active {
+    background: #DCFCE7 !important;
+    border-color: #16A34A !important;
+    color: #166534 !important;
+  }
+  .poi-loading { opacity: .7; cursor: default; }
+
+  .mini-spinner {
+    width: 13px; height: 13px;
+    border: 2px solid var(--border);
+    border-top-color: var(--navy);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .poi-error-toast {
+    position: absolute;
+    bottom: 56px;
+    left: 12px;
+    z-index: 410;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #FEF2F2;
+    border: 1px solid #FCA5A5;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: #991B1B;
+    box-shadow: 0 2px 10px rgba(0,0,0,.1);
+    max-width: 340px;
+  }
+  .poi-error-close {
+    background: none; border: none; cursor: pointer;
+    color: #991B1B; font-size: 16px; line-height: 1;
+    padding: 0 0 0 4px; margin-left: auto;
+  }
+
+  .poi-panel {
+    position: absolute;
+    top: 56px;
+    right: 12px;
+    z-index: 410;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.14);
+    width: 240px;
+    overflow: hidden;
+  }
+
+  .poi-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .poi-panel-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text);
+    flex: 1;
+  }
+  .poi-clear-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted); font-size: 18px; line-height: 1;
+    padding: 0;
+  }
+  .poi-clear-btn:hover { color: #EF4444; }
+
+  .poi-radius-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .poi-radius-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .poi-radius-input {
+    flex: 1;
+    height: 28px;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    padding: 0 8px;
+    font-size: 12.5px;
+    font-family: inherit;
+    color: var(--text);
+    outline: none;
+    min-width: 0;
+  }
+  .poi-radius-input:focus { border-color: #16A34A; }
+
+  .poi-list {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  .poi-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .poi-item:hover { background: #F0FDF4; }
+  .poi-item input[type="checkbox"] {
+    flex-shrink: 0;
+    accent-color: #16A34A;
+    cursor: pointer;
+  }
+  .poi-item-name {
+    flex: 1;
+    font-size: 12.5px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .poi-item-coords {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .poi-disabled .poi-item-name { color: var(--text-muted); text-decoration: line-through; }
+
+  .poi-select-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    height: 34px;
+    background: #F0FDF4;
+    border: none;
+    border-top: 1px solid #BBF7D0;
+    color: #166534;
+    font-size: 12.5px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .poi-select-btn:hover { background: #DCFCE7; }
 
   /* ── Column picker ── */
   .col-picker-wrap {
