@@ -27,6 +27,83 @@
   let otsOverlay = false
   let cameraOverlay = false
 
+  // Freehand draw tool
+  let drawMode = false       // lasso active
+  let drawPoints = []        // array of L.LatLng
+  let drawPolyline = null    // live L.Polyline during drag
+  let drawPolygon = null     // finished L.Polygon (shown briefly)
+  let drawLayer = null       // L.LayerGroup for draw visuals
+
+  function toggleDrawMode() {
+    drawMode = !drawMode
+    if (map) map.dragging[drawMode ? 'disable' : 'enable']()
+    if (!drawMode) clearDraw()
+  }
+
+  function clearDraw() {
+    if (drawLayer) drawLayer.clearLayers()
+    drawPoints = []
+    drawPolyline = null
+    drawPolygon = null
+  }
+
+  // Ray-casting point-in-polygon for lat/lon points
+  function pointInPolygon(lat, lon, poly) {
+    let inside = false
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].lat, yi = poly[i].lng
+      const xj = poly[j].lat, yj = poly[j].lng
+      const intersect = ((yi > lon) !== (yj > lon)) &&
+        (lat < (xj - xi) * (lon - yi) / (yj - yi) + xi)
+      if (intersect) inside = !inside
+    }
+    return inside
+  }
+
+  function onMapMouseDown(e) {
+    if (!drawMode) return
+    clearDraw()
+    drawPoints = [e.latlng]
+    drawPolyline = L.polyline([e.latlng], {
+      color: '#2563EB', weight: 2, dashArray: '6 4', opacity: 0.85,
+    }).addTo(drawLayer)
+  }
+
+  function onMapMouseMove(e) {
+    if (!drawMode || !drawPolyline) return
+    drawPoints.push(e.latlng)
+    drawPolyline.setLatLngs(drawPoints)
+  }
+
+  function onMapMouseUp() {
+    if (!drawMode || !drawPolyline || drawPoints.length < 3) {
+      clearDraw()
+      return
+    }
+    // Close the shape visually
+    drawLayer.clearLayers()
+    drawPolygon = L.polygon(drawPoints, {
+      color: '#2563EB', weight: 2, fillColor: '#2563EB', fillOpacity: 0.08,
+    }).addTo(drawLayer)
+
+    // Select all screens whose lat/lon fall inside the polygon
+    const hits = screens.filter(s =>
+      Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+      pointInPolygon(s.lat, s.lon, drawPoints)
+    )
+    if (hits.length) {
+      draft.screenIds = [...new Set([...draft.screenIds, ...hits.map(s => s.id)])]
+      renderMarkers(filtered)
+    }
+
+    // Clear the polygon after 1.5 s
+    setTimeout(() => {
+      clearDraw()
+      drawMode = false
+      if (map) map.dragging.enable()
+    }, 1500)
+  }
+
   // Panel state
   let panelHeight = 280   // px, draggable
   let dragging = false
@@ -185,10 +262,16 @@
     }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     markersLayer = L.layerGroup().addTo(map)
+    drawLayer   = L.layerGroup().addTo(map)
     renderMarkers(filtered)
 
     // Re-render on pan/zoom to keep only visible markers
     map.on('moveend zoomend', () => renderMarkers(filtered))
+
+    // Freehand draw events
+    map.on('mousedown', onMapMouseDown)
+    map.on('mousemove', onMapMouseMove)
+    map.on('mouseup',   onMapMouseUp)
 
     if (screens.length > 0) {
       const valid = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
@@ -281,7 +364,7 @@
         {/if}
       </div>
     {/if}
-    <div bind:this={mapEl} class="screens-map"></div>
+    <div bind:this={mapEl} class="screens-map" class:draw-cursor={drawMode}></div>
 
     <!-- Floating: Pre-campaign targeting -->
     <div class="map-float-top-left">
@@ -304,29 +387,19 @@
 
     <!-- Floating: Map filter bar (bottom of map, above panel) -->
     <div class="map-float-bottom">
-      <!-- Drawing tools -->
-      <div class="map-tools-group">
-        <button class="map-tool-btn" title="Прямоугольник">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-          </svg>
-        </button>
-        <button class="map-tool-btn" title="Круг">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
-          </svg>
-        </button>
-        <button class="map-tool-btn" title="Полигон">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 1l5.5 4.5-2 6h-7l-2-6L7 1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <button class="map-tool-btn" title="Свободная линия">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M2 10 C4 4, 7 2, 12 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
-          </svg>
-        </button>
-      </div>
+      <!-- Freehand lasso -->
+      <button
+        class="map-tool-btn"
+        class:active={drawMode}
+        title={drawMode ? 'Отменить выделение' : 'Выделить область'}
+        on:click={toggleDrawMode}
+      >
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+          <path d="M3 14 C3 8, 7 3, 10 3 C14 3, 17 6, 17 10 C17 13, 15 15, 13 16 C10 17, 6 16, 3 14 Z"
+            stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 14 L5 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </button>
 
       <div class="map-tools-divider"></div>
 
@@ -544,6 +617,8 @@
     width: 100%;
     height: 100%;
   }
+  .screens-map.draw-cursor { cursor: crosshair; }
+  :global(.screens-map.draw-cursor .leaflet-interactive) { cursor: crosshair !important; }
 
   .map-overlay {
     position: absolute;
@@ -657,6 +732,7 @@
     color: var(--text-muted);
   }
   .map-tool-btn:hover { background: var(--chip-bg); color: var(--text); }
+  .map-tool-btn.active { background: #EFF6FF; color: #2563EB; border: 1.5px solid #2563EB; }
 
   .map-tools-divider {
     width: 1px;
