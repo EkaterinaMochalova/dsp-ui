@@ -71,11 +71,15 @@
       console.log('📊 Forecast request:', JSON.stringify(payload))
       const res = await api.campaigns.forecast(payload)
       console.log('📊 Forecast response:', JSON.stringify(res))
-      const stat = res?.summary?.statistic ?? {}
+      // Response is array of { group, view: { amounts, ots, price } }
+      const groups = Array.isArray(res) ? res : (res?.groups ?? [])
+      const impressions = groups.reduce((s, g) => s + (g.view?.amounts ?? 0), 0)
+      const ots         = groups.reduce((s, g) => s + (g.view?.ots    ?? 0), 0)
+      const budget      = groups.reduce((s, g) => s + (g.view?.price  ?? 0), 0)
       metrics = {
-        impressions: stat.totalCount  ?? 0,
-        ots:         stat.totalOts    ?? 0,
-        budget:      stat.totalPrice  ?? null,
+        impressions,
+        ots,
+        budget: budget > 0 ? budget : null,
       }
     } catch (e) {
       console.warn('📊 Forecast error:', e?.data ?? e)
