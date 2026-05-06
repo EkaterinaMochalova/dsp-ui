@@ -5,8 +5,10 @@
   import { api } from '../../lib/api.js'
   import { formatMoney } from '../../lib/utils.js'
 
-  // Persist cache on window so it survives HMR reloads and component re-mounts
-  window._dspScreensCache = {}
+  // Persist cache on window so it survives HMR reloads and component re-mounts.
+  // Version bump forces cache invalidation when mapInventory fields change.
+  const CACHE_VER = 'v3'
+  if (window._dspScreensCache?._ver !== CACHE_VER) window._dspScreensCache = { _ver: CACHE_VER }
 
   const dispatch = createEventDispatcher()
   export let draft
@@ -681,13 +683,13 @@
         </thead>
         <tbody>
           {#if loading}
-            <tr><td colspan="11" class="table-state-cell">
+            <tr><td colspan="18" class="table-state-cell">
               <div class="spinner"></div> Загрузка…
             </td></tr>
           {:else if error}
-            <tr><td colspan="11" class="table-state-cell" style="color:#EF4444">{error}</td></tr>
+            <tr><td colspan="18" class="table-state-cell" style="color:#EF4444">{error}</td></tr>
           {:else if tabRows.length === 0}
-            <tr><td colspan="11" class="table-state-cell">
+            <tr><td colspan="18" class="table-state-cell">
               {activeTab === 'selected' ? 'Нет выбранных экранов' : 'Экраны не найдены'}
             </td></tr>
           {:else}
