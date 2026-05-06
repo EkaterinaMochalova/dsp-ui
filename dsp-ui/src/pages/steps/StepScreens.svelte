@@ -39,8 +39,10 @@
   let filterDistrict = ''
   let filterIndex = ''
 
-  // Derived — API already filtered by city, just apply local search
+  // Derived — apply OTS/camera overlays + text search
   $: filtered = screens.filter(s => {
+    if (otsOverlay    && !(s.ots > 0))   return false
+    if (cameraOverlay && !s.hasCamera)   return false
     if (!tableSearch) return true
     const q = tableSearch.toLowerCase()
     return s.address.toLowerCase().includes(q)
@@ -141,13 +143,14 @@
   function mapInventory(inv) {
     const loc = inv.location ?? {}
     const itc = inv.inventoryTypeAndCity ?? {}
+    const fmt = inv.type || itc.type || ''
     return {
       id: inv.id,
       gid: inv.gid || inv.name || '',
       city: inv.city?.name || itc.cityName || '',
-      format: inv.type || itc.type || '',
+      format: fmt,
       side: '',   // not present in API response
-      size: formatScreenSize(inv),
+      size: formatScreenSize(inv, fmt),
       address: loc.address || inv.name || '',
       lat: loc.latitude ?? NaN,
       lon: loc.longitude ?? NaN,
@@ -156,17 +159,21 @@
       owner: inv.displayOwner?.name || '',
       photo: inv.images?.[0]?.preview ?? null,
       active: inv.enabled !== false,
+      // photoReportOption: NO | YES | AUTO — used for camera filter
+      hasCamera: inv.photoReportOption != null && inv.photoReportOption !== 'NO',
     }
   }
 
-  function formatScreenSize(inv) {
+  function formatScreenSize(inv, fmt) {
+    // PVZ screens are small indoor displays with a fixed size
+    if (fmt === 'PVZ_SCREEN') return '0,54×0,95м'
     const d = inv.surfaceDimensionMM
     if (d?.width && d?.height) {
       // Values < 3000 are pixel resolutions mislabeled as MM — fall back to standard size
       const w = d.width  < 3000 ? 6 : d.width  / 1000
       const h = d.height < 3000 ? 3 : d.height / 1000
-      const fmt = v => v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
-      return `${fmt(w)}×${fmt(h)}м`
+      const f = v => v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+      return `${f(w)}×${f(h)}м`
     }
     return ''
   }
