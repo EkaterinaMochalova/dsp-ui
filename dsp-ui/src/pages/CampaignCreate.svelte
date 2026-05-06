@@ -62,24 +62,22 @@
     forecastLoading = true
     try {
       // Use date string directly — avoids UTC shift for Russian timezone
-      // Always send budgetLimit — without it the server returns amounts=0, ots=0.
-      // If user hasn't set a custom budget, use a large ceiling so we get
-      // real impression counts (the returned price becomes the "recommended budget").
       const customBudget = Number(draft.customBudgetTotal) || 0
-      const budgetLimit = customBudget > 0 ? customBudget : 10_000_000
+      const budgetTotal = customBudget > 0 ? customBudget : 10_000_000
       const payload = {
         startDate:    draft.startDate + 'T00:00:00',
         endDate:      draft.endDate   + 'T23:59:59',
         bidType:      draft.bidType,
         inventoryIds: draft.screenIds,
-        budgetLimit:  { total: budgetLimit },
+        budgetLimit:  { total: budgetTotal },
       }
-      const res = await api.campaigns.forecast(payload)
-      // Response is array of { group, view: { amounts, ots, price } }
-      const groups = Array.isArray(res) ? res : (res?.groups ?? [])
-      const impressions = groups.reduce((s, g) => s + (g.view?.amounts ?? 0), 0)
-      const ots         = groups.reduce((s, g) => s + (g.view?.ots    ?? 0), 0)
-      const budgetVal   = groups.reduce((s, g) => s + (g.view?.price  ?? 0), 0)
+      const res = await api.campaigns.forecastAnalytics(payload)
+      console.log('📊 campaign-forecast response:', JSON.stringify(res))
+      // Parse response — discover shape from logs
+      const groups = Array.isArray(res) ? res : (res?.groups ?? res?.statistic ?? [])
+      const impressions = groups.reduce((s, g) => s + (g.view?.amounts ?? g.amounts ?? g.impressions ?? 0), 0)
+      const ots         = groups.reduce((s, g) => s + (g.view?.ots    ?? g.ots    ?? 0), 0)
+      const budgetVal   = groups.reduce((s, g) => s + (g.view?.price  ?? g.price  ?? g.budget ?? 0), 0)
       metrics = {
         impressions,
         ots,
