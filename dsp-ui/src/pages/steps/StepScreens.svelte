@@ -7,7 +7,7 @@
 
   // Persist cache on window so it survives HMR reloads and component re-mounts.
   // Version bump forces cache invalidation when mapInventory fields change.
-  const CACHE_VER = 'v3'
+  const CACHE_VER = 'v4'
   if (window._dspScreensCache?._ver !== CACHE_VER) window._dspScreensCache = { _ver: CACHE_VER }
 
   const dispatch = createEventDispatcher()
@@ -127,6 +127,8 @@
     grp:    { min: '', max: '' },
     duration: { min: '', max: '' },
     requestHourlyAvg: { min: '', max: '' },
+    lat: { min: '', max: '' },
+    lon: { min: '', max: '' },
   }
 
   // Sort state
@@ -184,6 +186,8 @@
     if (!inRange(s.grp,    colFilters.grp))    return false
     if (!inRange(s.duration, colFilters.duration)) return false
     if (!inRange(s.requestHourlyAvg, colFilters.requestHourlyAvg)) return false
+    if (!inRange(s.lat, colFilters.lat)) return false
+    if (!inRange(s.lon, colFilters.lon)) return false
     if (colFilters.photoReport && s.photoReport !== colFilters.photoReport) return false
     if (!tableSearch) return true
     const q = tableSearch.toLowerCase()
@@ -613,6 +617,9 @@
               { id:'duration',         label:'Длительность, с', filterType: 'range' },
               { id:'requestHourlyAvg', label:'Запросы/час',     filterType: 'range' },
               { id:'resolution',       label:'Разрешение' },
+              { id:'address',          label:'Адрес' },
+              { id:'lat',              label:'Широта',           filterType: 'range' },
+              { id:'lon',              label:'Долгота',          filterType: 'range' },
               { id:'photoReport',      label:'Фотоотчёт',       filterType: 'dropdown' },
               { id:'description',      label:'Описание' },
             ] as col (col.id)}
@@ -721,6 +728,9 @@
                 <td class="cell-muted">{s.duration != null ? s.duration.toLocaleString('ru-RU') : '—'}</td>
                 <td class="cell-muted">{s.requestHourlyAvg != null ? s.requestHourlyAvg.toLocaleString('ru-RU') : '—'}</td>
                 <td class="cell-muted">{s.resolution || '—'}</td>
+                <td class="cell-muted">{s.address || '—'}</td>
+                <td class="cell-muted">{Number.isFinite(s.lat) ? s.lat.toFixed(5) : '—'}</td>
+                <td class="cell-muted">{Number.isFinite(s.lon) ? s.lon.toFixed(5) : '—'}</td>
                 <td class="cell-muted">{s.photoReport || '—'}</td>
                 <td class="cell-muted">{s.description || '—'}</td>
                 <td class="cell-remove" on:click|stopPropagation>
