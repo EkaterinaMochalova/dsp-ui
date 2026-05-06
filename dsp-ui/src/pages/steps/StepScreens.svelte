@@ -26,6 +26,7 @@
   // Map overlays
   let otsOverlay = false
   let cameraOverlay = false
+  let activeOnly = false   // hide screens with requestHourlyAvg ≤ 1
 
   // Freehand draw tool
   let drawMode = false       // lasso active
@@ -167,10 +168,11 @@
     return true
   }
 
-  // Derived — OTS/camera map toggles + column filters + text search
+  // Derived — OTS/camera/active map toggles + column filters + text search
   $: filtered = screens.filter(s => {
     if (otsOverlay    && !(s.ots > 0))             return false
     if (cameraOverlay && !s.hasCamera)             return false
+    if (activeOnly    && !(s.requestHourlyAvg > 1)) return false
     if (colFilters.owner  && s.owner  !== colFilters.owner)  return false
     if (colFilters.city   && s.city   !== colFilters.city)   return false
     if (colFilters.side   && s.side   !== colFilters.side)   return false
@@ -390,11 +392,15 @@
       : [...selected, ...unselected.slice(0, maxUnsel)]
 
     for (const s of toRender) {
-      const sel = isSelected(s.id)
+      const sel      = isSelected(s.id)
+      const inactive = s.requestHourlyAvg != null && s.requestHourlyAvg <= 1
+      // selected = navy | inactive = red | normal = blue
+      const fill  = sel ? '#112853' : inactive ? '#EF4444' : '#55C1FA'
+      const stroke = sel ? '#112853' : inactive ? '#B91C1C' : '#2a8fb5'
       const m = L.circleMarker([s.lat, s.lon], {
         radius: sel ? 8 : zoom >= 10 ? 6 : 4,
-        fillColor: sel ? '#112853' : '#55C1FA',
-        color: sel ? '#112853' : '#2a8fb5',
+        fillColor: fill,
+        color: stroke,
         weight: sel ? 2 : 1,
         fillOpacity: sel ? 0.95 : 0.75,
       })
@@ -519,6 +525,18 @@
           class="map-toggle" class:on={cameraOverlay}
           on:click={() => cameraOverlay = !cameraOverlay}
           role="switch" aria-checked={cameraOverlay}
+        >
+          <span class="map-toggle-thumb"></span>
+        </button>
+      </label>
+
+      <!-- Active-only toggle -->
+      <label class="map-toggle-label">
+        Только активные
+        <button
+          class="map-toggle" class:on={activeOnly}
+          on:click={() => activeOnly = !activeOnly}
+          role="switch" aria-checked={activeOnly}
         >
           <span class="map-toggle-thumb"></span>
         </button>
