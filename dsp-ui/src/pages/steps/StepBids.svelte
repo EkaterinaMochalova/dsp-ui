@@ -97,6 +97,18 @@
     ots:    { min: '', max: '' },
     minBid: { min: '', max: '' },
   }
+  let openFilterCol = null
+
+  function toggleFilter(col) { openFilterCol = openFilterCol === col ? null : col }
+  function filterActive(col) {
+    const f = filters[col]
+    if (typeof f === 'string') return f !== ''
+    return f.min !== '' || f.max !== ''
+  }
+
+  function onDocClick(e) {
+    if (!e.target.closest('.bid-th-filter')) openFilterCol = null
+  }
 
   function inRange(val, f) {
     if (f.min !== '' && (val == null || val < Number(f.min))) return false
@@ -146,6 +158,7 @@
   function fmtInt(n) { return n == null ? '—' : n.toLocaleString('ru-RU') }
 </script>
 
+<svelte:window on:click={onDocClick} />
 <div class="bids-shell">
 
   <!-- ── Top panel ── -->
@@ -212,7 +225,6 @@
     {:else}
       <table class="bids-table">
         <thead>
-          <!-- Column labels -->
           <tr class="thead-labels">
             <th class="th-chk">
               <input type="checkbox"
@@ -222,39 +234,124 @@
               />
             </th>
             <th class="th-thumb"></th>
-            <th class="th-gid">GID</th>
-            <th class="th-addr">Адрес</th>
-            <th class="th-fmt">Формат</th>
-            <th class="th-size">Размер</th>
-            <th class="th-city">Город</th>
-            <th class="th-num">OTS</th>
-            <th class="th-num">Мин. ставка, ₽</th>
+
+            <!-- GID -->
+            <th class="th-gid bid-th-filter">
+              <div class="th-inner">
+                <span>GID</span>
+                <button class="th-flt-btn" class:th-flt-active={filterActive('gid')}
+                  on:click|stopPropagation={() => toggleFilter('gid')}>▼</button>
+              </div>
+              {#if openFilterCol === 'gid'}
+                <div class="th-flt-drop" on:click|stopPropagation>
+                  <input class="flt-input" placeholder="Поиск…" bind:value={filters.gid} autofocus />
+                  {#if filters.gid}<button class="flt-clear" on:click={() => filters.gid = ''}>✕</button>{/if}
+                </div>
+              {/if}
+            </th>
+
+            <!-- Адрес -->
+            <th class="th-addr bid-th-filter">
+              <div class="th-inner">
+                <span>Адрес</span>
+                <button class="th-flt-btn" class:th-flt-active={filterActive('address')}
+                  on:click|stopPropagation={() => toggleFilter('address')}>▼</button>
+              </div>
+              {#if openFilterCol === 'address'}
+                <div class="th-flt-drop" on:click|stopPropagation>
+                  <input class="flt-input" placeholder="Поиск…" bind:value={filters.address} autofocus />
+                  {#if filters.address}<button class="flt-clear" on:click={() => filters.address = ''}>✕</button>{/if}
+                </div>
+              {/if}
+            </th>
+
+            <!-- Формат -->
+            <th class="th-fmt bid-th-filter">
+              <div class="th-inner">
+                <span>Формат</span>
+                <button class="th-flt-btn" class:th-flt-active={filterActive('format')}
+                  on:click|stopPropagation={() => toggleFilter('format')}>▼</button>
+              </div>
+              {#if openFilterCol === 'format'}
+                <div class="th-flt-drop" on:click|stopPropagation>
+                  <input class="flt-input" placeholder="Поиск…" bind:value={filters.format} autofocus />
+                  {#if filters.format}<button class="flt-clear" on:click={() => filters.format = ''}>✕</button>{/if}
+                </div>
+              {/if}
+            </th>
+
+            <!-- Размер -->
+            <th class="th-size bid-th-filter">
+              <div class="th-inner">
+                <span>Размер</span>
+                <button class="th-flt-btn" class:th-flt-active={filterActive('size')}
+                  on:click|stopPropagation={() => toggleFilter('size')}>▼</button>
+              </div>
+              {#if openFilterCol === 'size'}
+                <div class="th-flt-drop" on:click|stopPropagation>
+                  <input class="flt-input" placeholder="Поиск…" bind:value={filters.size} autofocus />
+                  {#if filters.size}<button class="flt-clear" on:click={() => filters.size = ''}>✕</button>{/if}
+                </div>
+              {/if}
+            </th>
+
+            <!-- Город -->
+            <th class="th-city bid-th-filter">
+              <div class="th-inner">
+                <span>Город</span>
+                <button class="th-flt-btn" class:th-flt-active={filterActive('city')}
+                  on:click|stopPropagation={() => toggleFilter('city')}>▼</button>
+              </div>
+              {#if openFilterCol === 'city'}
+                <div class="th-flt-drop" on:click|stopPropagation>
+                  <input class="flt-input" placeholder="Поиск…" bind:value={filters.city} autofocus />
+                  {#if filters.city}<button class="flt-clear" on:click={() => filters.city = ''}>✕</button>{/if}
+                </div>
+              {/if}
+            </th>
+
+            <!-- OTS -->
+            <th class="th-num bid-th-filter">
+              <div class="th-inner th-inner-right">
+                <span>OTS</span>
+                <button class="th-flt-btn" class:th-flt-active={filterActive('ots')}
+                  on:click|stopPropagation={() => toggleFilter('ots')}>▼</button>
+              </div>
+              {#if openFilterCol === 'ots'}
+                <div class="th-flt-drop th-flt-drop-right" on:click|stopPropagation>
+                  <div class="flt-range">
+                    <input class="flt-input flt-range-half" type="number" placeholder="от" bind:value={filters.ots.min} autofocus />
+                    <input class="flt-input flt-range-half" type="number" placeholder="до" bind:value={filters.ots.max} />
+                  </div>
+                  {#if filters.ots.min || filters.ots.max}
+                    <button class="flt-clear-range" on:click={() => { filters.ots.min=''; filters.ots.max='' }}>Сбросить</button>
+                  {/if}
+                </div>
+              {/if}
+            </th>
+
+            <!-- Мин. ставка -->
+            <th class="th-num bid-th-filter">
+              <div class="th-inner th-inner-right">
+                <span>Мин. ставка, ₽</span>
+                <button class="th-flt-btn" class:th-flt-active={filterActive('minBid')}
+                  on:click|stopPropagation={() => toggleFilter('minBid')}>▼</button>
+              </div>
+              {#if openFilterCol === 'minBid'}
+                <div class="th-flt-drop th-flt-drop-right" on:click|stopPropagation>
+                  <div class="flt-range">
+                    <input class="flt-input flt-range-half" type="number" placeholder="от" bind:value={filters.minBid.min} autofocus />
+                    <input class="flt-input flt-range-half" type="number" placeholder="до" bind:value={filters.minBid.max} />
+                  </div>
+                  {#if filters.minBid.min || filters.minBid.max}
+                    <button class="flt-clear-range" on:click={() => { filters.minBid.min=''; filters.minBid.max='' }}>Сбросить</button>
+                  {/if}
+                </div>
+              {/if}
+            </th>
+
             <th class="th-bid">Ставка, ₽</th>
             <th class="th-del"></th>
-          </tr>
-          <!-- Filter row -->
-          <tr class="thead-filters">
-            <td></td>
-            <td></td>
-            <td><input class="col-filter-input" placeholder="Поиск…" bind:value={filters.gid} /></td>
-            <td><input class="col-filter-input" placeholder="Поиск…" bind:value={filters.address} /></td>
-            <td><input class="col-filter-input" placeholder="Поиск…" bind:value={filters.format} /></td>
-            <td><input class="col-filter-input" placeholder="Поиск…" bind:value={filters.size} /></td>
-            <td><input class="col-filter-input" placeholder="Поиск…" bind:value={filters.city} /></td>
-            <td>
-              <div class="range-filter">
-                <input class="col-filter-input range-half" type="number" placeholder="от" bind:value={filters.ots.min} />
-                <input class="col-filter-input range-half" type="number" placeholder="до" bind:value={filters.ots.max} />
-              </div>
-            </td>
-            <td>
-              <div class="range-filter">
-                <input class="col-filter-input range-half" type="number" placeholder="от" bind:value={filters.minBid.min} />
-                <input class="col-filter-input range-half" type="number" placeholder="до" bind:value={filters.minBid.max} />
-              </div>
-            </td>
-            <td></td>
-            <td></td>
           </tr>
         </thead>
         <tbody>
@@ -470,23 +567,71 @@
     color: var(--text-muted);
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
+    position: relative;
   }
-  .thead-filters td {
-    padding: 4px 6px 6px;
-    border-bottom: 2px solid var(--border);
-    background: var(--bg);
+
+  /* Inline filter button in th */
+  .th-inner { display: flex; align-items: center; gap: 4px; }
+  .th-inner-right { justify-content: flex-end; }
+  .bid-th-filter { overflow: visible; }
+
+  .th-flt-btn {
+    flex-shrink: 0;
+    width: 16px; height: 16px;
+    border: none; background: none; padding: 0;
+    font-size: 8px; color: var(--text-muted);
+    cursor: pointer; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    transition: color .1s, background .1s;
+    line-height: 1;
   }
-  .col-filter-input {
-    width: 100%; height: 26px;
-    border: 1px solid var(--border); border-radius: 5px;
-    padding: 0 7px; font-size: 11.5px; font-family: inherit;
-    color: var(--text); outline: none; background: white;
-    min-width: 0;
+  .th-flt-btn:hover { color: var(--navy); background: var(--border); }
+  .th-flt-btn.th-flt-active { color: var(--navy); }
+
+  /* Filter dropdown */
+  .th-flt-drop {
+    position: absolute;
+    top: calc(100% + 2px); left: 0;
+    min-width: 180px;
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    padding: 8px;
+    z-index: 50;
+    display: flex; align-items: center; gap: 4px;
   }
-  .col-filter-input:focus { border-color: var(--navy); }
-  .col-filter-input::placeholder { color: var(--text-muted); }
-  .range-filter { display: flex; gap: 3px; }
-  .range-half   { flex: 1; min-width: 0; }
+  .th-flt-drop-right { left: auto; right: 0; }
+
+  .flt-input {
+    flex: 1; height: 28px;
+    border: 1.5px solid var(--border); border-radius: 6px;
+    padding: 0 8px; font-size: 12px; font-family: inherit;
+    color: var(--text); outline: none; min-width: 0;
+  }
+  .flt-input:focus { border-color: var(--navy); }
+  .flt-input::placeholder { color: var(--text-muted); }
+
+  .flt-clear {
+    flex-shrink: 0;
+    background: none; border: none; cursor: pointer;
+    font-size: 11px; color: var(--text-muted); padding: 2px 4px;
+    border-radius: 4px;
+  }
+  .flt-clear:hover { color: var(--text); background: var(--bg); }
+
+  /* Range filter inside dropdown */
+  .flt-range { display: flex; gap: 4px; flex: 1; }
+  .flt-range-half { flex: 1; min-width: 0; }
+  .flt-clear-range {
+    display: block; width: 100%; margin-top: 4px;
+    background: none; border: none; cursor: pointer;
+    font-size: 11px; color: var(--navy); text-align: center;
+    padding: 2px; border-radius: 4px;
+    font-family: inherit;
+  }
+  .flt-clear-range:hover { background: var(--bg); }
+  .th-flt-drop:has(.flt-range) { flex-wrap: wrap; min-width: 200px; }
 
   /* Widths */
   .th-chk  { width: 36px; }
