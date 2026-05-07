@@ -1,7 +1,9 @@
 <script>
-  import { createEventDispatcher } from 'svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
   const dispatch = createEventDispatcher()
+
   export let draft
+  export let metrics = { impressions: 0, ots: 0, budget: null }
 
   // ── Init draft fields ─────────────────────────────────────────────────
   if (draft.optimalStrategy   == null) draft.optimalStrategy   = false
@@ -16,6 +18,56 @@
   if (draft.otsLimitMinute    == null) draft.otsLimitMinute    = ''
   if (draft.interval          == null) draft.interval          = ''
   if (draft.intervalUnit      == null) draft.intervalUnit      = 'SEC'
+
+  // ── Forecast-derived limits ───────────────────────────────────────────
+  // Calculate number of campaign days from draft dates
+  function numDays() {
+    if (!draft.startDate || !draft.endDate) return 1
+    const ms = new Date(draft.endDate) - new Date(draft.startDate)
+    return Math.max(1, Math.round(ms / 86_400_000) + 1)
+  }
+
+  // Forecasted reference values (rounded)
+  $: forecastImpressions = Math.round(metrics.impressions || 0)
+  $: forecastOts         = Math.round(metrics.ots         || 0)
+  $: days                = numDays()
+
+  $: forecastLimits = {
+    count: {
+      campaign: forecastImpressions,
+      day:      Math.round(forecastImpressions / days),
+      hour:     Math.round(forecastImpressions / days / 24),
+      minute:   Math.round(forecastImpressions / days / 24 / 60),
+    },
+    ots: {
+      campaign: forecastOts,
+      day:      Math.round(forecastOts / days),
+      hour:     Math.round(forecastOts / days / 24),
+      minute:   Math.round(forecastOts / days / 24 / 60),
+    },
+  }
+
+  // Auto-fill when forecast arrives (only if field is still empty)
+  let forecasted = false
+  $: if (!forecasted && forecastImpressions > 0) {
+    forecasted = true
+    if (!draft.limitCampaign)    draft.limitCampaign    = String(forecastLimits.count.campaign)
+    if (!draft.limitDay)         draft.limitDay         = String(forecastLimits.count.day)
+    if (!draft.limitHour)        draft.limitHour        = String(forecastLimits.count.hour)
+    if (!draft.limitMinute)      draft.limitMinute      = String(forecastLimits.count.minute)
+    if (!draft.otsLimitCampaign) draft.otsLimitCampaign = String(forecastLimits.ots.campaign)
+    if (!draft.otsLimitDay)      draft.otsLimitDay      = String(forecastLimits.ots.day)
+    if (!draft.otsLimitHour)     draft.otsLimitHour     = String(forecastLimits.ots.hour)
+    if (!draft.otsLimitMinute)   draft.otsLimitMinute   = String(forecastLimits.ots.minute)
+  }
+
+  // ── Warning helpers ───────────────────────────────────────────────────
+  // Returns true if user value exceeds the forecast reference
+  function overLimit(userVal, ref) {
+    if (!ref || ref === 0) return false
+    const v = Number(userVal)
+    return v > 0 && v > ref
+  }
 
   // ── Stepper helpers ───────────────────────────────────────────────────
   function inc(field) {
@@ -36,10 +88,30 @@
   }
 
   const LIMIT_ROWS = [
-    { label: 'По кампании', countField: 'limitCampaign',  otsField: 'otsLimitCampaign' },
-    { label: 'В сутки',     countField: 'limitDay',       otsField: 'otsLimitDay'      },
-    { label: 'В час',       countField: 'limitHour',      otsField: 'otsLimitHour'     },
-    { label: 'В минуту',    countField: 'limitMinute',    otsField: 'otsLimitMinute'   },
+    {
+      label:      'По кампании',
+      countField: 'limitCampaign',   otsField: 'otsLimitCampaign',
+      countRef:   () => forecastLimits.count.campaign,
+      otsRef:     () => forecastLimits.ots.campaign,
+    },
+    {
+      label:      'В сутки',
+      countField: 'limitDay',        otsField: 'otsLimitDay',
+      countRef:   () => forecastLimits.count.day,
+      otsRef:     () => forecastLimits.ots.day,
+    },
+    {
+      label:      'В час',
+      countField: 'limitHour',       otsField: 'otsLimitHour',
+      countRef:   () => forecastLimits.count.hour,
+      otsRef:     () => forecastLimits.ots.hour,
+    },
+    {
+      label:      'В минуту',
+      countField: 'limitMinute',     otsField: 'otsLimitMinute',
+      countRef:   () => forecastLimits.count.minute,
+      otsRef:     () => forecastLimits.ots.minute,
+    },
   ]
 </script>
 
@@ -78,7 +150,7 @@
   <!-- ── Optimal model ─────────────────────────────────────────────── -->
   <div class="section-card">
     <div class="optimal-header">
-      <div>
+      <div class="optimal-text">
         <div class="section-title">Оптимальная модель</div>
         <div class="section-desc">
           Включите оптимальную стратегию, чтобы показы рекламных материалов распределялись равномерно в течение всей кампании.
@@ -104,15 +176,18 @@
 
         <!-- Rows -->
         {#each LIMIT_ROWS as row}
+          {@const countWarn = overLimit(draft[row.countField], row.countRef())}
+          {@const otsWarn   = overLimit(draft[row.otsField],   row.otsRef())}
           <div class="lg-row">
             <div class="lg-row-label">{row.label}</div>
 
             <!-- Count cell -->
             <div class="lg-cell">
-              <div class="stepper-wrap stepper-sm">
+              <div class="stepper-wrap stepper-sm" class:stepper-warn={countWarn}>
                 <button class="stepper-btn" on:click={() => dec(row.countField)} tabindex="-1">−</button>
                 <input
                   class="stepper-input"
+                  class:input-warn={countWarn}
                   type="number"
                   min="0"
                   placeholder="—"
@@ -120,14 +195,25 @@
                 />
                 <button class="stepper-btn" on:click={() => inc(row.countField)} tabindex="-1">+</button>
               </div>
+              {#if countWarn}
+                <div class="warn-tooltip" title="Превышает прогнозное значение ({row.countRef().toLocaleString('ru-RU')})">
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                  </svg>
+                  <span class="warn-text">Превышает прогноз ({row.countRef().toLocaleString('ru-RU')})</span>
+                </div>
+              {:else if row.countRef() > 0}
+                <div class="forecast-hint">прогноз: {row.countRef().toLocaleString('ru-RU')}</div>
+              {/if}
             </div>
 
             <!-- OTS cell -->
             <div class="lg-cell">
-              <div class="stepper-wrap stepper-sm">
+              <div class="stepper-wrap stepper-sm" class:stepper-warn={otsWarn}>
                 <button class="stepper-btn" on:click={() => dec(row.otsField)} tabindex="-1">−</button>
                 <input
                   class="stepper-input"
+                  class:input-warn={otsWarn}
                   type="number"
                   min="0"
                   placeholder="—"
@@ -135,10 +221,30 @@
                 />
                 <button class="stepper-btn" on:click={() => inc(row.otsField)} tabindex="-1">+</button>
               </div>
+              {#if otsWarn}
+                <div class="warn-tooltip" title="Превышает прогнозное значение ({row.otsRef().toLocaleString('ru-RU')})">
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                  </svg>
+                  <span class="warn-text">Превышает прогноз ({row.otsRef().toLocaleString('ru-RU')})</span>
+                </div>
+              {:else if row.otsRef() > 0}
+                <div class="forecast-hint">прогноз: {row.otsRef().toLocaleString('ru-RU')}</div>
+              {/if}
             </div>
           </div>
         {/each}
       </div>
+
+      <!-- Forecast note -->
+      {#if forecastImpressions > 0}
+        <div class="forecast-note">
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;margin-top:1px">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+          </svg>
+          Значения рассчитаны на основе прогноза для {days} {days === 1 ? 'дня' : days < 5 ? 'дней' : 'дней'} кампании ({forecastImpressions.toLocaleString('ru-RU')} показов / {forecastOts.toLocaleString('ru-RU')} OTS). Вы можете изменить их вручную.
+        </div>
+      {/if}
     {/if}
   </div>
 
@@ -185,7 +291,7 @@
     font-size: 12.5px;
     color: var(--text-muted, #64748B);
     line-height: 1.5;
-    margin-bottom: 14px;
+    margin-bottom: 0;
   }
 
   /* ── Interval ── */
@@ -193,6 +299,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    margin-top: 12px;
   }
 
   /* ── Stepper ── */
@@ -204,8 +311,10 @@
     overflow: hidden;
     height: 36px;
     flex: 1;
+    transition: border-color .15s;
   }
   .stepper-sm { flex: 1; }
+  .stepper-warn { border-color: #F59E0B !important; }
 
   .stepper-btn {
     width: 34px;
@@ -214,7 +323,7 @@
     background: #F8FAFC;
     color: #475569;
     font-size: 16px;
-    font-weight: 500;
+    font-weight: 400;
     cursor: pointer;
     flex-shrink: 0;
     transition: background .1s, color .1s;
@@ -242,9 +351,10 @@
     color: var(--navy, #112853);
     background: white;
     padding: 0 4px;
+    transition: background .15s;
   }
+  .stepper-input.input-warn { background: #FFFBEB; color: #92400E; }
   .stepper-input::placeholder { color: #94A3B8; }
-  /* hide native number spinners */
   .stepper-input::-webkit-inner-spin-button,
   .stepper-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .stepper-input[type=number] { -moz-appearance: textfield; }
@@ -260,7 +370,7 @@
   }
   .unit-btn {
     height: 100%;
-    padding: 0 16px;
+    padding: 0 18px;
     border: none;
     background: white;
     font-size: 13px;
@@ -282,8 +392,9 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 16px;
+    gap: 20px;
   }
+  .optimal-text { flex: 1; }
 
   /* ── Toggle switch ── */
   .toggle-switch {
@@ -339,7 +450,7 @@
     background: #F8FAFC;
     border-bottom: 1.5px solid #E2E8F0;
     padding: 10px 16px;
-    gap: 12px;
+    gap: 16px;
   }
   .lg-col-head {
     flex: 1;
@@ -353,29 +464,62 @@
     display: flex;
     align-items: center;
     padding: 10px 16px;
-    gap: 12px;
+    gap: 16px;
     border-bottom: 1.5px solid #F1F5F9;
   }
   .lg-row:last-child { border-bottom: none; }
-  .lg-row:hover { background: #FAFBFC; }
 
   .lg-row-label {
-    width: 120px;
+    width: 110px;
     flex-shrink: 0;
     font-size: 13px;
     font-weight: 500;
     color: #334155;
   }
-  .lg-head .lg-row-label {
-    width: 120px;
-    flex-shrink: 0;
-  }
+  .lg-head .lg-row-label { width: 110px; flex-shrink: 0; }
 
   .lg-cell {
     flex: 1;
     display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  /* ── Forecast hint / warning ── */
+  .forecast-hint {
+    font-size: 10.5px;
+    color: #94A3B8;
+    text-align: center;
+    padding: 0 4px;
+  }
+
+  .warn-tooltip {
+    display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 4px;
+    color: #B45309;
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 0 4px;
+    cursor: default;
+  }
+  .warn-tooltip svg { flex-shrink: 0; }
+  .warn-text { line-height: 1.3; }
+
+  /* ── Forecast note ── */
+  .forecast-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: 8px;
+    font-size: 11.5px;
+    color: #1E40AF;
+    line-height: 1.45;
   }
 
   /* ── Bottom nav ── */
@@ -399,9 +543,7 @@
     white-space: nowrap;
   }
   .nav-link:hover { color: var(--navy, #112853); }
-  .nav-link-next {
-    margin-left: auto;
-  }
+  .nav-link-next { margin-left: auto; }
 
   .nav-pills {
     display: flex;
