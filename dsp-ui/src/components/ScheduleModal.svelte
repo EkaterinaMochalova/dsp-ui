@@ -7,18 +7,32 @@
   const DAYS  = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
   const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
+  // Hour label: "00–01", "01–02", etc.
+  function hLabel(h) {
+    const s = String(h).padStart(2, '0')
+    const e = String((h + 1) % 24).padStart(2, '0')
+    return [s, e]
+  }
+
   function makeEmpty() {
     return Array.from({ length: 7 }, () => new Array(24).fill(false))
   }
   function initLocal() {
     if (schedule && schedule.length === 7) return schedule.map(r => [...r])
-    return makeEmpty()
+    // Default: everything selected
+    return Array.from({ length: 7 }, () => new Array(24).fill(true))
   }
   let local = initLocal()
 
+  // ── Derived state ────────────────────────────────────────────────────
+  $: totalSlots    = 7 * 24
+  $: selectedCount = local.reduce((a, row) => a + row.filter(Boolean).length, 0)
+  $: allSelected   = selectedCount === totalSlots
+  $: dayOn = local.map(row => row.some(Boolean))
+
   // ── Drag ──────────────────────────────────────────────────────────────
   let dragging = false
-  let dragFill  = true  // true = fill, false = erase
+  let dragFill = true
 
   function cellDown(d, h, e) {
     e.preventDefault()
@@ -39,292 +53,301 @@
     return () => window.removeEventListener('mouseup', stopDrag)
   })
 
-  // ── Toolbar actions ───────────────────────────────────────────────────
-  function selectAll() { local = Array.from({ length: 7 }, () => new Array(24).fill(true)) }
-  function clearAll()  { local = makeEmpty() }
+  // ── Toolbar actions ──────────────────────────────────────────────────
+  function toggleAll() {
+    if (allSelected) local = makeEmpty()
+    else local = Array.from({ length: 7 }, () => new Array(24).fill(true))
+  }
 
   function toggleDay(d) {
-    const allOn = local[d].every(v => v)
+    const allOn = local[d].every(Boolean)
     local[d] = new Array(24).fill(!allOn)
     local = local
   }
-  $: dayOn = local.map(row => row.some(v => v))
 
-  // Presets: fill hours h0..h1-1 across all days (additive)
-  function applyRange(h0, h1) {
-    local = local.map(row => row.map((v, h) => (h >= h0 && h < h1) ? true : v))
+  // Additive fill for a list of hour indices (handles wrapping / multiple ranges)
+  function applyHours(hours) {
+    const set = new Set(hours)
+    local = local.map(row => row.map((v, h) => set.has(h) ? true : v))
   }
 
-  // ── Footer ────────────────────────────────────────────────────────────
+  function range(a, b) { // a inclusive, b exclusive
+    const r = []
+    for (let h = a; h < b; h++) r.push(h)
+    return r
+  }
+
+  // Утро 6–11, День 11–17, Вечер 17–23, Ночь 23–6 (wraps), Прайм-тайм 7–11 + 17–21
+  const PRESETS = [
+    { label: 'Утро',       hours: range(6, 11) },
+    { label: 'День',       hours: range(11, 17) },
+    { label: 'Вечер',      hours: range(17, 23) },
+    { label: 'Ночь',       hours: [...range(23, 24), ...range(0, 6)] },
+    { label: 'Прайм-тайм', hours: [...range(7, 11), ...range(17, 21)] },
+  ]
+
+  // ── Save / Cancel ─────────────────────────────────────────────────────
   function save()   { dispatch('save',   local.map(r => [...r])) }
   function cancel() { dispatch('cancel') }
-
-  // ── Summary: count selected slots ─────────────────────────────────────
-  $: selectedCount = local.reduce((acc, row) => acc + row.filter(Boolean).length, 0)
 </script>
 
 <svelte:window on:mouseup={stopDrag} />
 
-<!-- Backdrop -->
-<div class="sched-backdrop" on:mousedown|self={cancel} role="dialog" aria-modal="true">
-  <div class="sched-modal" on:mousedown|stopPropagation>
+<div class="backdrop" on:mousedown|self={cancel} role="dialog" aria-modal="true">
+  <div class="modal" on:mousedown|stopPropagation>
 
     <!-- ── Header ── -->
-    <div class="sched-head">
-      <div>
-        <h3 class="sched-title">График вещания</h3>
-        <p class="sched-sub">Вы можете выбрать график вещания для всех добавленных к кампании экранов</p>
+    <div class="modal-head">
+      <div class="modal-head-text">
+        <h3 class="modal-title">График вещания</h3>
       </div>
-      <button class="sched-close" on:click={cancel} title="Закрыть">
-        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+      <button class="close-btn" on:click={cancel} title="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
         </svg>
       </button>
     </div>
 
-    <!-- ── Toolbar ── -->
-    <div class="sched-toolbar">
-      <!-- Global -->
-      <button class="tbr-btn tbr-all" on:click={selectAll}>Отметить всё</button>
-      <button class="tbr-btn tbr-clear" on:click={clearAll}>Сбросить</button>
+    <!-- ── Subtitle ── -->
+    <p class="modal-sub">Вы можете выбрать график вещания для всех добавленных в кампанию экранов.</p>
 
-      <div class="tbr-sep"></div>
+    <!-- ── Content box (dashed border) ── -->
+    <div class="content-box">
 
-      <!-- Days -->
-      {#each DAYS as day, d}
-        <button
-          class="tbr-btn tbr-day"
-          class:tbr-day-on={dayOn[d]}
-          on:click={() => toggleDay(d)}
-        >{day}</button>
-      {/each}
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <button class="tbr-btn tbr-toggle" on:click={toggleAll}>
+          {allSelected ? 'Отменить все' : 'Выбрать все'}
+        </button>
+        <div class="tbr-sep"></div>
+        {#each PRESETS as p}
+          <button class="tbr-btn" on:click={() => applyHours(p.hours)}>{p.label}</button>
+        {/each}
+      </div>
 
-      <div class="tbr-sep"></div>
-
-      <!-- Time presets -->
-      <button class="tbr-btn tbr-preset" on:click={() => applyRange(8, 13)}>
-        Прайм <span class="preset-time">8–13</span>
-      </button>
-      <button class="tbr-btn tbr-preset" on:click={() => applyRange(13, 16)}>
-        День <span class="preset-time">13–16</span>
-      </button>
-      <button class="tbr-btn tbr-preset" on:click={() => applyRange(16, 24)}>
-        Вечер <span class="preset-time">16–24</span>
-      </button>
-    </div>
-
-    <!-- ── Grid ── -->
-    <div class="sched-grid-wrap">
-      <table class="sched-table">
-        <tbody>
-          {#each DAYS as day, d}
-            <tr class="sched-row">
-              <td class="sched-day-label">{day}</td>
+      <!-- Grid -->
+      <div class="grid-wrap" on:mouseleave={stopDrag}>
+        <table class="sched-table">
+          <tbody>
+            {#each DAYS as day, d}
+              <tr class="sched-row">
+                <!-- Day label — click to toggle whole day -->
+                <td class="day-label" on:click={() => toggleDay(d)} title="Выбрать/снять {day}">
+                  {day}
+                </td>
+                {#each HOURS as h}
+                  <td class="cell-wrap">
+                    <button
+                      class="sched-cell"
+                      class:cell-on={local[d][h]}
+                      on:mousedown={(e) => cellDown(d, h, e)}
+                      on:mouseenter={() => cellEnter(d, h)}
+                      tabindex="-1"
+                    >
+                      {#if local[d][h]}
+                        <svg class="check-icon" viewBox="0 0 12 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M1 5L4.5 8.5L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      {/if}
+                    </button>
+                  </td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+          <!-- Hour labels -->
+          <tfoot>
+            <tr class="hour-row">
+              <td></td>
               {#each HOURS as h}
-                <td
-                  class="sched-cell"
-                  class:sched-on={local[d][h]}
-                  on:mousedown={(e) => cellDown(d, h, e)}
-                  on:mouseenter={() => cellEnter(d, h)}
-                ></td>
+                {@const [s, e] = hLabel(h)}
+                <td class="hour-label">
+                  <span class="h-top">{s}</span>
+                  <span class="h-sep">–</span>
+                  <span class="h-bot">{e}</span>
+                </td>
               {/each}
             </tr>
-          {/each}
-        </tbody>
-        <tfoot>
-          <tr class="sched-row-hours">
-            <td></td>
-            {#each HOURS as h}
-              <td class="sched-h-label">{h}</td>
-            {/each}
-          </tr>
-        </tfoot>
-      </table>
-    </div>
+          </tfoot>
+        </table>
+      </div>
+
+    </div><!-- /content-box -->
 
     <!-- ── Footer ── -->
-    <div class="sched-footer">
-      <span class="sched-count">
-        {#if selectedCount > 0}
-          Выбрано слотов: <strong>{selectedCount}</strong> из 168
-        {:else}
-          Не выбрано ни одного слота
-        {/if}
-      </span>
-      <div class="sched-footer-btns">
-        <button class="btn-cancel" on:click={cancel}>Отменить</button>
-        <button class="btn-save"   on:click={save}>Сохранить</button>
-      </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" on:click={cancel}>Отменить</button>
+      <button class="btn-save"   on:click={save}>Сохранить</button>
     </div>
+
   </div>
 </div>
 
 <style>
   /* ── Backdrop ── */
-  .sched-backdrop {
+  .backdrop {
     position: fixed; inset: 0;
-    background: rgba(0, 0, 0, .45);
+    background: rgba(0, 0, 0, .4);
     display: flex; align-items: center; justify-content: center;
     z-index: 1000;
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
   }
 
-  /* ── Modal container ── */
-  .sched-modal {
+  /* ── Modal ── */
+  .modal {
     background: white;
-    border-radius: 14px;
-    box-shadow: 0 16px 56px rgba(0, 0, 0, .22);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .2);
     display: flex; flex-direction: column;
-    width: min(860px, calc(100vw - 40px));
-    max-height: calc(100vh - 60px);
+    width: min(1160px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
     overflow: hidden;
   }
 
   /* ── Header ── */
-  .sched-head {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    padding: 20px 24px 14px;
-    border-bottom: 1px solid var(--border);
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px 0;
     flex-shrink: 0;
   }
-  .sched-title {
-    margin: 0 0 4px;
-    font-size: 15px; font-weight: 700; color: var(--navy);
-  }
-  .sched-sub {
+  .modal-title {
     margin: 0;
-    font-size: 12px; color: var(--text-muted); line-height: 1.45;
+    font-size: 18px; font-weight: 700; color: var(--navy);
   }
-  .sched-close {
-    flex-shrink: 0; margin-left: 16px; margin-top: 2px;
-    width: 28px; height: 28px;
+  .close-btn {
+    width: 30px; height: 30px;
     border: none; background: none; cursor: pointer;
-    border-radius: 6px;
+    border-radius: 6px; color: var(--text-muted);
     display: flex; align-items: center; justify-content: center;
-    color: var(--text-muted);
     transition: background .12s, color .12s;
+    flex-shrink: 0;
   }
-  .sched-close:hover { background: var(--bg); color: var(--text); }
+  .close-btn:hover { background: var(--bg); color: var(--text); }
+
+  /* ── Subtitle ── */
+  .modal-sub {
+    margin: 6px 24px 14px;
+    font-size: 12.5px; color: var(--text-muted); line-height: 1.45;
+    flex-shrink: 0;
+  }
+
+  /* ── Content box (dashed) ── */
+  .content-box {
+    margin: 0 16px;
+    border: 1.5px dashed #B0C4DE;
+    border-radius: 10px;
+    overflow: hidden;
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+  }
 
   /* ── Toolbar ── */
-  .sched-toolbar {
-    display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-    padding: 10px 24px;
-    border-bottom: 1px solid var(--border);
+  .toolbar {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 10px 14px;
+    border-bottom: 1.5px dashed #B0C4DE;
     flex-shrink: 0;
   }
   .tbr-sep {
     width: 1px; height: 20px;
-    background: var(--border); margin: 0 4px; flex-shrink: 0;
+    background: #CBD5E1; margin: 0 2px; flex-shrink: 0;
   }
-
   .tbr-btn {
-    height: 28px; padding: 0 10px;
-    border: 1.5px solid var(--border); border-radius: 6px;
-    background: white; font-size: 12px; font-family: inherit; font-weight: 500;
-    color: var(--text); cursor: pointer; white-space: nowrap;
-    display: flex; align-items: center; gap: 4px;
-    transition: border-color .12s, background .12s, color .12s;
+    height: 30px; padding: 0 14px;
+    border: 1px solid #CBD5E1; border-radius: 20px;
+    background: white; font-size: 13px; font-family: inherit; font-weight: 500;
+    color: #475569; cursor: pointer; white-space: nowrap;
+    transition: all .13s;
   }
-  .tbr-btn:hover { border-color: var(--navy); color: var(--navy); }
-
-  .tbr-all   { background: var(--navy); color: white; border-color: var(--navy); }
-  .tbr-all:hover { background: #1e3a6e; border-color: #1e3a6e; color: white; }
-
-  .tbr-clear { color: var(--text-muted); }
-  .tbr-clear:hover { color: #EF4444; border-color: #EF4444; }
-
-  .tbr-day   { min-width: 34px; justify-content: center; }
-  .tbr-day-on {
-    background: #EFF6FF; border-color: #2563EB; color: #2563EB; font-weight: 700;
+  .tbr-btn:hover { border-color: var(--navy); color: var(--navy); background: #EFF6FF; }
+  .tbr-toggle {
+    font-weight: 600; color: #1E40AF;
+    border-color: #93C5FD; background: #EFF6FF;
   }
-
-  .tbr-preset { padding: 0 10px; }
-  .preset-time { font-size: 10.5px; color: var(--text-muted); font-weight: 400; }
-  .tbr-preset:hover .preset-time { color: var(--navy); }
+  .tbr-toggle:hover { background: #DBEAFE; border-color: #3B82F6; }
 
   /* ── Grid ── */
-  .sched-grid-wrap {
+  .grid-wrap {
     flex: 1; overflow: auto;
-    padding: 16px 24px 12px;
-    user-select: none;
-    -webkit-user-select: none;
+    padding: 10px 14px 6px;
+    user-select: none; -webkit-user-select: none;
   }
   .sched-table {
     border-collapse: separate;
-    border-spacing: 0;
+    border-spacing: 3px 4px;
+    width: 100%;
   }
 
-  /* Day label column */
-  .sched-day-label {
-    padding: 3px 10px 3px 0;
-    font-size: 11.5px; font-weight: 600;
-    color: var(--text-muted); text-align: right;
-    white-space: nowrap; vertical-align: middle;
-    min-width: 28px;
+  /* Day label */
+  .day-label {
+    padding: 0 10px 0 2px;
+    font-size: 13px; font-weight: 600;
+    color: #475569; white-space: nowrap;
+    text-align: right; vertical-align: middle;
+    cursor: pointer; min-width: 30px;
+    transition: color .12s;
   }
+  .day-label:hover { color: var(--navy); }
 
-  /* Each hour cell */
+  /* Cell wrapper td */
+  .cell-wrap { padding: 0; }
+
+  /* Cell button */
   .sched-cell {
-    width: 26px; height: 26px;
-    border: 1.5px solid #E2E8F0;
-    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 36px;
+    min-width: 36px;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 8px;
+    background: #F1F5F9;
     cursor: crosshair;
-    background: #F8FAFC;
-    transition: background .06s, border-color .06s;
+    color: #94A3B8;
+    transition: background .07s, border-color .07s;
     padding: 0;
   }
-  .sched-row td + td { border-left: none; }
-  .sched-table tbody tr + tr .sched-cell {  }
-
-  /* Gap between cells via table spacing */
-  .sched-table { border-spacing: 2px 2px; }
-
-  .sched-cell:hover:not(.sched-on) {
+  .sched-cell:hover:not(.cell-on) {
     background: #DBEAFE; border-color: #93C5FD;
   }
-  .sched-on {
-    background: #2563EB; border-color: #2563EB;
+  .cell-on {
+    background: #BFDBFE; border-color: #60A5FA;
+    color: #1D4ED8;
   }
-  .sched-on:hover {
-    background: #1D4ED8; border-color: #1D4ED8;
+  .cell-on:hover {
+    background: #93C5FD; border-color: #3B82F6;
   }
 
-  /* Hour labels footer row */
-  .sched-row-hours td { padding: 4px 0 0; vertical-align: top; }
-  .sched-h-label {
-    font-size: 9px; color: var(--text-muted);
-    text-align: center; width: 26px;
+  .check-icon {
+    width: 12px; height: 10px;
+    pointer-events: none; flex-shrink: 0;
   }
+
+  /* Hour label row */
+  .hour-row td { padding: 4px 0 2px; vertical-align: top; }
+  .hour-label {
+    text-align: center;
+    display: flex; flex-direction: column; align-items: center;
+    line-height: 1.1;
+  }
+  .h-top, .h-bot { font-size: 9.5px; color: #94A3B8; font-variant-numeric: tabular-nums; }
+  .h-sep { font-size: 8px; color: #CBD5E1; line-height: 1; }
 
   /* ── Footer ── */
-  .sched-footer {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 24px;
-    border-top: 1px solid var(--border);
+  .modal-footer {
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    padding: 14px 24px;
     flex-shrink: 0;
   }
-  .sched-count {
-    font-size: 12px; color: var(--text-muted);
-  }
-  .sched-count strong { color: var(--navy); }
-
-  .sched-footer-btns { display: flex; gap: 10px; align-items: center; }
-
   .btn-cancel {
-    height: 34px; padding: 0 18px;
-    border: 1.5px solid var(--border); border-radius: 7px;
+    height: 36px; padding: 0 20px;
+    border: 1.5px solid #CBD5E1; border-radius: 8px;
     background: white; font-size: 13px; font-family: inherit; font-weight: 500;
-    color: var(--text); cursor: pointer;
+    color: #475569; cursor: pointer;
     transition: border-color .12s, color .12s;
   }
   .btn-cancel:hover { border-color: var(--navy); color: var(--navy); }
-
   .btn-save {
-    height: 34px; padding: 0 24px;
+    height: 36px; padding: 0 26px;
     background: var(--navy); color: white;
-    border: none; border-radius: 7px;
+    border: none; border-radius: 8px;
     font-size: 13px; font-family: inherit; font-weight: 600;
     cursor: pointer; transition: background .15s;
   }
