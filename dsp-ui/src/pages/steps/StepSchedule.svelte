@@ -27,6 +27,7 @@
   // ── Modal state ───────────────────────────────────────────────────────
   let globalModalOpen = false
   let editingId       = null   // null = no per-screen modal open
+  let applyModalOpen  = false  // bulk-apply modal for checked screens
 
   function openGlobal()  { globalModalOpen = true }
   function openScreen(id) { editingId = id }
@@ -81,6 +82,31 @@
     return parts.join(' | ') || '—'
   }
 
+  // ── Checkboxes ────────────────────────────────────────────────────────
+  let checkedIds = new Set()
+  $: allChecked  = screens.length > 0 && screens.every(s => checkedIds.has(s.id))
+  $: someChecked = screens.some(s => checkedIds.has(s.id))
+
+  function toggleCheck(id) {
+    const s = new Set(checkedIds)
+    s.has(id) ? s.delete(id) : s.add(id)
+    checkedIds = s
+  }
+  function toggleAll() {
+    if (allChecked) { checkedIds = new Set() }
+    else { checkedIds = new Set(screens.map(s => s.id)) }
+  }
+
+  // Apply a schedule to checked screens (or all if none checked)
+  function applyToChecked(sched) {
+    const targets = someChecked
+      ? screens.filter(s => checkedIds.has(s.id)).map(s => s.id)
+      : screens.map(s => s.id)
+    const overrides = { ...draft.screenSchedules }
+    for (const id of targets) overrides[id] = sched.map(r => [...r])
+    draft.screenSchedules = overrides
+  }
+
   // Has per-screen override?
   function hasOverride(id) { return id in draft.screenSchedules }
 
@@ -99,6 +125,7 @@
       Настройте расписание показов для каждого экрана. По умолчанию используется общий график.
     </p>
     <div class="sched-top-row">
+      <!-- Global schedule setter -->
       <button class="btn-global" on:click={openGlobal}>
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
@@ -110,6 +137,21 @@
           <span class="btn-global-val">· Все часы</span>
         {/if}
       </button>
+
+      <!-- Apply checked (shown when something is checked) -->
+      {#if someChecked}
+        <button class="btn-apply-checked" on:click={() => {
+          // open a temporary modal to pick schedule for selected screens
+          applyModalOpen = true
+        }}>
+          Применить к выбранным ({[...checkedIds].length})
+        </button>
+        <button class="btn-reset-checked" on:click={() => {
+          for (const id of checkedIds) clearScreenOverride(id)
+        }}>
+          Сбросить выбранные
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -124,6 +166,10 @@
       <table class="sched-table">
         <thead>
           <tr>
+            <th class="th-chk">
+              <input type="checkbox" checked={allChecked} indeterminate={someChecked && !allChecked}
+                on:change={toggleAll} />
+            </th>
             <th class="th-thumb"></th>
             <th class="th-gid">GID</th>
             <th class="th-addr">Адрес</th>
@@ -137,7 +183,15 @@
           {#each screens as s (s.id)}
             {@const sched = effectiveSchedule(s.id)}
             {@const override = hasOverride(s.id)}
-            <tr class="sched-row" class:sched-row-override={override}>
+            {@const checked = checkedIds.has(s.id)}
+            <tr class="sched-row"
+              class:sched-row-override={override && !checked}
+              class:sched-row-checked={checked}>
+
+              <!-- Checkbox -->
+              <td class="td-chk" on:click|stopPropagation>
+                <input type="checkbox" {checked} on:change={() => toggleCheck(s.id)} />
+              </td>
 
               <!-- Thumbnail -->
               <td class="td-thumb">
@@ -226,6 +280,14 @@
   />
 {/if}
 
+{#if applyModalOpen}
+  <ScheduleModal
+    schedule={draft.schedule}
+    on:save={(e) => { applyToChecked(e.detail); applyModalOpen = false }}
+    on:cancel={() => applyModalOpen = false}
+  />
+{/if}
+
 <style>
   .sched-shell {
     flex: 1; display: flex; flex-direction: column;
@@ -259,6 +321,24 @@
     max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
 
+  .btn-apply-checked {
+    height: 32px; padding: 0 14px;
+    background: var(--navy); color: white;
+    border: none; border-radius: 8px;
+    font-size: 12.5px; font-family: inherit; font-weight: 600;
+    cursor: pointer; transition: background .15s;
+  }
+  .btn-apply-checked:hover { background: #1e3a6e; }
+
+  .btn-reset-checked {
+    height: 32px; padding: 0 14px;
+    border: 1.5px solid #CBD5E1; border-radius: 8px;
+    background: white; font-size: 12.5px; font-family: inherit; font-weight: 500;
+    color: var(--text-muted); cursor: pointer;
+    transition: border-color .12s, color .12s;
+  }
+  .btn-reset-checked:hover { border-color: #EF4444; color: #EF4444; }
+
   /* ── Table ── */
   .sched-table-wrap { flex: 1; overflow-y: auto; background: white; }
 
@@ -288,6 +368,7 @@
   }
 
   /* Column widths */
+  .th-chk  { width: 36px; }
   .th-thumb { width: 68px; }
   .th-gid   { width: 100px; }
   .th-addr  { min-width: 180px; }
@@ -305,8 +386,12 @@
   /* Row states */
   .sched-row { transition: background .1s; }
   .sched-row:hover td { background: var(--navy-light); }
+  .sched-row-checked td { background: #EFF6FF; }
+  .sched-row-checked:hover td { background: #DBEAFE; }
   .sched-row-override td { background: #F0FDF4; }
   .sched-row-override:hover td { background: #DCFCE7; }
+
+  .td-chk { padding: 6px 10px; }
 
   /* Thumbnail */
   .td-thumb { padding: 6px 8px; }
