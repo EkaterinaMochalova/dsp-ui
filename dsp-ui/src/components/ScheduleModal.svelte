@@ -70,10 +70,16 @@
     local = local.map(row => { const r = [...row]; r[h] = !allOn; return r })
   }
 
-  // Additive fill for a list of hour indices (handles wrapping / multiple ranges)
+  // Toggle: if every cell in the preset is already on → clear them; otherwise fill them
   function applyHours(hours) {
     const set = new Set(hours)
-    local = local.map(row => row.map((v, h) => set.has(h) ? true : v))
+    const allOn = local.every(row => hours.every(h => row[h]))
+    local = local.map(row => row.map((v, h) => set.has(h) ? !allOn : v))
+  }
+
+  // True when every cell in this preset is on across all days
+  function isPresetActive(hours) {
+    return local.every(row => hours.every(h => row[h]))
   }
 
   function range(a, b) { // a inclusive, b exclusive
@@ -126,7 +132,11 @@
         </button>
         <div class="tbr-sep"></div>
         {#each PRESETS as p}
-          <button class="tbr-btn" on:click={() => applyHours(p.hours)}>{p.label}</button>
+          <button
+            class="tbr-btn tbr-preset"
+            class:tbr-preset-on={isPresetActive(p.hours)}
+            on:click={() => applyHours(p.hours)}
+          >{p.label}</button>
         {/each}
       </div>
 
@@ -267,6 +277,11 @@
     border-color: #93C5FD; background: #EFF6FF;
   }
   .tbr-toggle:hover { background: #DBEAFE; border-color: #3B82F6; }
+
+  .tbr-preset-on {
+    border-color: #1E293B; color: #1E293B; font-weight: 600;
+  }
+  .tbr-preset-on:hover { border-color: #1E293B; background: #F1F5F9; }
 
   /* ── Grid ── */
   .grid-wrap {
