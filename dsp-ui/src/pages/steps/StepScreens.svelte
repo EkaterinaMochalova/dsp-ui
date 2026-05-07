@@ -1187,30 +1187,37 @@
 
   <!-- Nav bar -->
   <div class="screens-nav">
-    <button class="btn-back" on:click={() => dispatch('back')}>Назад</button>
+    <button class="btn-text-nav" on:click={() => dispatch('back')}>Назад</button>
     <div class="nav-actions">
-      <button class="nav-action-btn">
+
+      <!-- Сохранить экраны — muted grey pill -->
+      <button class="nav-pill nav-pill-grey">
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
         </svg>
         Сохранить экраны
       </button>
-      <button class="nav-action-btn" on:click={() => dispatch('bids')}>
+
+      <!-- Ставка — blue pill -->
+      <button class="nav-pill nav-pill-blue" on:click={() => dispatch('bids')}>
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
           <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"/>
           <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"/>
         </svg>
         Ставка
       </button>
-      <button class="nav-action-btn" class:nav-action-btn-active={draft.schedule != null}
+
+      <!-- График вещания — blue pill (active when schedule set) -->
+      <button class="nav-pill nav-pill-blue" class:nav-pill-blue-on={draft.schedule != null}
           on:click={() => dispatch('schedule')}>
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
         </svg>
         График вещания
       </button>
+
     </div>
-    <button class="btn-next" on:click={() => dispatch('bids')}>Ставки →</button>
+    <button class="btn-text-nav btn-text-nav-next" on:click={() => dispatch('bids')}>Дальше</button>
   </div>
 </div>
 
@@ -1762,24 +1769,41 @@
     gap: 8px;
   }
 
-  .nav-action-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 32px;
-    padding: 0 14px;
-    border: 1.5px solid var(--border);
-    border-radius: 6px;
-    background: white;
-    font-size: 12.5px;
-    font-family: inherit;
-    color: var(--text);
-    cursor: pointer;
-    font-weight: 500;
+  /* Plain text nav links */
+  .btn-text-nav {
+    background: none; border: none;
+    font-size: 13px; font-family: inherit; font-weight: 500;
+    color: var(--text); cursor: pointer; padding: 4px 2px;
+    transition: color .12s;
   }
-  .nav-action-btn:hover { background: var(--bg); border-color: var(--navy); color: var(--navy); }
-  .nav-action-btn-active { background: #EFF6FF; border-color: #2563EB; color: #2563EB; }
-  .nav-action-btn-active:hover { background: #DBEAFE; }
+  .btn-text-nav:hover { color: var(--navy); }
+  .btn-text-nav-next { font-weight: 600; }
+
+  /* Pill buttons */
+  .nav-pill {
+    display: flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 16px;
+    border: none; border-radius: 20px;
+    font-size: 13px; font-family: inherit; font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background .13s, color .13s;
+  }
+
+  /* Grey muted pill */
+  .nav-pill-grey {
+    background: #E2E8F0; color: #64748B;
+  }
+  .nav-pill-grey:hover { background: #CBD5E1; color: #475569; }
+
+  /* Blue pill */
+  .nav-pill-blue {
+    background: #DBEAFE; color: #2563EB;
+  }
+  .nav-pill-blue:hover { background: #BFDBFE; }
+  .nav-pill-blue-on {
+    background: #BFDBFE; color: #1D4ED8; font-weight: 600;
+  }
+  .nav-pill-blue-on:hover { background: #93C5FD; }
 
   /* ── Range filter ── */
   .range-drop {
