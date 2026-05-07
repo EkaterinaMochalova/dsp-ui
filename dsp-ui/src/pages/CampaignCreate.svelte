@@ -7,6 +7,7 @@
   import StepBudget       from './steps/StepBudget.svelte'
   import StepScreens      from './steps/StepScreens.svelte'
   import StepBids         from './steps/StepBids.svelte'
+  import StepSchedule     from './steps/StepSchedule.svelte'
   import StepShowSettings from './steps/StepShowSettings.svelte'
   import StepCreatives    from './steps/StepCreatives.svelte'
   import StepPhotos       from './steps/StepPhotos.svelte'
@@ -108,7 +109,7 @@
 
   let currentStep = 'start'
   let completedSteps = {}   // plain object — spread creates new ref, guaranteed reactive
-  let screensView = 'selection'  // 'selection' | 'bids'
+  let screensView = 'selection'  // 'selection' | 'bids' | 'schedule'
 
   function goToStep(id) { currentStep = id; if (id !== 'screens') screensView = 'selection' }
 
@@ -247,13 +248,14 @@
                   class:wizard-substep-active={
                     step.id === 'screens' && (
                       (i === 0 && screensView === 'selection') ||
-                      (i === 1 && screensView === 'bids')
+                      (i === 1 && screensView === 'bids') ||
+                      (i === 2 && screensView === 'schedule')
                     )
                   }
                   on:click={() => {
                     if (step.id === 'screens') {
                       goToStep('screens')
-                      screensView = i === 0 ? 'selection' : i === 1 ? 'bids' : 'selection'
+                      screensView = i === 0 ? 'selection' : i === 1 ? 'bids' : 'schedule'
                     }
                   }}
                 >{sub}</button>
@@ -305,6 +307,13 @@
         <StepBids
           bind:draft
           on:back={() => screensView = 'selection'}
+          on:next={() => screensView = 'schedule'}
+          on:save={() => {}}
+        />
+      {:else if screensView === 'schedule'}
+        <StepSchedule
+          bind:draft
+          on:back={() => screensView = 'bids'}
           on:next={() => { screensView = 'selection'; completeStep('screens') }}
           on:save={() => {}}
         />
@@ -312,6 +321,7 @@
         <StepScreens
           bind:draft
           on:bids={() => screensView = 'bids'}
+          on:schedule={() => screensView = 'schedule'}
           on:next={() => completeStep('screens')}
           on:back={() => { screensView = 'selection'; prevStep('screens') }}
         />
