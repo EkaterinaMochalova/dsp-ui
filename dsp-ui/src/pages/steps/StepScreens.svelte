@@ -153,8 +153,8 @@
     openFilterCol = ''
   }
 
-  // Close filter dropdown / col picker on outside click
-  function onDocClick() { openFilterCol = ''; colPickerOpen = false }
+  // Close filter dropdown / col picker / map search on outside click
+  function onDocClick() { openFilterCol = ''; colPickerOpen = false; closeMapSearch() }
 
   // Unique values per filterable column (from ALL screens, not filtered)
   $: colOptions = {
@@ -590,6 +590,56 @@
     window.removeEventListener('mouseup',   onColResizeEnd)
   }
 
+  // ── Map geocode search ────────────────────────────────────────────────
+  let mapSearchOpen    = false
+  let mapSearchQuery   = ''
+  let mapSearchResults = []
+  let mapSearchLoading = false
+  let mapSearchInput   // bound to <input>
+
+  async function geocode() {
+    const q = mapSearchQuery.trim()
+    if (!q) { mapSearchResults = []; return }
+    mapSearchLoading = true
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&accept-language=ru,en`
+      const res  = await fetch(url, { headers: { 'Accept-Language': 'ru,en' } })
+      const data = await res.json()
+      mapSearchResults = data.map(d => ({
+        label: d.display_name,
+        lat:   parseFloat(d.lat),
+        lon:   parseFloat(d.lon),
+        type:  d.type,
+      }))
+    } catch { mapSearchResults = [] }
+    finally  { mapSearchLoading = false }
+  }
+
+  function pickSearchResult(r) {
+    map?.flyTo([r.lat, r.lon], 14, { animate: true, duration: 0.8 })
+    mapSearchResults = []
+    mapSearchQuery   = ''
+    mapSearchOpen    = false
+  }
+
+  function openMapSearch() {
+    mapSearchOpen = true
+    setTimeout(() => mapSearchInput?.focus(), 40)
+  }
+
+  function closeMapSearch() {
+    mapSearchOpen    = false
+    mapSearchQuery   = ''
+    mapSearchResults = []
+  }
+
+  let geocodeTimer
+  function onMapSearchInput() {
+    clearTimeout(geocodeTimer)
+    if (mapSearchQuery.trim().length < 2) { mapSearchResults = []; return }
+    geocodeTimer = setTimeout(geocode, 380)
+  }
+
   // ── POI import ────────────────────────────────────────────────────────
   let poiItems   = []       // [{ name, lat, lon, pos, enabled }]
   let poiRadius  = 500      // metres
@@ -722,13 +772,61 @@
       </button>
     </div>
 
-    <!-- Floating: Search -->
-    <div class="map-float-top-right">
-      <button class="map-icon-btn" title="Поиск по карте">
-        <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-          <path d="M9 17A8 8 0 109 1a8 8 0 000 16zM17 17l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-      </button>
+    <!-- Floating: Geocode search -->
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <div class="map-search-wrap" on:click|stopPropagation>
+      {#if mapSearchOpen}
+        <div class="map-search-box">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" style="color:var(--text-muted);flex-shrink:0">
+            <path d="M9 17A8 8 0 109 1a8 8 0 000 16zM17 17l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <input
+            bind:this={mapSearchInput}
+            class="map-search-input"
+            type="text"
+            placeholder="Адрес, город, место…"
+            bind:value={mapSearchQuery}
+            on:input={onMapSearchInput}
+            on:keydown={(e) => {
+              if (e.key === 'Enter') geocode()
+              if (e.key === 'Escape') closeMapSearch()
+            }}
+          />
+          {#if mapSearchLoading}
+            <div class="mini-spinner" style="flex-shrink:0"></div>
+          {:else if mapSearchQuery}
+            <button class="map-search-clear" on:click={() => { mapSearchQuery=''; mapSearchResults=[]; mapSearchInput?.focus() }}>×</button>
+          {/if}
+          <button class="map-search-close" on:click={closeMapSearch} title="Закрыть">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+            </svg>
+          </button>
+        </div>
+        {#if mapSearchResults.length > 0}
+          <div class="map-search-results">
+            {#each mapSearchResults as r}
+              <!-- svelte-ignore a11y-click-events-have-key-events -->
+              <div class="map-search-result" on:click={() => pickSearchResult(r)}>
+                <svg width="11" height="11" viewBox="0 0 20 20" fill="currentColor" style="color:#16A34A;flex-shrink:0;margin-top:1px">
+                  <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
+                </svg>
+                <span class="map-search-result-label">{r.label}</span>
+              </div>
+            {/each}
+          </div>
+        {:else if mapSearchQuery.trim().length >= 2 && !mapSearchLoading}
+          <div class="map-search-results">
+            <div class="map-search-empty">Ничего не найдено</div>
+          </div>
+        {/if}
+      {:else}
+        <button class="map-icon-btn" title="Поиск по карте" on:click={openMapSearch}>
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+            <path d="M9 17A8 8 0 109 1a8 8 0 000 16zM17 17l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      {/if}
     </div>
 
     <!-- Floating: Map filter bar (bottom of map, above panel) -->
@@ -1704,6 +1802,104 @@
     margin-top: 2px;
   }
   .range-clear:hover { color: #EF4444; border-color: #EF4444; background: #FEF2F2; }
+
+  /* ── Map geocode search ── */
+  .map-search-wrap {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 400;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  .map-search-box {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 36px;
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 0 8px 0 10px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.12);
+    width: 300px;
+  }
+  .map-search-box:focus-within { border-color: var(--navy); }
+
+  .map-search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    background: transparent;
+    min-width: 0;
+  }
+  .map-search-input::placeholder { color: var(--text-muted); }
+
+  .map-search-clear,
+  .map-search-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .map-search-clear:hover,
+  .map-search-close:hover { color: var(--text); background: var(--bg); }
+  .map-search-close { border-left: 1px solid var(--border); margin-left: 2px; padding-left: 6px; }
+
+  .map-search-results {
+    width: 300px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.14);
+    overflow: hidden;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  .map-search-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 9px 12px;
+    font-size: 12.5px;
+    color: var(--text);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background .1s;
+    line-height: 1.4;
+  }
+  .map-search-result:last-child { border-bottom: none; }
+  .map-search-result:hover { background: var(--navy-light); color: var(--navy); }
+
+  .map-search-result-label {
+    flex: 1;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .map-search-empty {
+    padding: 12px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    text-align: center;
+  }
 
   /* ── POI ── */
   .poi-active {
