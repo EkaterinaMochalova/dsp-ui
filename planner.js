@@ -2066,15 +2066,15 @@ async function buildMediaPlanBlob() {
   // Max formats across all cities (to pre-set column widths)
   const maxFmts = Math.max(1, ...cities.map(c => Object.keys(rfMap[c] || {}).length));
 
-  // Format abbreviation label
+  // Format label for block headers — abbreviate known types, otherwise use as-is
   function fmtLabel(fmt_) {
     const u = fmt_.toUpperCase();
-    if (u.includes("MEDIAFACADE") || u === "MF")                          return "MF";
-    if (u.includes("BILLBOARD")   || u === "BB")                          return "BB";
-    if (u.includes("SUPERSITE")   || u === "SS")                          return "SS";
-    if (u.includes("CITY_BOARD")  || u.includes("CITYBOARD") || u==="CB") return "CB";
-    if (u.includes("PVZ"))                                                 return "PVZ";
-    return u.slice(0, 4);
+    if (u === "MEDIAFACADE" || u === "MF")                                return "MF";
+    if (u === "BILLBOARD"   || u === "BB")                                return "BB";
+    if (u === "SUPERSITE"   || u === "SS")                                return "SS";
+    if (u === "CITY_BOARD"  || u === "CITYBOARD" || u === "CB")           return "CB";
+    if (u === "PVZ_SCREEN"  || u === "PVZ")                               return "PVZ";
+    return fmt_; // keep original name for everything else
   }
 
   // Schedule time-range text for col C
