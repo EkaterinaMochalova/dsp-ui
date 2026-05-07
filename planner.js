@@ -2062,16 +2062,42 @@ async function buildMediaPlanBlob() {
   // Cities in perRegion order (only those present in rfMap)
   const cities   = perReg.map(r => r.region).filter(c => rfMap[c]);
   const allFmts  = [...new Set(cities.flatMap(c => Object.keys(rfMap[c] || {})))];
-  const budgetMln = Math.round(netBudget / 1_000_000);
 
-  // ── Sheet 1: Расчёт ─────────────────────────────────────────────
+  // Max formats across all cities (to pre-set column widths)
+  const maxFmts = Math.max(1, ...cities.map(c => Object.keys(rfMap[c] || {}).length));
+
+  // Format abbreviation label
+  function fmtLabel(fmt_) {
+    const u = fmt_.toUpperCase();
+    if (u.includes("MEDIAFACADE") || u === "MF")                          return "MF";
+    if (u.includes("BILLBOARD")   || u === "BB")                          return "BB";
+    if (u.includes("SUPERSITE")   || u === "SS")                          return "SS";
+    if (u.includes("CITY_BOARD")  || u.includes("CITYBOARD") || u==="CB") return "CB";
+    if (u.includes("PVZ"))                                                 return "PVZ";
+    return u.slice(0, 4);
+  }
+
+  // Schedule time-range text for col C
+  function scheduleText(sch) {
+    if (!sch) return "";
+    if (sch.type === "all_day") return "00:00 – 24:00";
+    if (sch.type === "peak")    return "07:00 – 23:00";
+    if (sch.type === "custom")  return `${sch.from || "00:00"} – ${sch.to || "24:00"}`;
+    if (sch.type === "weekly" && sch.mode === "global") {
+      return (sch.globalIntervals || []).map(iv => `${iv.from} – ${iv.to}`).join(" / ");
+    }
+    return "";
+  }
+  const schedTxt = scheduleText(brief.schedule);
+
+  // ── Sheet 1: МП ─────────────────────────────────────────────────
   const ws = wb.addWorksheet("МП");
   ws.getColumn(1).width = 22;
   ws.getColumn(2).width = 14;
   ws.getColumn(3).width = 14;
   ws.getColumn(4).width = 22;
-  ws.getColumn(5).width = 18;
-  ws.getColumn(6).width = 18;
+  // E onwards: per-format sub-columns
+  for (let i = 0; i < Math.max(maxFmts, 2); i++) ws.getColumn(5 + i).width = 18;
 
   // ── Rows 1-5: meta header ────────────────────────────────────────
   const metaRows = [
@@ -2089,12 +2115,12 @@ async function buildMediaPlanBlob() {
     bCell.value = value;
     bCell.alignment = { horizontal: "right" };
     bCell.border = THIN_B;
-    // Cols C-F: no border
-    for (let c = 3; c <= 6; c++) ws.getCell(r, c).border = NO_B;
+    // Cols C onwards: no border by default
+    for (let c = 3; c <= 4 + maxFmts; c++) ws.getCell(r, c).border = NO_B;
   }
-  // Row 2 extra: map/campaign links
-  sc(ws, 2, 4, "Ссылка на карту", { fill: C_HDR, h: "center", v: "center" });
+  // Row 2 extra: campaign / map links in cols E and F
   sc(ws, 2, 5, "Ссылка на РК",    { fill: C_HDR, h: "center", v: "center" });
+  sc(ws, 2, 6, "Ссылка на Карту", { fill: C_HDR, h: "center", v: "center" });
 
   // ── Row 7: table column headers ─────────────────────────────────
   ws.getRow(7).height = 30;
@@ -2111,19 +2137,18 @@ async function buildMediaPlanBlob() {
     .forEach((h, i) => sc(ws, 7, i + 1, h,
       { bold: true, fill: C_HDR, h: "center", v: "center", wrap: true }));
 
-  // ── Layout: block positions ─────────────────────────────────────
+  // ── Layout: block positions (one block per city) ────────────────
   const SUMMARY_START = 8;
   const nCities  = cities.length;
   const totalRow = SUMMARY_START + nCities;
   const BLOCK_ROWS = 8, BLOCK_GAP = 2;
 
+  // One block per city (format sub-columns within each block)
   const blockStarts = {};
   let curRow = totalRow + 2;
   for (const city of cities) {
-    for (const fmt_ of Object.keys(rfMap[city] || {})) {
-      blockStarts[city + "|||" + fmt_] = curRow;
-      curRow += BLOCK_ROWS + BLOCK_GAP;
-    }
+    blockStarts[city] = curRow;
+    curRow += BLOCK_ROWS + 1 + BLOCK_GAP; // +1 for OTS footnote row
   }
   const citySumRow = {};
   cities.forEach((c, i) => { citySumRow[c] = SUMMARY_START + i; });
@@ -2199,76 +2224,106 @@ async function buildMediaPlanBlob() {
     ws.getCell(totalRow, 6).border = NO_B;
   }
 
-  // ── Detail blocks per (city, format) ────────────────────────────
+  // ── Detail blocks — one per city, format sub-columns at E, F, G… ─
   for (const city of cities) {
-    for (const [fmt_, fmtScr] of Object.entries(rfMap[city] || {})) {
-      const base  = blockStarts[city + "|||" + fmt_];
-      const stats = cfStats[city][fmt_];
-      const fmtU  = fmt_.toUpperCase();
-      const fmtLabel = (fmtU.includes("MEDIAFACADE") || fmtU === "MF") ? "MF" : "BB";
+    const base     = blockStarts[city];
+    const rd       = perReg.find(r => r.region === city) || {};
+    const regBudget = rd.budget  || 0;
+    const regPlays  = rd.plays   || 0;
+    const regOts    = rd.ots     || 0;
+    const regCnt    = rd.screens || cfStats[city] && Object.values(cfStats[city]).reduce((a, v) => a + v.cnt, 0) || 0;
+    const fmts      = Object.keys(rfMap[city] || {});     // format keys for this city
 
-      // Header row: merge A:C, city name in A, format label in E
-      ws.mergeCells(base, 1, base, 3);
-      sc(ws, base, 1, city, { bold: true, fill: C_HDR, h: "center", v: "center" });
-      sc(ws, base, 5, fmtLabel, { bold: true, fill: C_HDR, h: "center", v: "center" });
-      ws.getCell(base, 2).border = TOPBOT;
-      ws.getCell(base, 3).border = TOPBOT_R;
-      ws.getCell(base, 4).border = NO_B;
-      ws.getCell(base, 6).border = NO_B;
+    // Weighted averages for col B (aggregate column)
+    const wtAvgBid = regCnt > 0
+      ? fmts.reduce((a, f) => a + (cfStats[city][f]?.avgBid || 0) * (cfStats[city][f]?.cnt || 0), 0) / regCnt
+      : 0;
+    const wtAvgOts = regCnt > 0
+      ? fmts.reduce((a, f) => a + (cfStats[city][f]?.avgOts || 0) * (cfStats[city][f]?.cnt || 0), 0) / regCnt
+      : 0;
 
-      // base+1: Кол-во экранов
-      sc(ws, base + 1, 1, "Кол-во экранов",      { bold: true, fill: C_LIGHT });
-      sc(ws, base + 1, 2, stats.cnt,              { fill: C_GREEN, numFmt: "#,##0" });
-      sc(ws, base + 1, 5, stats.cnt,              { fill: C_GREEN, numFmt: "#,##0" });
+    // ── Header row: merge A:C = city, D = spacer, E+= format labels ──
+    ws.mergeCells(base, 1, base, 3);
+    sc(ws, base, 1, city, { bold: true, fill: C_HDR, h: "center", v: "center" });
+    ws.getCell(base, 2).border = TOPBOT;
+    ws.getCell(base, 3).border = TOPBOT_R;
+    ws.getCell(base, 4).border = NO_B;
+    fmts.forEach((fmt_, fi) => {
+      sc(ws, base, 5 + fi, fmtLabel(fmt_), { bold: true, fill: C_HDR, h: "center", v: "center" });
+    });
 
-      // base+2: Средняя ставка за показ
-      const rateD = stats.avgBid > 0 ? roundRate(stats.avgBid) : null;
-      sc(ws, base + 2, 1, "Средняя ставка за показ", { bold: true, fill: C_LIGHT });
-      sc(ws, base + 2, 2, rateD,                  { fill: C_GREEN, numFmt: "0.00" });
-      sc(ws, base + 2, 5, rateD,                  { fill: C_GREEN, numFmt: "0.00" });
+    // ── base+1: Кол-во экранов ────────────────────────────────────
+    sc(ws, base + 1, 1, "Кол-во экранов",   { bold: true, fill: C_LIGHT });
+    sc(ws, base + 1, 2, regCnt,             { fill: C_GREEN, numFmt: "#,##0" });
+    fmts.forEach((fmt_, fi) => {
+      sc(ws, base + 1, 5 + fi, cfStats[city][fmt_]?.cnt ?? null, { fill: C_GREEN, numFmt: "#,##0" });
+    });
 
-      // base+3: Средний OTS
-      const otsD = stats.avgOts > 0 ? Math.round(stats.avgOts) : null;
-      sc(ws, base + 3, 1, "Средний OTS",          { bold: true, fill: C_LIGHT });
-      sc(ws, base + 3, 2, otsD,                   { fill: C_GREEN, numFmt: "0" });
-      sc(ws, base + 3, 5, otsD,                   { fill: C_GREEN, numFmt: "0" });
+    // ── base+2: Средняя ставка за показ ──────────────────────────
+    const wtRateD = wtAvgBid > 0 ? +wtAvgBid.toFixed(2) : null;
+    sc(ws, base + 2, 1, "Средняя ставка за показ", { bold: true, fill: C_LIGHT });
+    sc(ws, base + 2, 2, wtRateD,            { fill: C_GREEN, numFmt: "0.00" });
+    fmts.forEach((fmt_, fi) => {
+      const r = cfStats[city][fmt_]?.avgBid > 0 ? roundRate(cfStats[city][fmt_].avgBid) : null;
+      sc(ws, base + 2, 5 + fi, r, { fill: C_GREEN, numFmt: "0.00" });
+    });
 
-      // base+4: График ч/сутки
-      sc(ws, base + 4, 1, "График, ч/сутки",      { bold: true, fill: C_LIGHT, v: "center" });
-      sc(ws, base + 4, 2, hpd,                    { fill: C_GREEN, numFmt: "0", h: "right", v: "center" });
-      sc(ws, base + 4, 3, "7-10, 17-21",          { fill: C_GREEN, size: 9, h: "center", v: "center", wrap: true });
-      sc(ws, base + 4, 5, hpd,                    { fill: C_GREEN, numFmt: "0", h: "right", v: "center" });
+    // ── base+3: Средний OTS* ─────────────────────────────────────
+    const wtOtsD = wtAvgOts > 0 ? +wtAvgOts.toFixed(2) : null;
+    sc(ws, base + 3, 1, "Средний OTS*",     { bold: true, fill: C_LIGHT });
+    sc(ws, base + 3, 2, wtOtsD,             { fill: C_GREEN, numFmt: "0.00" });
+    fmts.forEach((fmt_, fi) => {
+      const o = cfStats[city][fmt_]?.avgOts > 0 ? Math.round(cfStats[city][fmt_].avgOts) : null;
+      sc(ws, base + 3, 5 + fi, o, { fill: C_GREEN, numFmt: "0" });
+    });
 
-      // base+5: Прогноз выходов
-      const playsVal = Math.round(stats.plays);
-      sc(ws, base + 5, 1, "Прогноз кол-ва выходов", { bold: true, fill: C_LIGHT });
-      sc(ws, base + 5, 2, playsVal,               { fill: C_GREEN, numFmt: "#,##0" });
-      sc(ws, base + 5, 5, playsVal,               { fill: C_GREEN, numFmt: "#,##0" });
+    // ── base+4: График ч/сутки ────────────────────────────────────
+    sc(ws, base + 4, 1, "График, ч/сутки", { bold: true, fill: C_LIGHT, v: "center" });
+    sc(ws, base + 4, 2, hpd,               { fill: C_GREEN, numFmt: "0", h: "right", v: "center" });
+    if (schedTxt) sc(ws, base + 4, 3, schedTxt,
+      { fill: C_GREEN, size: 9, h: "center", v: "center", wrap: true });
+    else ws.getCell(base + 4, 3).border = THIN_B;
+    fmts.forEach((_, fi) => {
+      sc(ws, base + 4, 5 + fi, hpd, { fill: C_GREEN, numFmt: "0", h: "right", v: "center" });
+    });
 
-      // base+6: Прогноз OTS
-      ws.getRow(base + 6).height = 24.75;
-      const otsTot = (otsD != null) ? Math.round(playsVal * stats.avgOts) : null;
-      sc(ws, base + 6, 1, "Прогноз кол-ва OTS",  { bold: true, fill: C_LIGHT });
-      sc(ws, base + 6, 2, otsTot,                 { fill: C_GREEN, numFmt: "#,##0" });
-      sc(ws, base + 6, 4, "Не все экраны передают OTS",
-        { size: 9, h: "center", wrap: true, border: false });
-      sc(ws, base + 6, 5, otsTot,                 { fill: C_GREEN, numFmt: "#,##0" });
+    // ── base+5: Прогноз кол-ва выходов ───────────────────────────
+    sc(ws, base + 5, 1, "Прогноз кол-ва выходов", { bold: true, fill: C_LIGHT });
+    sc(ws, base + 5, 2, Math.round(regPlays), { fill: C_GREEN, numFmt: "#,##0" });
+    fmts.forEach((fmt_, fi) => {
+      sc(ws, base + 5, 5 + fi, Math.round(cfStats[city][fmt_]?.plays || 0), { fill: C_GREEN, numFmt: "#,##0" });
+    });
 
-      // base+7: Прогноз бюджета
-      const budVal = Math.round(stats.budget);
-      sc(ws, base + 7, 1, "Прогноз бюджета",      { bold: true, fill: C_LIGHT });
-      sc(ws, base + 7, 2, budVal,                  { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
-      sc(ws, base + 7, 5, budVal,                  { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
+    // ── base+6: Прогноз кол-ва OTS* ──────────────────────────────
+    ws.getRow(base + 6).height = 24.75;
+    sc(ws, base + 6, 1, "Прогноз кол-ва OTS*", { bold: true, fill: C_LIGHT });
+    sc(ws, base + 6, 2, Math.round(regOts) || null, { fill: C_GREEN, numFmt: "#,##0" });
+    fmts.forEach((fmt_, fi) => {
+      const st = cfStats[city][fmt_];
+      const o  = st && st.avgOts > 0 ? Math.round(st.plays * st.avgOts) : null;
+      sc(ws, base + 6, 5 + fi, o, { fill: C_GREEN, numFmt: "#,##0" });
+    });
 
-      // Col C data rows (base+1..base+7): full border
-      for (let dr = base + 1; dr < base + BLOCK_ROWS; dr++) {
-        ws.getCell(dr, 3).border = THIN_B;
-      }
-      // Col D and F (entire block): no border
-      for (let dr = base; dr < base + BLOCK_ROWS + 1; dr++) {
-        ws.getCell(dr, 4).border = NO_B;
-        ws.getCell(dr, 6).border = NO_B;
-      }
+    // ── base+7: Прогноз бюджета ───────────────────────────────────
+    sc(ws, base + 7, 1, "Прогноз бюджета",  { bold: true, fill: C_LIGHT });
+    sc(ws, base + 7, 2, Math.round(regBudget), { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
+    fmts.forEach((fmt_, fi) => {
+      sc(ws, base + 7, 5 + fi, Math.round(cfStats[city][fmt_]?.budget || 0),
+        { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
+    });
+
+    // ── base+8: OTS footnote ──────────────────────────────────────
+    const noteCell = ws.getCell(base + 8, 5);
+    noteCell.value = "*не все экраны передают OTS";
+    noteCell.font  = { italic: true, size: 9, name: "Calibri", color: { argb: "FF555555" } };
+
+    // Col C (base+1..base+7): full border
+    for (let dr = base + 1; dr < base + BLOCK_ROWS; dr++) {
+      ws.getCell(dr, 3).border = THIN_B;
+    }
+    // Col D (entire block + footnote): no border
+    for (let dr = base; dr <= base + BLOCK_ROWS + 1; dr++) {
+      ws.getCell(dr, 4).border = NO_B;
     }
   }
 
