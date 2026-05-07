@@ -6,6 +6,7 @@
   import StepBasicParams  from './steps/StepBasicParams.svelte'
   import StepBudget       from './steps/StepBudget.svelte'
   import StepScreens      from './steps/StepScreens.svelte'
+  import StepBids         from './steps/StepBids.svelte'
   import StepShowSettings from './steps/StepShowSettings.svelte'
   import StepCreatives    from './steps/StepCreatives.svelte'
   import StepPhotos       from './steps/StepPhotos.svelte'
@@ -107,8 +108,9 @@
 
   let currentStep = 'start'
   let completedSteps = {}   // plain object — spread creates new ref, guaranteed reactive
+  let screensView = 'selection'  // 'selection' | 'bids'
 
-  function goToStep(id) { currentStep = id }
+  function goToStep(id) { currentStep = id; if (id !== 'screens') screensView = 'selection' }
 
   function completeStep(id) {
     completedSteps = { ...completedSteps, [id]: true }  // new object → Svelte sees the change
@@ -239,8 +241,22 @@
           </button>
           {#if step.subs.length && (step.status === 'active' || step.status === 'done')}
             <div class="wizard-substeps">
-              {#each step.subs as sub}
-                <button class="wizard-substep">{sub}</button>
+              {#each step.subs as sub, i}
+                <button
+                  class="wizard-substep"
+                  class:wizard-substep-active={
+                    step.id === 'screens' && (
+                      (i === 0 && screensView === 'selection') ||
+                      (i === 1 && screensView === 'bids')
+                    )
+                  }
+                  on:click={() => {
+                    if (step.id === 'screens') {
+                      goToStep('screens')
+                      screensView = i === 0 ? 'selection' : i === 1 ? 'bids' : 'selection'
+                    }
+                  }}
+                >{sub}</button>
               {/each}
             </div>
           {/if}
@@ -285,7 +301,21 @@
     {:else if currentStep === 'budget'}
       <StepBudget bind:draft {metrics} on:next={() => completeStep('budget')} on:back={() => prevStep('budget')} />
     {:else if currentStep === 'screens'}
-      <StepScreens bind:draft on:next={() => completeStep('screens')} on:back={() => prevStep('screens')} />
+      {#if screensView === 'bids'}
+        <StepBids
+          bind:draft
+          on:back={() => screensView = 'selection'}
+          on:next={() => { screensView = 'selection'; completeStep('screens') }}
+          on:save={() => {}}
+        />
+      {:else}
+        <StepScreens
+          bind:draft
+          on:bids={() => screensView = 'bids'}
+          on:next={() => completeStep('screens')}
+          on:back={() => { screensView = 'selection'; prevStep('screens') }}
+        />
+      {/if}
     {:else if currentStep === 'settings'}
       <StepShowSettings bind:draft on:next={() => completeStep('settings')} on:back={() => prevStep('settings')} />
     {:else if currentStep === 'creatives'}

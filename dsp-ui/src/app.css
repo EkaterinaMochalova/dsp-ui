@@ -783,8 +783,9 @@ tbody td {
   font-family: inherit;
   transition: color .1s;
 }
-.wizard-substep:hover  { color: var(--navy); }
-.wizard-substep.active { color: #2563EB; font-weight: 600; }
+.wizard-substep:hover               { color: var(--navy); }
+.wizard-substep.active              { color: #2563EB; font-weight: 600; }
+.wizard-substep.wizard-substep-active { color: #2563EB; font-weight: 600; }
 
 /* Wizard bottom metrics */
 .wizard-metrics {
