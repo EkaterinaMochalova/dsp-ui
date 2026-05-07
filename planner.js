@@ -2065,7 +2065,7 @@ async function buildMediaPlanBlob() {
   const budgetMln = Math.round(netBudget / 1_000_000);
 
   // ── Sheet 1: Расчёт ─────────────────────────────────────────────
-  const ws = wb.addWorksheet(`Расчёт — ${budgetMln} млн`);
+  const ws = wb.addWorksheet("МП");
   ws.getColumn(1).width = 22;
   ws.getColumn(2).width = 14;
   ws.getColumn(3).width = 14;
