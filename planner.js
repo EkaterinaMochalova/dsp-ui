@@ -2292,9 +2292,17 @@ async function buildMediaPlanBlob() {
     cell.value = col.h;
     cell.font  = { bold: true, size: 11, name: "Calibri" };
   });
+  const PHOTO_COL_IDX = AP_COLS.findIndex(c => c.h === "Фото");
   screens.forEach((s, si) => {
     AP_COLS.forEach((col, ci) => {
-      ws2.getCell(si + 2, ci + 1).value = col.fn(s);
+      const cell = ws2.getCell(si + 2, ci + 1);
+      const v = col.fn(s);
+      if (ci === PHOTO_COL_IDX && v) {
+        cell.value = { text: "Фото", hyperlink: String(v) };
+        cell.font  = { size: 11, name: "Calibri", color: { argb: "FF2563EB" }, underline: true };
+      } else {
+        cell.value = v;
+      }
     });
   });
 
