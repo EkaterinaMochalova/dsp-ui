@@ -127,49 +127,47 @@
 
       <!-- Grid -->
       <div class="grid-wrap" on:mouseleave={stopDrag}>
-        <table class="sched-table">
-          <tbody>
-            {#each DAYS as day, d}
-              <tr class="sched-row">
-                <!-- Day label — click to toggle whole day -->
-                <td class="day-label" on:click={() => toggleDay(d)} title="Выбрать/снять {day}">
-                  {day}
-                </td>
-                {#each HOURS as h}
-                  <td class="cell-wrap">
-                    <button
-                      class="sched-cell"
-                      class:cell-on={local[d][h]}
-                      on:mousedown={(e) => cellDown(d, h, e)}
-                      on:mouseenter={() => cellEnter(d, h)}
-                      tabindex="-1"
-                    >
-                      {#if local[d][h]}
-                        <svg class="check-icon" viewBox="0 0 12 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M1 5L4.5 8.5L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                      {/if}
-                    </button>
-                  </td>
-                {/each}
-              </tr>
-            {/each}
-          </tbody>
-          <!-- Hour labels -->
-          <tfoot>
-            <tr class="hour-row">
-              <td></td>
+
+        <!-- Day rows -->
+        {#each DAYS as day, d}
+          <div class="sched-row">
+            <div class="day-label" on:click={() => toggleDay(d)} title="Выбрать/снять {day}">
+              {day}
+            </div>
+            <div class="cells-row">
               {#each HOURS as h}
-                {@const [s, e] = hLabel(h)}
-                <td class="hour-label">
-                  <span class="h-top">{s}</span>
-                  <span class="h-sep">–</span>
-                  <span class="h-bot">{e}</span>
-                </td>
+                <button
+                  class="sched-cell"
+                  class:cell-on={local[d][h]}
+                  on:mousedown={(e) => cellDown(d, h, e)}
+                  on:mouseenter={() => cellEnter(d, h)}
+                  tabindex="-1"
+                >
+                  {#if local[d][h]}
+                    <svg class="check-icon" viewBox="0 0 12 10" fill="none">
+                      <path d="M1 5L4.5 8.5L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  {/if}
+                </button>
               {/each}
-            </tr>
-          </tfoot>
-        </table>
+            </div>
+          </div>
+        {/each}
+
+        <!-- Hour labels row -->
+        <div class="hour-row">
+          <div class="day-spacer"></div>
+          <div class="hours-labels">
+            {#each HOURS as h}
+              {@const [s, e] = hLabel(h)}
+              <div class="hour-label">
+                <span>{s}</span>
+                <span>{e}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+
       </div>
 
     </div><!-- /content-box -->
@@ -268,67 +266,75 @@
   /* ── Grid ── */
   .grid-wrap {
     flex: 1; overflow: auto;
-    padding: 10px 14px 6px;
+    padding: 10px 14px 8px;
     user-select: none; -webkit-user-select: none;
+    display: flex; flex-direction: column; gap: 3px;
   }
-  .sched-table {
-    border-collapse: separate;
-    border-spacing: 3px 4px;
-    width: 100%;
+
+  /* Day row */
+  .sched-row {
+    display: flex; align-items: stretch; gap: 0;
   }
 
   /* Day label */
   .day-label {
-    padding: 0 10px 0 2px;
+    flex-shrink: 0;
+    width: 34px;
+    display: flex; align-items: center; justify-content: flex-end;
+    padding-right: 8px;
     font-size: 13px; font-weight: 600;
     color: #475569; white-space: nowrap;
-    text-align: right; vertical-align: middle;
-    cursor: pointer; min-width: 30px;
+    cursor: pointer;
     transition: color .12s;
   }
   .day-label:hover { color: var(--navy); }
 
-  /* Cell wrapper td */
-  .cell-wrap { padding: 0; }
+  /* Cells row (24 cells) */
+  .cells-row {
+    flex: 1; display: flex; gap: 3px;
+  }
 
-  /* Cell button */
+  /* Each hour cell */
   .sched-cell {
+    flex: 1; height: 36px;
+    min-width: 0;
     display: flex; align-items: center; justify-content: center;
-    width: 100%; height: 36px;
-    min-width: 36px;
     border: 1.5px solid #CBD5E1;
     border-radius: 8px;
     background: #F1F5F9;
     cursor: crosshair;
     color: #94A3B8;
-    transition: background .07s, border-color .07s;
     padding: 0;
+    transition: background .07s, border-color .07s;
   }
   .sched-cell:hover:not(.cell-on) {
     background: #DBEAFE; border-color: #93C5FD;
   }
   .cell-on {
-    background: #BFDBFE; border-color: #60A5FA;
-    color: #1D4ED8;
+    background: #BFDBFE; border-color: #60A5FA; color: #1D4ED8;
   }
-  .cell-on:hover {
-    background: #93C5FD; border-color: #3B82F6;
-  }
+  .cell-on:hover { background: #93C5FD; border-color: #3B82F6; }
 
   .check-icon {
     width: 12px; height: 10px;
     pointer-events: none; flex-shrink: 0;
   }
 
-  /* Hour label row */
-  .hour-row td { padding: 4px 0 2px; vertical-align: top; }
-  .hour-label {
-    text-align: center;
-    display: flex; flex-direction: column; align-items: center;
-    line-height: 1.1;
+  /* Hour labels row */
+  .hour-row {
+    display: flex; align-items: flex-start;
   }
-  .h-top, .h-bot { font-size: 9.5px; color: #94A3B8; font-variant-numeric: tabular-nums; }
-  .h-sep { font-size: 8px; color: #CBD5E1; line-height: 1; }
+  .day-spacer { flex-shrink: 0; width: 34px; }
+  .hours-labels {
+    flex: 1; display: flex; gap: 3px;
+  }
+  .hour-label {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center;
+    font-size: 9px; color: #94A3B8;
+    line-height: 1.3; padding-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
 
   /* ── Footer ── */
   .modal-footer {
