@@ -1975,10 +1975,10 @@ function downloadXLSX(rows) {
 // ===== Медиаплан (красивый XLSX через ExcelJS) =====
 async function buildMediaPlanBlob() {
   const calc = window.PLANNER?.lastCalc;
-  if (!calc) return alert("Сначала нажмите «Рассчитать».");
+  if (!calc) { alert("Сначала нажмите «Рассчитать»."); return null; }
 
   const ExcelJS = window.ExcelJS;
-  if (!ExcelJS) return alert("ExcelJS не загружен — обновите страницу.");
+  if (!ExcelJS) { alert("ExcelJS не загружен — обновите страницу."); return null; }
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "DSP Planner";
@@ -1987,506 +1987,329 @@ async function buildMediaPlanBlob() {
   const meta    = calc.meta    || {};
   const perReg  = calc.perRegion || [];
   const screens = calc.chosen  || [];
-  const fs      = calc.formatStats || {};
 
-  const fmt  = n => Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") : "—";
-  const fmtR = n => Number.isFinite(n) ? Math.round(n).toLocaleString("ru-RU") + " ₽" : "—";
-  const dateStr = s => s ? String(s).split("-").reverse().join(".") : "—";
-
-  const PURPLE    = "5B3EF5";
-  const LIGHT     = "EDE9FD";
-  const GREY      = "F5F5F7";
-  const WHITE     = "FFFFFF";
-  const DARK      = "0B1220";
-  const RED_LIGHT = "FFE4E4";
-  const RED_TEXT  = "CC0000";
-
-  function hdr(ws, row, col, value, opts = {}) {
-    const cell = ws.getCell(row, col);
-    cell.value = value;
-    cell.font  = { bold: true, color: { argb: opts.light ? WHITE : DARK }, size: opts.size || 10 };
-    cell.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: opts.bg || GREY } };
-    cell.alignment = { vertical: "middle", horizontal: opts.center ? "center" : "left", wrapText: true };
-    if (opts.border) {
-      const b = { style: "thin", color: { argb: "CCCCCC" } };
-      cell.border = { top: b, left: b, bottom: b, right: b };
-    }
-    return cell;
-  }
-
-  function val(ws, row, col, value, opts = {}) {
-    const cell = ws.getCell(row, col);
-    cell.value = value;
-    cell.font  = { color: { argb: opts.color || (opts.muted ? "888888" : DARK) }, size: opts.size || 10 };
-    cell.alignment = { vertical: "middle", horizontal: opts.right ? "right" : "left", wrapText: true };
-    if (opts.fill) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill } };
-    if (opts.border) {
-      const b = { style: "thin", color: { argb: "CCCCCC" } };
-      cell.border = { top: b, left: b, bottom: b, right: b };
-    }
-    return cell;
-  }
-
-  // ── Schedule helpers ────────────────────────────────────────────
-  const DOW_RU    = { mon:"пн", tue:"вт", wed:"ср", thu:"чт", fri:"пт", sat:"сб", sun:"вс" };
-  const DOW_ORDER = ["mon","tue","wed","thu","fri","sat","sun"];
-
-  function scheduleToLabel(sch) {
-    if (!sch) return "—";
-    const t = sch.type;
-    if (t === "all_day") return "Весь день (00:00 – 24:00)";
-    if (t === "peak")    return "Прайм (07:00 – 23:00)";
-    if (t === "custom") {
-      const from = sch.from || "00:00", to = sch.to || "24:00";
-      return `${from} – ${to}`;
-    }
-    if (t === "weekly") {
-      if (sch.mode === "global") {
-        const ivs = sch.globalIntervals || [];
-        return ivs.length ? "Еж. " + ivs.map(i => `${i.from}–${i.to}`).join(", ") : "Еженедельно";
-      }
-      const weekly = sch.weekly || {};
-      const groups = [];
-      for (const d of DOW_ORDER) {
-        const ivs = weekly[d] || [];
-        const key = ivs.map(i => `${i.from}–${i.to}`).join(",");
-        if (!key) continue;
-        const idx  = DOW_ORDER.indexOf(d);
-        const last = groups[groups.length - 1];
-        if (last && last.key === key && last.lastIdx === idx - 1) {
-          last.days.push(d); last.lastIdx = idx;
-        } else {
-          groups.push({ key, days: [d], lastIdx: idx, ivs });
-        }
-      }
-      return groups.map(g => {
-        const dayStr = g.days.length === 1
-          ? DOW_RU[g.days[0]]
-          : `${DOW_RU[g.days[0]]}–${DOW_RU[g.days[g.days.length - 1]]}`;
-        const timeStr = g.ivs.map(i => `${i.from}–${i.to}`).join(", ");
-        return `${dayStr} ${timeStr}`;
-      }).join(" / ") || "—";
-    }
-    return "—";
-  }
-
-  function hpdToLabel(sch, hpdAvg) {
-    if (!sch || sch.type !== "weekly" || !sch.weekly) {
-      return Number.isFinite(hpdAvg) ? hpdAvg.toFixed(1) : "—";
-    }
-    const weekly = sch.weekly;
-    const hpds = {};
-    for (const d of DOW_ORDER) {
-      const ivs = weekly[d] || [];
-      if (!ivs.length) continue;
-      let h = 0;
-      for (const iv of ivs) {
-        const [fh = 0, fm = 0] = String(iv.from || "0:0").split(":").map(Number);
-        const [th = 0, tm = 0] = String(iv.to   || "0:0").split(":").map(Number);
-        h += (th + tm / 60) - (fh + fm / 60);
-      }
-      hpds[d] = +(h.toFixed(1));
-    }
-    const groups = [];
-    for (const d of DOW_ORDER) {
-      if (!(d in hpds)) continue;
-      const h = hpds[d], idx = DOW_ORDER.indexOf(d);
-      const last = groups[groups.length - 1];
-      if (last && last.h === h && last.lastIdx === idx - 1) {
-        last.days.push(d); last.lastIdx = idx;
-      } else {
-        groups.push({ h, days: [d], lastIdx: idx });
-      }
-    }
-    return groups.map(g => {
-      const dayStr = g.days.length === 1
-        ? DOW_RU[g.days[0]]
-        : `${DOW_RU[g.days[0]]}–${DOW_RU[g.days[g.days.length - 1]]}`;
-      return `${dayStr}: ${g.h}`;
-    }).join(", ") || (Number.isFinite(hpdAvg) ? hpdAvg.toFixed(1) : "—");
-  }
-
-  const REACH_LABELS = {
-    max_reach: "Максимальный охват",
-    balanced:  "Баланс охват/частота",
-    max_freq:  "Максимальная частота"
-  };
-
-  // ── Download settings ─────────────────────────────────────────
+  // ── Download settings ──────────────────────────────────────────
   const showCommDetail  = !!el("dl-show-commission")?.checked;
   const showVatDetail   = !!el("dl-show-vat")?.checked;
   const splitByOperator = !!el("dl-split-operator")?.checked;
 
-  // ── Budget extras from DOM ──────────────────────────────────────
-  const commOn   = !!el("commission-enabled")?.checked;
-  const commRate = commOn ? Math.max(0, Number(el("commission-rate")?.value || 0)) : 0;
-  // vatOn = true if UI toggle enabled OR if "show VAT detail" is requested in download settings
+  const commOn       = !!el("commission-enabled")?.checked;
+  const commRatePct  = commOn ? Math.max(0, Number(el("commission-rate")?.value || 0)) : 0;
+  const commRate     = commRatePct / 100;
   const vatEnabledUI = !!el("vat-enabled")?.checked;
-  const vatRate  = Math.max(0, Number(el("vat-rate")?.value || 20));
-  const vatOn    = (vatEnabledUI || showVatDetail) && vatRate > 0;
+  const vatRatePct   = Math.max(0, Number(el("vat-rate")?.value || 20));
+  const vatRate      = vatRatePct / 100;
+  const vatOn        = (vatEnabledUI || showVatDetail) && vatRate > 0;
 
-  // brief.budget.amount = net (placement) budget after commission deduction
-  const netBudget   = brief.budget?.amount || meta.totalBudget || 0;
-  const grossBudget = commOn && commRate > 0 ? netBudget * (1 + commRate / 100) : netBudget;
-  const commAmount  = grossBudget - netBudget;
-  const vatAmount   = vatOn && vatRate > 0 ? netBudget * vatRate / 100 : 0;
+  const netBudget = brief.budget?.amount || meta.totalBudget || 0;
+  const days = meta.days || 31;
+  const hpd  = Math.round(meta.hpd || 7);
 
-  const totalPlaysAll = meta.totalPlays || 1;
-  const costPerPlay   = meta.totalBudget > 0 && totalPlaysAll > 0
-    ? Math.round(meta.totalBudget / totalPlaysAll) : null;
+  const dateStr   = s => s ? String(s).split("-").reverse().join(".") : "—";
+  const periodStr = `${dateStr(brief.dates?.start)} — ${dateStr(brief.dates?.end)}`;
 
-  // ── Лист 1: Сводка ─────────────────────────────────────────────
-  const ws1 = wb.addWorksheet("Сводка");
-  ws1.columns = [{ width: 26 }, { width: 32 }, { width: 26 }, { width: 32 }];
+  // ── Colors ──────────────────────────────────────────────────────
+  const C_HDR   = "FFA4C2F4";   // Blue header
+  const C_LIGHT = "FFCFE2F3";   // Blue light
+  const C_GREEN = "FF4CAF50";   // Green (suppressed per Python "Правка 1")
 
-  ws1.mergeCells("A1:D1");
-  const title = ws1.getCell("A1");
-  title.value = "Медиаплан размещения";
-  title.font  = { bold: true, size: 16, color: { argb: WHITE } };
-  title.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: PURPLE } };
-  title.alignment = { vertical: "middle", horizontal: "left" };
-  ws1.getRow(1).height = 36;
+  const THIN_S   = { style: "thin", color: { argb: "FF000000" } };
+  const THIN_B   = { top: THIN_S, left: THIN_S, bottom: THIN_S, right: THIN_S };
+  const TOPBOT   = { top: THIN_S, bottom: THIN_S };
+  const TOPBOT_R = { top: THIN_S, bottom: THIN_S, right: THIN_S };
+  const NO_B     = { top: { style: "none" }, left: { style: "none" }, bottom: { style: "none" }, right: { style: "none" } };
 
-  let r = 3;
-
-  const regionsText = (brief.geo?.regions || brief.selectedRegions || []).join(", ") || "—";
-  const formatsAuto = brief.formats?.mode === "auto";
-  const formatsText = formatsAuto
-    ? "Все форматы"
-    : ((brief.formats?.selected || []).join(", ") || "—");
-  const schLabel    = scheduleToLabel(brief.schedule);
-  const hpdLabel    = hpdToLabel(brief.schedule, meta.hpd);
-  const reachLabel  = REACH_LABELS[brief.reachMode] || brief.reachMode || "—";
-  const bidLabel    = brief.bidMode === "min" ? "Минимальная" : "Рекомендованная";
-
-  const params = [
-    ["Регион(ы)",    regionsText,   "Форматы",      formatsText],
-    ["Период",       `${dateStr(brief.dates?.start)} — ${dateStr(brief.dates?.end)}`,
-                                    "Дней",         meta.days ?? "—"],
-    ["Расписание",   schLabel,      "Часов/день",   hpdLabel],
-    ["Режим ставки", bidLabel,      "Стратегия",    reachLabel],
-  ];
-  for (const [k1, v1, k2, v2] of params) {
-    hdr(ws1, r, 1, k1, { bg: GREY, border: true });
-    val(ws1, r, 2, v1, { border: true });
-    hdr(ws1, r, 3, k2, { bg: GREY, border: true });
-    val(ws1, r, 4, v2, { border: true });
-    ws1.getRow(r).height = 20;
-    r++;
-  }
-
-  // Ссылка на карту всех экранов (HTML-файл скачивается вместе с планом)
-  const mapScreens = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
-  if (mapScreens.length > 0) {
-    hdr(ws1, r, 1, "Карта экранов", { bg: GREY, border: true });
-    ws1.mergeCells(r, 2, r, 4);
-    const mapCell = ws1.getCell(r, 2);
-    mapCell.value = `Скачивается вместе с планом — файл _map.html (${mapScreens.length} экранов)`;
-    mapCell.font = { color: { argb: "888888" }, italic: true, size: 10 };
-    mapCell.alignment = { vertical: "middle", horizontal: "left" };
-    mapCell.border = { top: { style: "thin", color: { argb: "CCCCCC" } }, left: { style: "thin", color: { argb: "CCCCCC" } }, bottom: { style: "thin", color: { argb: "CCCCCC" } }, right: { style: "thin", color: { argb: "CCCCCC" } } };
-    ws1.getRow(r).height = 20;
-    r++;
-  }
-
-  r++;
-  ws1.mergeCells(r, 1, r, 4);
-  hdr(ws1, r, 1, "Итоги кампании", { bg: PURPLE, light: true, size: 12 });
-  ws1.getRow(r).height = 26;
-  r++;
-
-  // Бюджет: с разбивкой по НДС/комиссии (управляется настройками скачивания)
-  const budgetRows = [];
-  if (commOn && commRate > 0 && showCommDetail) {
-    budgetRows.push(["Бюджет размещения", fmtR(netBudget), `Комиссия агентства ${commRate}%`, fmtR(commAmount)]);
-    budgetRows.push(["Итого для клиента (с комиссией)", fmtR(grossBudget), "", ""]);
-  } else if (commOn && commRate > 0) {
-    budgetRows.push(["Бюджет (с комиссией)", fmtR(grossBudget), "", ""]);
-  } else {
-    budgetRows.push(["Бюджет размещения", fmtR(netBudget), "", ""]);
-  }
-  if (vatOn && vatRate > 0 && showVatDetail) {
-    budgetRows.push([`НДС ${vatRate}%`, fmtR(vatAmount), `Итого с НДС`, fmtR(netBudget + vatAmount)]);
-    if (commOn && commRate > 0) {
-      budgetRows.push(["Итого для клиента с НДС", fmtR(grossBudget + vatAmount), "", ""]);
+  // Helper: set cell value + style
+  function sc(ws, row, col, value, opts) {
+    opts = opts || {};
+    const cell = ws.getCell(row, col);
+    cell.value = (value === undefined) ? null : value;
+    const fontObj = { bold: !!opts.bold, size: opts.size || 11, name: "Calibri" };
+    cell.font = fontObj;
+    // Green fill is suppressed (Python "Правка 1": зелёный цвет убран)
+    if (opts.fill && opts.fill !== C_GREEN) {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill } };
     }
-  } else if (vatOn && vatRate > 0) {
-    const totalWithVat = (commOn && commRate > 0 ? grossBudget : netBudget) + vatAmount;
-    budgetRows.push(["Итого с НДС", fmtR(totalWithVat), "", ""]);
+    const alignObj = {};
+    if (opts.h)    alignObj.horizontal = opts.h;
+    if (opts.v)    alignObj.vertical   = opts.v;
+    if (opts.wrap) alignObj.wrapText   = true;
+    if (Object.keys(alignObj).length) cell.alignment = alignObj;
+    if (opts.numFmt) cell.numFmt = opts.numFmt;
+    if (opts.border !== false) cell.border = THIN_B;
+    return cell;
   }
 
-  const totals = [
-    ...budgetRows,
-    ["Экраны",        fmt(screens.length),
-                                     "Стоимость выхода",   costPerPlay != null ? fmtR(costPerPlay) : "—"],
-    ["Выходов всего", fmt(meta.totalPlays),
-                                     "Выходов/день",       fmt(meta.totalPlays / Math.max(1, meta.days || 1))],
-    ["OTS всего",     fmt(meta.totalOts),
-                                     "OTS/день",           fmt(meta.totalOts   / Math.max(1, meta.days || 1))],
-  ];
-  for (const [k1, v1, k2, v2] of totals) {
-    const isFinal = k1.startsWith("Итого для клиента");
-    hdr(ws1, r, 1, k1, { bg: isFinal ? PURPLE : LIGHT, light: isFinal, border: true });
-    const vCell = val(ws1, r, 2, v1, { border: true });
-    if (isFinal) { vCell.font = { bold: true, color: { argb: DARK }, size: 11 }; }
-    if (k2) { hdr(ws1, r, 3, k2, { bg: isFinal ? PURPLE : LIGHT, light: isFinal, border: true }); }
-    if (v2) { val(ws1, r, 4, v2, { border: true }); }
-    ws1.getRow(r).height = isFinal ? 24 : 20;
-    r++;
+  // Round rate: frac ≥ 0.8 → floor + 1.5; frac > 0 → ceil; else x
+  function roundRate(x) {
+    if (!x || !isFinite(x)) return x;
+    const frac = x - Math.floor(x);
+    if (frac >= 0.8 - 1e-9) return Math.floor(x) + 1.5;
+    if (frac > 0) return Math.ceil(x);
+    return x;
   }
 
-  // ── Лист 2: По регионам и форматам (иерархически) ────────────────
-  const ws2 = wb.addWorksheet("По регионам");
-  const showVatCol = showVatDetail && vatOn && vatRate > 0;
-  const vatFactor  = 1 + vatRate / 100;
-  const budgetHdr  = showVatCol ? "Бюджет без НДС, ₽" : "Бюджет, ₽";
-  const ws2ColDefs = showVatCol
-    ? [{ width: 32 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 14 }]
-    : [{ width: 32 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 14 }, { width: 14 }];
-  ws2.columns = ws2ColDefs;
-  const bidColHdr = brief.bidMode === "min" ? "Ср. ставка (мин), ₽" : "Ср. ставка (реко), ₽";
-  const ws2Headers = ["Регион / Формат", "Экранов", "Выходов всего", "Выходов/день", budgetHdr, "OTS всего", "OTS/выход (ср.)", bidColHdr];
-  if (showVatCol) ws2Headers.splice(5, 0, `Бюджет с НДС ${vatRate}%, ₽`);
-  ws2Headers.forEach((h, i) => {
-    hdr(ws2, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
-  });
-  ws2.getRow(1).height = 22;
-
-  // Build region→format→[screens] map
-  const rfMap = {}; // region → format → screens[]
-  const bidKey = brief.bidMode === "min" ? "minBid" : "recoBid";
+  // ── Group screens by region → format ───────────────────────────
+  const rfMap = {};
   for (const s of screens) {
-    const reg = String(s.region || s.city || "—").trim();
+    const reg  = String(s.region || s.city || "—").trim();
     const fmt_ = String(s.format || "—").trim();
     if (!rfMap[reg]) rfMap[reg] = {};
     if (!rfMap[reg][fmt_]) rfMap[reg][fmt_] = [];
     rfMap[reg][fmt_].push(s);
   }
 
-  let ws2Row = 2;
-  const perRegSorted = [...perReg].sort((a, b) => (b.budget || 0) - (a.budget || 0));
+  // Cities in perRegion order (only those present in rfMap)
+  const cities   = perReg.map(r => r.region).filter(c => rfMap[c]);
+  const allFmts  = [...new Set(cities.flatMap(c => Object.keys(rfMap[c] || {})))];
+  const budgetMln = Math.round(netBudget / 1_000_000);
 
-  for (const reg of perRegSorted) {
-    const regionName = reg.region || "—";
-    const regionScreens = reg.screens || 0;
-    const regionBudget  = reg.budget  || 0;
-    const regionPlays   = reg.plays   || 0;
-    const regionOts     = reg.ots     || 0;
-    const playsPerDay   = meta.days > 0 ? Math.round(regionPlays / meta.days) : 0;
+  // ── Sheet 1: Расчёт ─────────────────────────────────────────────
+  const ws = wb.addWorksheet(`Расчёт — ${budgetMln} млн`);
+  ws.getColumn(1).width = 22;
+  ws.getColumn(2).width = 14;
+  ws.getColumn(3).width = 14;
+  ws.getColumn(4).width = 22;
+  ws.getColumn(5).width = 18;
+  ws.getColumn(6).width = 18;
 
-    // Region header row
-    ws2.mergeCells(ws2Row, 1, ws2Row, showVatCol ? 9 : 8);
-    const regionCell = ws2.getCell(ws2Row, 1);
-    regionCell.value = regionName;
-    regionCell.font  = { bold: true, size: 11, color: { argb: WHITE } };
-    regionCell.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: PURPLE } };
-    regionCell.alignment = { vertical: "middle", horizontal: "left", indent: 0 };
-    ws2.getRow(ws2Row).height = 22;
-    ws2Row++;
+  // ── Rows 1-5: meta header ────────────────────────────────────────
+  const metaRows = [
+    ["Период размещения",  periodStr],
+    ["Город",              cities.join(", ") || "—"],
+    ["Адресная программа", screens.length],
+    ["Формат",             allFmts.join(", ") || "—"],
+    ["Количество дней",    days],
+  ];
+  for (let i = 0; i < metaRows.length; i++) {
+    const r = i + 1;
+    const [label, value] = metaRows[i];
+    sc(ws, r, 1, label, { bold: true, fill: C_HDR });
+    const bCell = ws.getCell(r, 2);
+    bCell.value = value;
+    bCell.alignment = { horizontal: "right" };
+    bCell.border = THIN_B;
+    // Cols C-F: no border
+    for (let c = 3; c <= 6; c++) ws.getCell(r, c).border = NO_B;
+  }
+  // Row 2 extra: map/campaign links
+  sc(ws, 2, 4, "Ссылка на карту", { fill: C_HDR, h: "center", v: "center" });
+  sc(ws, 2, 5, "Ссылка на РК",    { fill: C_HDR, h: "center", v: "center" });
 
-    // Avg bid for region (all screens in region)
-    const regionBids = (Object.values(rfMap[regionName] || {})).flat().map(s => {
-      const b = brief.bidMode === "min" ? s.minBid : (s.recoBid || s.minBid);
-      return Number.isFinite(b) && b > 0 ? b : null;
-    }).filter(b => b != null);
-    const regionAvgBid = regionBids.length > 0
-      ? regionBids.reduce((a, b) => a + b, 0) / regionBids.length : null;
+  // ── Row 7: table column headers ─────────────────────────────────
+  ws.getRow(7).height = 30;
+  let hdrE = "", hdrF = "";
+  if (commOn && commRate > 0 && vatOn) {
+    hdrE = `Прогноз бюджета + комиссия ${commRatePct}%`;
+    hdrF = `Прогноз бюджета + комиссия + НДС ${vatRatePct}%`;
+  } else if (commOn && commRate > 0) {
+    hdrE = `Прогноз бюджета + комиссия ${commRatePct}%`;
+  } else if (vatOn) {
+    hdrE = `Прогноз бюджета + НДС ${vatRatePct}%`;
+  }
+  ["Город", "Прогноз кол-ва выходов", "Прогноз кол-ва OTS", "Прогноз бюджета", hdrE, hdrF]
+    .forEach((h, i) => sc(ws, 7, i + 1, h,
+      { bold: true, fill: C_HDR, h: "center", v: "center", wrap: true }));
 
-    // Region totals row
-    const regionRow = [
-      "  Итого по региону",
-      fmt(regionScreens),
-      fmt(regionPlays),
-      fmt(playsPerDay),
-      Math.round(regionBudget).toLocaleString("ru-RU"),
-    ];
-    if (showVatCol) regionRow.push(Math.round(regionBudget * vatFactor).toLocaleString("ru-RU"));
-    regionRow.push(
-      Number.isFinite(regionOts) && regionOts > 0 ? fmt(regionOts) : "—",
-      "—",
-      regionAvgBid != null ? regionAvgBid.toFixed(2) : "—",
-    );
-    regionRow.forEach((c, ci) => {
-      const cell = val(ws2, ws2Row, ci + 1, c, { fill: LIGHT, border: true, right: ci >= 1 });
-      cell.font = { bold: true, color: { argb: DARK }, size: 10 };
-    });
-    ws2.getRow(ws2Row).height = 18;
-    ws2Row++;
+  // ── Layout: block positions ─────────────────────────────────────
+  const SUMMARY_START = 8;
+  const nCities  = cities.length;
+  const totalRow = SUMMARY_START + nCities;
+  const BLOCK_ROWS = 8, BLOCK_GAP = 2;
 
-    // Format rows
-    const fmtGroups = rfMap[regionName] || {};
-    const sortedFmts = Object.entries(fmtGroups).sort((a, b) => b[1].length - a[1].length);
+  const blockStarts = {};
+  let curRow = totalRow + 2;
+  for (const city of cities) {
+    for (const fmt_ of Object.keys(rfMap[city] || {})) {
+      blockStarts[city + "|||" + fmt_] = curRow;
+      curRow += BLOCK_ROWS + BLOCK_GAP;
+    }
+  }
+  const citySumRow = {};
+  cities.forEach((c, i) => { citySumRow[c] = SUMMARY_START + i; });
 
-    sortedFmts.forEach(([fmtName, fmtScreens], fi) => {
-      const weight = regionScreens > 0 ? fmtScreens.length / regionScreens : 0;
-      const fmtBudget = regionBudget * weight;
-      const fmtPlays  = regionPlays  * weight;
-      const fmtPlaysDay = meta.days > 0 ? Math.round(fmtPlays / meta.days) : 0;
-      const fmtOts    = regionOts    * weight;
-
-      // Avg bid for this format
-      const bids = fmtScreens.map(s => {
+  // ── Per-(city, format) aggregated stats ─────────────────────────
+  const cfStats = {};
+  for (const city of cities) {
+    const rd = perReg.find(r => r.region === city) || {};
+    const regBudget  = rd.budget  || 0;
+    const regPlays   = rd.plays   || 0;
+    const regOts     = rd.ots     || 0;
+    const regCnt     = rd.screens || Object.values(rfMap[city] || {}).reduce((a, v) => a + v.length, 0);
+    cfStats[city] = {};
+    for (const [fmt_, fmtScr] of Object.entries(rfMap[city] || {})) {
+      const w = regCnt > 0 ? fmtScr.length / regCnt : (1 / Object.keys(rfMap[city]).length);
+      const bids = fmtScr.map(s => {
         const b = brief.bidMode === "min" ? s.minBid : (s.recoBid || s.minBid);
         return Number.isFinite(b) && b > 0 ? b : null;
-      }).filter(b => b != null);
-      const avgBid = bids.length > 0 ? bids.reduce((a, b) => a + b, 0) / bids.length : null;
-
-      // Avg OTS/play
-      const otsVals = fmtScreens.map(s => Number.isFinite(s.ots) && s.ots > 0 ? s.ots : null).filter(x => x != null);
-      const avgOts  = otsVals.length > 0 ? otsVals.reduce((a, b) => a + b, 0) / otsVals.length : null;
-
-      const fill = fi % 2 === 0 ? WHITE : GREY;
-      const fmtRow = [
-        "    " + fmtName,
-        fmt(fmtScreens.length),
-        fmt(Math.round(fmtPlays)),
-        fmt(fmtPlaysDay),
-        Math.round(fmtBudget).toLocaleString("ru-RU"),
-      ];
-      if (showVatCol) fmtRow.push(Math.round(fmtBudget * vatFactor).toLocaleString("ru-RU"));
-      fmtRow.push(
-        Number.isFinite(fmtOts) && fmtOts > 0 ? fmt(Math.round(fmtOts)) : "—",
-        avgOts != null ? fmt(Math.round(avgOts)) : "—",
-        avgBid != null ? avgBid.toFixed(2) : "—",
-      );
-      fmtRow.forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill, border: true, right: ci >= 1 }));
-      ws2.getRow(ws2Row).height = 17;
-      ws2Row++;
-
-      // Operator sub-rows
-      if (splitByOperator) {
-        const byOwner = {};
-        for (const s of fmtScreens) {
-          const owner = String(s.owner || "—").trim();
-          if (!byOwner[owner]) byOwner[owner] = [];
-          byOwner[owner].push(s);
-        }
-        const sortedOwners = Object.entries(byOwner).sort((a, b) => b[1].length - a[1].length);
-        sortedOwners.forEach(([ownerName, ownerScreens]) => {
-          const ownerWeight = fmtScreens.length > 0 ? ownerScreens.length / fmtScreens.length : 0;
-          const ownerBudget = fmtBudget * ownerWeight;
-          const ownerPlays  = fmtPlays  * ownerWeight;
-          const ownerPlaysDay = meta.days > 0 ? Math.round(ownerPlays / meta.days) : 0;
-          const ownerOts    = fmtOts    * ownerWeight;
-          const ownerBids   = ownerScreens.map(s => {
-            const b = brief.bidMode === "min" ? s.minBid : (s.recoBid || s.minBid);
-            return Number.isFinite(b) && b > 0 ? b : null;
-          }).filter(b => b != null);
-          const ownerAvgBid = ownerBids.length > 0 ? ownerBids.reduce((a, b) => a + b, 0) / ownerBids.length : null;
-          const ownerOtsVals = ownerScreens.map(s => Number.isFinite(s.ots) && s.ots > 0 ? s.ots : null).filter(x => x != null);
-          const ownerAvgOts  = ownerOtsVals.length > 0 ? ownerOtsVals.reduce((a, b) => a + b, 0) / ownerOtsVals.length : null;
-          const ownerRow = [
-            "        " + ownerName,
-            fmt(ownerScreens.length),
-            fmt(Math.round(ownerPlays)),
-            fmt(ownerPlaysDay),
-            Math.round(ownerBudget).toLocaleString("ru-RU"),
-          ];
-          if (showVatCol) ownerRow.push(Math.round(ownerBudget * vatFactor).toLocaleString("ru-RU"));
-          ownerRow.push(
-            Number.isFinite(ownerOts) && ownerOts > 0 ? fmt(Math.round(ownerOts)) : "—",
-            ownerAvgOts != null ? fmt(Math.round(ownerAvgOts)) : "—",
-            ownerAvgBid != null ? ownerAvgBid.toFixed(2) : "—",
-          );
-          ownerRow.forEach((c, ci) => val(ws2, ws2Row, ci + 1, c, { fill: WHITE, border: true, right: ci >= 1, muted: ci === 0 }));
-          ws2.getRow(ws2Row).height = 16;
-          ws2Row++;
-        });
-      }
-    });
-
-    // Empty separator row
-    ws2.getRow(ws2Row).height = 6;
-    ws2Row++;
+      }).filter(Boolean);
+      const avgBid = bids.length ? bids.reduce((a, b) => a + b, 0) / bids.length : 0;
+      const otsArr = fmtScr.map(s => Number.isFinite(s.ots) && s.ots > 0 ? s.ots : null).filter(Boolean);
+      const avgOts = otsArr.length ? otsArr.reduce((a, b) => a + b, 0) / otsArr.length : 0;
+      cfStats[city][fmt_] = {
+        cnt: fmtScr.length, avgBid, avgOts,
+        plays:  regPlays  * w,
+        budget: regBudget * w,
+        ots:    regOts    * w,
+      };
+    }
   }
 
-  // ── Лист 3: Экраны ────────────────────────────────────────────
-  const ws3 = wb.addWorksheet("Экраны");
-  const bidColLabel = brief.bidMode === "min" ? "Мин. ставка, ₽" : "Реко. ставка, ₽";
-  ws3.columns = [
-    { width: 18 }, { width: 16 }, { width: 18 }, { width: 40 },
-    { width: 20 }, { width: 10 }, { width: 10 }, { width: 14 },
-    { width: 14 }, { width: 16 }, { width: 14 }, { width: 14 }, { width: 40 }, { width: 16 }
-  ];
-  [
-    "GID", "Формат", "Город", "Адрес", "Оператор",
-    "Широта", "Долгота", bidColLabel,
-    "OTS/выход", "Разрешение", "Соотн. сторон", "Сторона", "Фото", "На карте"
-  ].forEach((h, i) => {
-    hdr(ws3, 1, i + 1, h, { bg: PURPLE, light: true, center: true, border: true });
-  });
-  ws3.getRow(1).height = 22;
-
-  screens.forEach((s, i) => {
-    const rowIdx = i + 2;
-
-    // Bid value based on selected mode
-    const bidVal = brief.bidMode === "min"
-      ? (Number.isFinite(s.minBid)  && s.minBid  > 0 ? s.minBid  : null)
-      : (Number.isFinite(s.recoBid) && s.recoBid > 0 ? s.recoBid
-          : (Number.isFinite(s.minBid) && s.minBid > 0 ? s.minBid : null));
-    const noBid = bidVal == null;
-    const fill  = noBid ? RED_LIGHT : (i % 2 === 0 ? WHITE : GREY);
-
-    // Aspect ratio — already computed in mapDspInventory
-    const aspectRatio = s.aspectRatio || "";
-
-    const hasCoords = Number.isFinite(s.lat) && Number.isFinite(s.lon);
-    const mapLink = hasCoords
-      ? `https://yandex.ru/maps/?ll=${s.lon.toFixed(6)},${s.lat.toFixed(6)}&z=17&pt=${s.lon.toFixed(6)},${s.lat.toFixed(6)}`
-      : "";
-
-    [
-      s.screen_id ?? "", s.format ?? "", s.city ?? "", s.address ?? "",
-      s.owner ?? "",
-      Number.isFinite(s.lat) ? +s.lat.toFixed(6) : "",
-      Number.isFinite(s.lon) ? +s.lon.toFixed(6) : "",
-      bidVal != null ? +bidVal.toFixed(2) : "",
-      Number.isFinite(s.ots) ? Math.round(s.ots) : "",
-      s.resolution ?? "",
-      aspectRatio,
-      s.side    ?? "",
-      s.image_url ?? "",
-      mapLink
-    ].forEach((c, ci) => {
-      const cell = val(ws3, rowIdx, ci + 1, c, { fill, border: true });
-      if (ci === 12 && c) {  // Фото — гиперссылка
-        cell.value = { text: "Фото", hyperlink: String(c) };
-        cell.font  = { color: { argb: "2563EB" }, underline: true, size: 10 };
-      }
-      if (ci === 13 && c) {  // На карте — гиперссылка
-        cell.value = { text: "Открыть", hyperlink: String(c) };
-        cell.font  = { color: { argb: "2563EB" }, underline: true, size: 10 };
-        cell.alignment = { horizontal: "center", vertical: "middle" };
-      }
-    });
-
-    // No-bid: red text + note
-    if (noBid) {
-      const bidCell = ws3.getCell(rowIdx, 8);
-      bidCell.value = "нет эфира";
-      bidCell.font  = { color: { argb: RED_TEXT }, bold: true, size: 10 };
-      try {
-        bidCell.note = "Нет эфира в настоящий момент — ставка отсутствует";
-      } catch {}
+  // ── City summary rows (rows 8..8+n-1) ───────────────────────────
+  for (const city of cities) {
+    const r  = citySumRow[city];
+    const rd = perReg.find(x => x.region === city) || {};
+    const b  = rd.budget || 0, p = rd.plays || 0, o = rd.ots || 0;
+    sc(ws, r, 1, city, { bold: true, fill: C_LIGHT });
+    sc(ws, r, 2, Math.round(p), { fill: C_LIGHT, numFmt: "#,##0" });
+    sc(ws, r, 3, Math.round(o), { fill: C_LIGHT, numFmt: "#,##0" });
+    sc(ws, r, 4, Math.round(b), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+    if (commOn && commRate > 0) {
+      const wc = b * (1 + commRate);
+      sc(ws, r, 5, Math.round(wc), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+      if (vatOn) sc(ws, r, 6, Math.round(wc * (1 + vatRate)), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+      else ws.getCell(r, 6).border = NO_B;
+    } else if (vatOn) {
+      sc(ws, r, 5, Math.round(b * (1 + vatRate)), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+      ws.getCell(r, 6).border = NO_B;
+    } else {
+      ws.getCell(r, 5).border = NO_B;
+      ws.getCell(r, 6).border = NO_B;
     }
+  }
 
-    ws3.getRow(rowIdx).height = 16;
+  // ── Итого row ────────────────────────────────────────────────────
+  const totB = perReg.reduce((a, r) => a + (r.budget || 0), 0);
+  const totP = perReg.reduce((a, r) => a + (r.plays  || 0), 0);
+  const totO = perReg.reduce((a, r) => a + (r.ots    || 0), 0);
+  sc(ws, totalRow, 1, "итого", { bold: true, fill: C_HDR, h: "right" });
+  sc(ws, totalRow, 2, Math.round(totP), { bold: true, fill: C_HDR, numFmt: "#,##0" });
+  sc(ws, totalRow, 3, Math.round(totO), { bold: true, fill: C_HDR, numFmt: "#,##0" });
+  sc(ws, totalRow, 4, Math.round(totB), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+  if (commOn && commRate > 0) {
+    const twc = totB * (1 + commRate);
+    sc(ws, totalRow, 5, Math.round(twc), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+    if (vatOn) sc(ws, totalRow, 6, Math.round(twc * (1 + vatRate)), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+    else ws.getCell(totalRow, 6).border = NO_B;
+  } else if (vatOn) {
+    sc(ws, totalRow, 5, Math.round(totB * (1 + vatRate)), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+    ws.getCell(totalRow, 6).border = NO_B;
+  } else {
+    ws.getCell(totalRow, 5).border = NO_B;
+    ws.getCell(totalRow, 6).border = NO_B;
+  }
+
+  // ── Detail blocks per (city, format) ────────────────────────────
+  for (const city of cities) {
+    for (const [fmt_, fmtScr] of Object.entries(rfMap[city] || {})) {
+      const base  = blockStarts[city + "|||" + fmt_];
+      const stats = cfStats[city][fmt_];
+      const fmtU  = fmt_.toUpperCase();
+      const fmtLabel = (fmtU.includes("MEDIAFACADE") || fmtU === "MF") ? "MF" : "BB";
+
+      // Header row: merge A:C, city name in A, format label in E
+      ws.mergeCells(base, 1, base, 3);
+      sc(ws, base, 1, city, { bold: true, fill: C_HDR, h: "center", v: "center" });
+      sc(ws, base, 5, fmtLabel, { bold: true, fill: C_HDR, h: "center", v: "center" });
+      ws.getCell(base, 2).border = TOPBOT;
+      ws.getCell(base, 3).border = TOPBOT_R;
+      ws.getCell(base, 4).border = NO_B;
+      ws.getCell(base, 6).border = NO_B;
+
+      // base+1: Кол-во экранов
+      sc(ws, base + 1, 1, "Кол-во экранов",      { bold: true, fill: C_LIGHT });
+      sc(ws, base + 1, 2, stats.cnt,              { fill: C_GREEN, numFmt: "#,##0" });
+      sc(ws, base + 1, 5, stats.cnt,              { fill: C_GREEN, numFmt: "#,##0" });
+
+      // base+2: Средняя ставка за показ
+      const rateD = stats.avgBid > 0 ? roundRate(stats.avgBid) : null;
+      sc(ws, base + 2, 1, "Средняя ставка за показ", { bold: true, fill: C_LIGHT });
+      sc(ws, base + 2, 2, rateD,                  { fill: C_GREEN, numFmt: "0.00" });
+      sc(ws, base + 2, 5, rateD,                  { fill: C_GREEN, numFmt: "0.00" });
+
+      // base+3: Средний OTS
+      const otsD = stats.avgOts > 0 ? Math.round(stats.avgOts) : null;
+      sc(ws, base + 3, 1, "Средний OTS",          { bold: true, fill: C_LIGHT });
+      sc(ws, base + 3, 2, otsD,                   { fill: C_GREEN, numFmt: "0" });
+      sc(ws, base + 3, 5, otsD,                   { fill: C_GREEN, numFmt: "0" });
+
+      // base+4: График ч/сутки
+      sc(ws, base + 4, 1, "График, ч/сутки",      { bold: true, fill: C_LIGHT, v: "center" });
+      sc(ws, base + 4, 2, hpd,                    { fill: C_GREEN, numFmt: "0", h: "right", v: "center" });
+      sc(ws, base + 4, 3, "7-10, 17-21",          { fill: C_GREEN, size: 9, h: "center", v: "center", wrap: true });
+      sc(ws, base + 4, 5, hpd,                    { fill: C_GREEN, numFmt: "0", h: "right", v: "center" });
+
+      // base+5: Прогноз выходов
+      const playsVal = Math.round(stats.plays);
+      sc(ws, base + 5, 1, "Прогноз кол-ва выходов", { bold: true, fill: C_LIGHT });
+      sc(ws, base + 5, 2, playsVal,               { fill: C_GREEN, numFmt: "#,##0" });
+      sc(ws, base + 5, 5, playsVal,               { fill: C_GREEN, numFmt: "#,##0" });
+
+      // base+6: Прогноз OTS
+      ws.getRow(base + 6).height = 24.75;
+      const otsTot = (otsD != null) ? Math.round(playsVal * stats.avgOts) : null;
+      sc(ws, base + 6, 1, "Прогноз кол-ва OTS",  { bold: true, fill: C_LIGHT });
+      sc(ws, base + 6, 2, otsTot,                 { fill: C_GREEN, numFmt: "#,##0" });
+      sc(ws, base + 6, 4, "Не все экраны передают OTS",
+        { size: 9, h: "center", wrap: true, border: false });
+      sc(ws, base + 6, 5, otsTot,                 { fill: C_GREEN, numFmt: "#,##0" });
+
+      // base+7: Прогноз бюджета
+      const budVal = Math.round(stats.budget);
+      sc(ws, base + 7, 1, "Прогноз бюджета",      { bold: true, fill: C_LIGHT });
+      sc(ws, base + 7, 2, budVal,                  { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
+      sc(ws, base + 7, 5, budVal,                  { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
+
+      // Col C data rows (base+1..base+7): full border
+      for (let dr = base + 1; dr < base + BLOCK_ROWS; dr++) {
+        ws.getCell(dr, 3).border = THIN_B;
+      }
+      // Col D and F (entire block): no border
+      for (let dr = base; dr < base + BLOCK_ROWS + 1; dr++) {
+        ws.getCell(dr, 4).border = NO_B;
+        ws.getCell(dr, 6).border = NO_B;
+      }
+    }
+  }
+
+  // ── Sheet 2: АП ─────────────────────────────────────────────────
+  const ws2 = wb.addWorksheet("АП");
+  const AP_COLS = [
+    { h: "ИД",                 w: 12, fn: s => s.screen_id ?? "" },
+    { h: "GID",                w: 25, fn: s => s.gid        ?? "" },
+    { h: "Город",              w: 22, fn: s => s.city       ?? "" },
+    { h: "Оператор",           w: 22, fn: s => s.owner      ?? "" },
+    { h: "Адрес",              w: 50, fn: s => s.address    ?? "" },
+    { h: "Сторона",            w: 10, fn: s => s.side       ?? "" },
+    { h: "Формат экрана",      w: 18, fn: s => s.format     ?? "" },
+    { h: "Вид. разрешение",    w: 20, fn: s => s.resolution ?? "" },
+    { h: "Соотношение сторон", w: 20, fn: s => s.aspectRatio ?? "" },
+    { h: "Фото",               w: 40, fn: s => s.image_url  ?? "" },
+  ];
+  AP_COLS.forEach((col, i) => {
+    ws2.getColumn(i + 1).width = col.w;
+    const cell = ws2.getCell(1, i + 1);
+    cell.value = col.h;
+    cell.font  = { bold: true, size: 11, name: "Calibri" };
+  });
+  screens.forEach((s, si) => {
+    AP_COLS.forEach((col, ci) => {
+      ws2.getCell(si + 2, ci + 1).value = col.fn(s);
+    });
   });
 
+  // ── Export ──────────────────────────────────────────────────────
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+  const dateFile = s => s ? String(s).split("-").reverse().join(".") : "plan";
+  const baseName = `mediaplan_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateFile(brief.dates?.start)}`;
 
-  // Сохранение XLSX
-  const buf      = await wb.xlsx.writeBuffer();
-  const mimeXlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  const blob     = new Blob([buf], { type: mimeXlsx });
-  const baseName = `mediaplan_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateStr(brief.dates?.start)}`;
-  const filename = baseName + ".xlsx";
-
-  // HTML-карта всех экранов
-  const mapScreens2 = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
-  let mapBlob = null;
-  let mapFilename = null;
-  if (mapScreens2.length > 0) {
+  // HTML map of all screens
+  const mapScreensList = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
+  let mapBlob = null, mapFilename = null;
+  if (mapScreensList.length > 0) {
     const regionLabel = (brief.geo?.regions || brief.selectedRegions || []).join(", ") || "план";
     const mapHtml = buildMapHtml(screens, regionLabel);
     if (mapHtml) {
@@ -2495,7 +2318,7 @@ async function buildMediaPlanBlob() {
     }
   }
 
-  return { blob, filename, mapBlob, mapFilename };
+  return { blob, filename: baseName + ".xlsx", mapBlob, mapFilename };
 }
 
 async function downloadMediaPlan() {
