@@ -4,6 +4,7 @@
   import 'leaflet/dist/leaflet.css'
   import { api } from '../../lib/api.js'
   import { formatMoney } from '../../lib/utils.js'
+  import ScheduleModal from '../../components/ScheduleModal.svelte'
 
   // Persist cache on window so it survives HMR reloads and component re-mounts.
   // Version bump forces cache invalidation when mapInventory fields change.
@@ -14,6 +15,14 @@
   export let draft
 
   if (!draft.screenIds) draft.screenIds = []
+  if (!draft.schedule)  draft.schedule  = null   // bool[7][24], null = all hours
+
+  // ── Schedule modal ────────────────────────────────────────────────────
+  let scheduleOpen = false
+  function onScheduleSave(e) {
+    draft.schedule = e.detail
+    scheduleOpen = false
+  }
 
   // Map
   let mapEl
@@ -1193,7 +1202,8 @@
         </svg>
         Ставка
       </button>
-      <button class="nav-action-btn">
+      <button class="nav-action-btn" class:nav-action-btn-active={draft.schedule != null}
+          on:click={() => scheduleOpen = true}>
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
         </svg>
@@ -1203,6 +1213,15 @@
     <button class="btn-next" on:click={() => dispatch('bids')}>Ставки →</button>
   </div>
 </div>
+
+<!-- ── Schedule modal ── -->
+{#if scheduleOpen}
+  <ScheduleModal
+    schedule={draft.schedule}
+    on:save={onScheduleSave}
+    on:cancel={() => scheduleOpen = false}
+  />
+{/if}
 
 <style>
   .screens-shell {
@@ -1759,6 +1778,8 @@
     font-weight: 500;
   }
   .nav-action-btn:hover { background: var(--bg); border-color: var(--navy); color: var(--navy); }
+  .nav-action-btn-active { background: #EFF6FF; border-color: #2563EB; color: #2563EB; }
+  .nav-action-btn-active:hover { background: #DBEAFE; }
 
   /* ── Range filter ── */
   .range-drop {
