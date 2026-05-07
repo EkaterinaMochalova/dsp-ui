@@ -65,6 +65,11 @@
     local = local
   }
 
+  function toggleHour(h) {
+    const allOn = local.every(row => row[h])
+    local = local.map(row => { const r = [...row]; r[h] = !allOn; return r })
+  }
+
   // Additive fill for a list of hour indices (handles wrapping / multiple ranges)
   function applyHours(hours) {
     const set = new Set(hours)
@@ -160,7 +165,7 @@
           <div class="hours-labels">
             {#each HOURS as h}
               {@const [s, e] = hLabel(h)}
-              <div class="hour-label">
+              <div class="hour-label" on:click={() => toggleHour(h)} title="Выбрать/снять {s}–{e}">
                 <span>{s}</span>
                 <span>{e}</span>
               </div>
@@ -334,7 +339,10 @@
     font-size: 9px; color: #94A3B8;
     line-height: 1.3; padding-top: 4px;
     font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: color .12s;
   }
+  .hour-label:hover { color: var(--navy); }
 
   /* ── Footer ── */
   .modal-footer {
