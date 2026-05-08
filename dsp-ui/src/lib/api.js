@@ -89,23 +89,12 @@ export const api = {
   },
 
   creatives: {
-    async list(params = {}) {
+    list(params = {}) {
       const q = new URLSearchParams({ page: 0, size: 100, ...params })
-      // Try known paths in order; return first success
-      const paths = [
-        `/clients/layouts?${q}`,
-        `/clients/layout-documents?${q}`,
-        `/clients/creatives?${q}`,
-      ]
-      for (const path of paths) {
-        try {
-          const res = await request(path)
-          return res
-        } catch (e) {
-          if (e?.status !== 404) throw e
-        }
-      }
-      throw { status: 404 }
+      return request(`/clients/creative-names?${q}`)
+    },
+    listForCampaign(campaignId) {
+      return request(`/clients/campaigns/${campaignId}/creative-names`)
     },
     upload(file, name, duration, customerId) {
       const fd = new FormData()
@@ -114,7 +103,7 @@ export const api = {
       if (duration)   fd.append('duration', duration)
       if (customerId) fd.append('customerId', customerId)
       const token = getToken()
-      return fetch(`${BASE}/clients/creatives`, {
+      return fetch(`${BASE}/clients/creative-names`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,
