@@ -102,56 +102,58 @@
   </p>
 
   <!-- Budget table -->
-  <div class="step-card" style="padding:0;overflow:hidden">
+  <div class="budget-card">
     <table class="budget-table">
+      <colgroup>
+        <col class="col-label-w" />
+        <col class="col-val-w" />
+        <col class="col-val-w" />
+      </colgroup>
       <thead>
-        <tr>
-          <th class="col-label"></th>
-          <th class="col-val">Баер</th>
-          <th class="col-val">Клиент</th>
+        <tr class="bt-head-row">
+          <th class="bt-th bt-th-label"></th>
+          <th class="bt-th bt-th-val">Баер</th>
+          <th class="bt-th bt-th-val">Клиент</th>
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td class="row-label">За кампанию</td>
-          <td class="row-val">{hasData ? fmt(baer) : '—'}</td>
-          <td class="row-val">{hasData ? fmt(clientBase) : '—'}</td>
+        <tr class="bt-row">
+          <td class="bt-label">За кампанию</td>
+          <td class="bt-val">{hasData ? fmt(baer) : '—'}</td>
+          <td class="bt-val">{hasData ? fmt(clientBase) : '—'}</td>
         </tr>
-        <tr>
-          <td class="row-label">В сутки</td>
-          <td class="row-val">{hasData ? fmtSmart(baerDay) : '—'}</td>
-          <td class="row-val">{hasData ? fmtSmart(clientDay) : '—'}</td>
+        <tr class="bt-row">
+          <td class="bt-label">В сутки</td>
+          <td class="bt-val">{hasData ? fmtSmart(baerDay) : '—'}</td>
+          <td class="bt-val">{hasData ? fmtSmart(clientDay) : '—'}</td>
         </tr>
-        <tr>
-          <td class="row-label">В час</td>
-          <td class="row-val">{hasData ? fmtSmart(baerHour) : '—'}</td>
-          <td class="row-val">{hasData ? fmtSmart(clientHour) : '—'}</td>
-        </tr>
-
-        <!-- Divider row -->
-        <tr class="divider-row">
-          <td colspan="3"></td>
+        <tr class="bt-row">
+          <td class="bt-label">В час</td>
+          <td class="bt-val">{hasData ? fmtSmart(baerHour) : '—'}</td>
+          <td class="bt-val">{hasData ? fmtSmart(clientHour) : '—'}</td>
         </tr>
 
-        <tr class="total-row">
-          <td class="row-label">
+        <tr class="bt-spacer"><td colspan="3"></td></tr>
+
+        <tr class="bt-row bt-total-row">
+          <td class="bt-label">
             Итоговая сумма
-            <span class="row-sublabel">Включая НДС</span>
+            <span class="bt-sublabel">Включая НДС</span>
           </td>
-          <td class="row-val total-val">{hasData ? fmt(baerTotal) : '—'}</td>
-          <td class="row-val total-val">{hasData ? fmt(clientTotal) : '—'}</td>
+          <td class="bt-val bt-total-val">{hasData ? fmt(baerTotal) : '—'}</td>
+          <td class="bt-val bt-total-val">{hasData ? fmt(clientTotal) : '—'}</td>
         </tr>
-        <tr>
-          <td class="row-label vat-label">НДС 20%</td>
-          <td class="row-val vat-val">{hasData ? fmt(baerVat) : '—'}</td>
-          <td class="row-val vat-val">{hasData ? fmt(clientVat) : '—'}</td>
+        <tr class="bt-row bt-vat-row">
+          <td class="bt-label bt-vat-label">НДС 20%</td>
+          <td class="bt-val bt-vat-val">{hasData ? fmt(baerVat) : '—'}</td>
+          <td class="bt-val bt-vat-val">{hasData ? fmt(clientVat) : '—'}</td>
         </tr>
 
         {#if hasData && markupAmt > 0}
-          <tr class="earn-row">
-            <td colspan="3" class="earn-cell">
+          <tr class="bt-earn-row">
+            <td colspan="3" class="bt-earn-cell">
               Вы заработаете
-              <span class="earn-amount">{fmt(markupAmt)} ₽</span>
+              <span class="bt-earn-amount">{fmt(markupAmt)} ₽</span>
             </td>
           </tr>
         {/if}
@@ -160,7 +162,7 @@
 
     {#if !hasData}
       <div class="no-data-hint">
-        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:var(--text-muted);flex-shrink:0">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0">
           <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
         </svg>
         Выберите даты и хотя бы один экран для расчёта прогноза
@@ -228,116 +230,119 @@
     max-width: 560px;
   }
 
+  /* ── Budget card ── */
+  .budget-card {
+    background: white;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
   /* ── Table ── */
   .budget-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    table-layout: fixed;
   }
 
-  .budget-table thead tr {
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-  }
+  .col-label-w { width: auto; }
+  .col-val-w   { width: 160px; }
 
-  .col-label {
-    width: 55%;
-    padding: 10px 20px;
-    text-align: left;
-    font-size: 11px;
+  /* Head */
+  .bt-head-row {
+    background: #F8FAFC;
+    border-bottom: 1.5px solid #E2E8F0;
+  }
+  .bt-th {
+    padding: 9px 20px;
+    font-size: 10.5px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: .05em;
-    color: var(--text-muted);
+    letter-spacing: .06em;
+    color: #94A3B8;
+  }
+  .bt-th-label { text-align: left; }
+  .bt-th-val   { text-align: right; }
+
+  /* Body rows */
+  .bt-row { border-bottom: 1px solid #F1F5F9; }
+  .bt-row:last-child { border-bottom: none; }
+
+  .bt-label {
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #334155;
+    line-height: 1.35;
   }
 
-  .col-val {
-    width: 22.5%;
+  .bt-sublabel {
+    display: block;
+    font-size: 10.5px;
+    color: #94A3B8;
+    font-weight: 400;
+    margin-top: 1px;
+  }
+
+  .bt-val {
     padding: 10px 20px 10px 0;
     text-align: right;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    color: var(--text-muted);
-  }
-
-  .budget-table tbody tr { border-bottom: 1px solid var(--border); }
-
-  .row-label {
-    padding: 12px 20px;
-    color: var(--text);
-    font-weight: 500;
-    font-size: 13px;
-    line-height: 1.3;
-  }
-
-  .row-sublabel {
-    display: block;
-    font-size: 11px;
-    color: var(--text-muted);
-    font-weight: 400;
-    margin-top: 2px;
-  }
-
-  .row-val {
-    padding: 12px 20px 12px 0;
-    text-align: right;
-    color: var(--text);
+    color: #334155;
     font-variant-numeric: tabular-nums;
     font-weight: 500;
+    font-size: 13px;
   }
 
-  .divider-row td {
+  /* Spacer between body rows and totals */
+  .bt-spacer td {
     padding: 0;
-    height: 6px;
-    background: var(--bg);
-    border-bottom: none !important;
+    height: 4px;
+    background: #F8FAFC;
+    border-bottom: 1.5px solid #E2E8F0 !important;
   }
 
-  .total-row .row-label,
-  .total-row .row-val {
-    padding-top: 14px;
-    padding-bottom: 6px;
-  }
-
-  .total-val {
+  /* Total row */
+  .bt-total-row .bt-label { padding-top: 12px; padding-bottom: 2px; }
+  .bt-total-row .bt-val   { padding-top: 12px; padding-bottom: 2px; }
+  .bt-total-val {
     font-size: 15px;
     font-weight: 700;
-    color: var(--navy);
+    color: var(--navy, #112853);
   }
 
-  .vat-label {
-    padding-top: 4px;
-    padding-bottom: 14px;
-    font-size: 12px;
-    color: var(--text-muted);
+  /* VAT row */
+  .bt-vat-row .bt-label,
+  .bt-vat-row .bt-val { border-bottom: none; }
+  .bt-vat-label {
+    padding-top: 2px;
+    padding-bottom: 12px;
+    font-size: 11.5px;
+    color: #94A3B8;
     font-weight: 400;
   }
-
-  .vat-val {
-    padding-top: 4px;
-    padding-bottom: 14px;
-    font-size: 12px;
-    color: var(--text-muted);
+  .bt-vat-val {
+    padding-top: 2px;
+    padding-bottom: 12px;
+    font-size: 11.5px;
+    color: #94A3B8;
   }
 
   /* "Вы заработаете" row */
-  .earn-row { border-top: 1px solid var(--border); border-bottom: none !important; }
-
-  .earn-cell {
-    padding: 12px 20px;
-    font-size: 13px;
-    color: var(--text-muted);
+  .bt-earn-row { background: #F0FDF4; border-top: 1.5px solid #BBF7D0; }
+  .bt-earn-cell {
+    padding: 10px 20px;
+    font-size: 12.5px;
+    color: #166534;
     display: flex;
     align-items: center;
     gap: 8px;
   }
-
-  .earn-amount {
+  .bt-earn-amount {
     font-weight: 700;
-    color: #16A34A;
+    color: #15803D;
     font-size: 14px;
+    margin-left: 2px;
   }
 
   /* No data hint */
@@ -345,10 +350,9 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 14px 20px;
-    font-size: 12.5px;
-    color: var(--text-muted);
-    border-top: 1px solid var(--border);
-    background: var(--bg);
+    padding: 12px 20px;
+    font-size: 12px;
+    color: #94A3B8;
+    background: #F8FAFC;
   }
 </style>
