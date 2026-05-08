@@ -236,6 +236,8 @@
     border: 1.5px solid #E2E8F0;
     border-radius: 12px;
     overflow: hidden;
+    max-width: 600px;
+    width: 100%;
   }
 
   /* ── Table ── */
