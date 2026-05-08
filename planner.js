@@ -1915,19 +1915,19 @@ function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2) {
   const takenPerCell = new Map();
 
   let i = 0;
+  let consecutiveNoProgress = 0;
   while (result.length < count && cells.length) {
     const cell = cells[i % cells.length];
     const taken = takenPerCell.get(cell) || 0;
 
-    if (taken >= perCellMax) {
-      i++;
-      if (takenPerCell.size >= cells.length) break;
-      continue;
-    }
-
-    if (cell.length) {
+    if (taken < perCellMax && cell.length > 0) {
       result.push(cell.shift());
       takenPerCell.set(cell, taken + 1);
+      consecutiveNoProgress = 0;
+    } else {
+      // Cell is maxed out or empty — no progress
+      consecutiveNoProgress++;
+      if (consecutiveNoProgress >= cells.length) break; // all cells exhausted/maxed
     }
     i++;
   }
@@ -3349,10 +3349,17 @@ async function onCalcClick() {
       pool = window.PLANNER.getScreensFilteredByOwner(pool);
     }
 
-    // Фильтр по нарисованному полигону
+    // Фильтр по нарисованным полигонам (массив полигонов или один полигон — обратная совместимость)
     const poly = state.polygonFilter;
-    if (poly && poly.length >= 3) {
-      pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) && pointInPolygon(s.lat, s.lon, poly));
+    if (poly && poly.length > 0) {
+      const isMulti = Array.isArray(poly[0]) && Array.isArray(poly[0][0]);
+      if (isMulti) {
+        pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+          poly.some(p => pointInPolygon(s.lat, s.lon, p)));
+      } else if (poly.length >= 3) {
+        pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+          pointInPolygon(s.lat, s.lon, poly));
+      }
     }
 
     if (pool.length === 0) {
@@ -4078,6 +4085,17 @@ async function onCalcClick() {
     alert("Не удалось подобрать экраны: по выбранным условиям не осталось доступных экранов.");
     setStatus("");
     return;
+  }
+
+  // Предупреждение если в режиме конструкций выбрано меньше, чем запрошено
+  if (brief.constructions?.enabled && brief.constructions.count > 0) {
+    const totalChosen = chosenAll.length;
+    const totalRequested = brief.constructions.count;
+    if (totalChosen < totalRequested) {
+      warnings.unshift(
+        `⚠️ Запрошено ${totalRequested} конструкций, доступно ${totalChosen} с учётом выбранных фильтров (операторы, форматы, регион).`
+      );
+    }
   }
 
   // Предупреждение если реальный расход значительно меньше заданного бюджета
