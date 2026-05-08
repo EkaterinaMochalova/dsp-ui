@@ -4389,6 +4389,19 @@ function computePoolPreview() {
     pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
   }
 
+  // 3. Polygon zone filter (same logic as onCalcClick)
+  const poly = state.polygonFilter;
+  if (poly && poly.length > 0) {
+    const isMulti = Array.isArray(poly[0]) && Array.isArray(poly[0][0]);
+    if (isMulti) {
+      pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+        poly.some(p => pointInPolygon(s.lat, s.lon, p)));
+    } else if (poly.length >= 3) {
+      pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+        pointInPolygon(s.lat, s.lon, poly));
+    }
+  }
+
   const countBase = pool.length;
 
   // 4. GRP-фильтр
