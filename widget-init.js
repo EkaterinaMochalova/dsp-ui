@@ -942,7 +942,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@51f4730565b4f4735259d201221d945d44350acc/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@db2ee488bd6ebd030ed27d825b02f20fa724bf18/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -3352,9 +3352,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   const el = id => document.getElementById(id);
 
   let polyMap    = null;
-  let drawLayer  = null;   // L.FeatureGroup — хранит нарисованный полигон
-  let dotsLayer  = null;   // L.FeatureGroup — точки всех экранов
-  let currentPoly = null;  // L.Polygon | null
+  let drawLayer   = null;   // L.FeatureGroup — хранит нарисованные полигоны
+  let dotsLayer   = null;   // L.FeatureGroup — точки всех экранов
+  let currentPolys = [];    // L.Polygon[] — все завершённые полигоны
   let drawControl = null;
 
   // ── helpers ─────────────────────────────────────────────────────────
@@ -3365,14 +3365,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.PLANNER.state.polygonFilter = p;
   }
   function getScreensAll() { return window.PLANNER?.state?.screensAll || []; }
-  function countInside(latLngs) {
-    if (!latLngs || latLngs.length < 3) return 0;
-    const poly = latLngs.map(ll => [ll.lat, ll.lng]);
+  // countInside: accepts array of L.Polygon objects
+  function countInside(polys) {
+    if (!polys || !polys.length) return 0;
     const fn = window.PLANNER?.pointInPolygon;
     if (!fn) return 0;
-    return getScreensAll().filter(
-      s => Number.isFinite(s.lat) && Number.isFinite(s.lon) && fn(s.lat, s.lon, poly)
-    ).length;
+    return getScreensAll().filter(s => {
+      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return false;
+      return polys.some(p => fn(s.lat, s.lon, p.getLatLngs()[0].map(ll => [ll.lat, ll.lng])));
+    }).length;
   }
 
   // ── badge in step 4 ─────────────────────────────────────────────────
@@ -3382,13 +3383,20 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const text  = el("poly-badge-text");
     const btn   = el("poly-draw-btn");
     if (!badge || !text) return;
-    if (poly && poly.length >= 3) {
-      const cnt = window.PLANNER?.countScreensInPolygon
-        ? window.PLANNER.countScreensInPolygon(poly)
-        : 0;
-      text.textContent = \`Зона активна — \${cnt.toLocaleString("ru-RU")} экранов\`;
+    // Support both old flat format and new multi-polygon format
+    const polys = poly && Array.isArray(poly[0]) && Array.isArray(poly[0][0])
+      ? poly : (poly && poly.length >= 3 ? [poly] : null);
+    if (polys && polys.length) {
+      const fn = window.PLANNER?.pointInPolygon;
+      const cnt = fn ? getScreensAll().filter(s =>
+        Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+        polys.some(p => fn(s.lat, s.lon, p))
+      ).length : 0;
+      const n = polys.length;
+      const zonesLabel = n === 1 ? "зона" : n < 5 ? "зоны" : "зон";
+      text.textContent = \`\${n} \${zonesLabel} — \${cnt.toLocaleString("ru-RU")} экранов\`;
       badge.style.display = "flex";
-      if (btn) btn.textContent = "✏️ Изменить зону";
+      if (btn) btn.textContent = "✏️ Изменить зоны";
     } else {
       badge.style.display = "none";
       if (btn) btn.textContent = "🗺 Нарисовать зону";
@@ -3431,14 +3439,18 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     polyMap.invalidateSize();
 
-    // Render existing polygon if any
+    // Render existing polygons if any
     drawLayer.clearLayers();
-    currentPoly = null;
+    currentPolys = [];
+    vertices = []; tempPolyline = null; tempMarkers = [];
     const existing = getPoly();
-    if (existing && existing.length >= 3) {
-      const lls = existing.map(([la, lo]) => [la, lo]);
-      currentPoly = L.polygon(lls, { color: "#5B3EF5", fillOpacity: 0.15 }).addTo(drawLayer);
-    }
+    const existingPolys = existing && Array.isArray(existing[0]) && Array.isArray(existing[0][0])
+      ? existing : (existing && existing.length >= 3 ? [existing] : []);
+    existingPolys.forEach(coords => {
+      const p = L.polygon(coords.map(([la, lo]) => [la, lo]),
+        { color: "#5B3EF5", fillOpacity: 0.15 }).addTo(drawLayer);
+      currentPolys.push(p);
+    });
 
     // Render all screens as tiny dots (canvas for performance)
     dotsLayer.clearLayers();
@@ -3454,11 +3466,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       bounds.push([s.lat, s.lon]);
     });
 
-    // Fit to existing poly or to all screens
+    // Fit to existing polygons or to all screens
     setTimeout(() => {
       polyMap.invalidateSize();
-      if (currentPoly) {
-        polyMap.fitBounds(currentPoly.getBounds(), { padding: [40, 40] });
+      if (currentPolys.length) {
+        polyMap.fitBounds(L.featureGroup(currentPolys).getBounds(), { padding: [40, 40] });
       } else if (bounds.length) {
         polyMap.fitBounds(bounds, { padding: [20, 20] });
       }
@@ -3475,12 +3487,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   function setupDrawing() {
     if (!polyMap) return;
-    // Remove old listeners safely
     polyMap.off("click", onMapClick);
-
-    // If we already have a confirmed polygon, don't start drawing again
-    if (currentPoly) return;
-
     vertices = [];
     tempPolyline = null;
     tempMarkers  = [];
@@ -3521,25 +3528,30 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   function finishPolygon() {
     if (vertices.length < 3) return;
 
-    // Clear temp layers
-    drawLayer.clearLayers();
-    if (tempPolyline) tempPolyline = null;
+    // Remove temp drawing layers (keep finished polygons)
+    if (tempPolyline) { drawLayer.removeLayer(tempPolyline); tempPolyline = null; }
+    tempMarkers.forEach(m => drawLayer.removeLayer(m));
     tempMarkers = [];
     polyMap.off("click", onMapClick);
 
-    // Draw final polygon
-    currentPoly = L.polygon(vertices, { color: "#5B3EF5", fillOpacity: 0.15, weight: 2 }).addTo(drawLayer);
+    // Add new finished polygon to the list
+    const poly = L.polygon(vertices, { color: "#5B3EF5", fillOpacity: 0.15, weight: 2 }).addTo(drawLayer);
+    currentPolys.push(poly);
 
+    vertices = [];
     const finBtn = el("poly-finish-btn");
     if (finBtn) finBtn.style.display = "none";
 
-    vertices = [];
     updateModalState();
+
+    // Automatically re-enable drawing so user can add another polygon
+    polyMap.on("click", onMapClick);
   }
 
   function resetDraw() {
-    if (currentPoly) { drawLayer.removeLayer(currentPoly); currentPoly = null; }
+    // Clear all polygons and restart from scratch
     drawLayer.clearLayers();
+    currentPolys = [];
     vertices = [];
     tempPolyline = null;
     tempMarkers = [];
@@ -3556,20 +3568,24 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const countBadge = el("poly-modal-count");
     const hint       = el("poly-hint");
 
-    const hasPoly = !!currentPoly;
+    const hasPolys = currentPolys.length > 0;
     const hasVerts = vertices.length >= 3;
 
-    if (confirmBtn) confirmBtn.disabled = !hasPoly;
-    if (resetBtn)   resetBtn.style.display = (hasPoly || hasVerts) ? "block" : "none";
+    if (confirmBtn) confirmBtn.disabled = !hasPolys;
+    if (resetBtn)   resetBtn.style.display = (hasPolys || hasVerts) ? "block" : "none";
 
-    if (hasPoly && countBadge) {
-      const lls = currentPoly.getLatLngs()[0];
-      const cnt = countInside(lls);
-      countBadge.textContent = \`\${cnt.toLocaleString("ru-RU")} экранов\`;
+    if (hasPolys && countBadge) {
+      const cnt = countInside(currentPolys);
+      const n = currentPolys.length;
+      const zonesLabel = n === 1 ? "зона" : n < 5 ? "зоны" : "зон";
+      countBadge.textContent = \`\${n} \${zonesLabel} · \${cnt.toLocaleString("ru-RU")} экранов\`;
       countBadge.style.display = "block";
+      const drawingMore = hasVerts
+        ? \` Рисуете зону \${n + 1} — добавлено \${vertices.length} точек.\`
+        : " Нажмите «Применить» или нарисуйте ещё зону.";
       if (hint) hint.textContent = cnt > 0
-        ? \`В зоне \${cnt.toLocaleString("ru-RU")} экранов. Нажмите «Применить» или «Перерисовать».\`
-        : "В зоне нет экранов. Попробуйте нарисовать другой полигон.";
+        ? \`В \${n === 1 ? "зоне" : "зонах"} \${cnt.toLocaleString("ru-RU")} экранов.\${drawingMore}\`
+        : \`В зонах нет экранов — попробуйте перерисовать.\${drawingMore}\`;
     } else {
       if (countBadge) countBadge.style.display = "none";
       if (hint) hint.textContent = hasVerts
@@ -3578,21 +3594,20 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
   }
 
-  // ── confirm: save polygon to state ──────────────────────────────────
+  // ── confirm: save all polygons to state ─────────────────────────────
   function confirmPolygon() {
-    if (!currentPoly) return;
-    const lls = currentPoly.getLatLngs()[0];
-    setPoly(lls.map(ll => [ll.lat, ll.lng]));
+    if (!currentPolys.length) return;
+    // Save as array of polygon coordinate arrays
+    setPoly(currentPolys.map(p => p.getLatLngs()[0].map(ll => [ll.lat, ll.lng])));
     closeModal();
     updateBadge();
-    // Trigger recalc hint
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
-  // ── clear polygon ────────────────────────────────────────────────────
+  // ── clear all polygons ───────────────────────────────────────────────
   function clearPolygon() {
     setPoly(null);
-    currentPoly = null;
+    currentPolys = [];
     if (drawLayer) drawLayer.clearLayers();
     updateBadge();
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
