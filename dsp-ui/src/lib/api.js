@@ -89,9 +89,23 @@ export const api = {
   },
 
   creatives: {
-    list(params = {}) {
+    async list(params = {}) {
       const q = new URLSearchParams({ page: 0, size: 100, ...params })
-      return request(`/clients/creatives?${q}`)
+      // Try known paths in order; return first success
+      const paths = [
+        `/clients/layouts?${q}`,
+        `/clients/layout-documents?${q}`,
+        `/clients/creatives?${q}`,
+      ]
+      for (const path of paths) {
+        try {
+          const res = await request(path)
+          return res
+        } catch (e) {
+          if (e?.status !== 404) throw e
+        }
+      }
+      throw { status: 404 }
     },
     upload(file, name, duration, customerId) {
       const fd = new FormData()

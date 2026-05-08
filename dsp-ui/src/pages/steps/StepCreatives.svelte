@@ -32,7 +32,12 @@
       const res = await api.creatives.list(params)
       creatives = res?.content ?? (Array.isArray(res) ? res : [])
     } catch (e) {
-      error = 'Не удалось загрузить список креативов'
+      // 404 = endpoint not yet mapped; treat as empty library, not a hard error
+      if (e?.status === 404) {
+        creatives = []
+      } else {
+        error = 'Не удалось загрузить список креативов'
+      }
     } finally {
       loading = false
     }
