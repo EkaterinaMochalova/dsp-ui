@@ -88,6 +88,31 @@ export const api = {
     types()  { return request('/clients/filters/campaign-types') },
   },
 
+  creatives: {
+    list(params = {}) {
+      const q = new URLSearchParams({ page: 0, size: 100, ...params })
+      return request(`/clients/creatives?${q}`)
+    },
+    upload(file, name, duration, customerId) {
+      const fd = new FormData()
+      fd.append('file', file)
+      if (name)       fd.append('name', name)
+      if (duration)   fd.append('duration', duration)
+      if (customerId) fd.append('customerId', customerId)
+      const token = getToken()
+      return fetch(`${BASE}/clients/creatives`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      }).then(async res => {
+        if (res.status === 401) { localStorage.removeItem('dsp_token'); window.location.hash = '#/login'; throw { status: 401 } }
+        const data = await res.json()
+        if (!res.ok) throw { status: res.status, data }
+        return data
+      })
+    },
+  },
+
   inventories: {
     list(params = {}) {
       const q = new URLSearchParams({ enabled: 'true', ...params })

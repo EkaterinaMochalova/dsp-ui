@@ -43,6 +43,7 @@
     cities: [],
     cityIds: [],
     screenIds: [],
+    creativeIds: [],
   }
 
   // Forecast metrics (updated when screens/dates change)
@@ -334,7 +335,7 @@
     {:else if currentStep === 'settings'}
       <StepShowSettings bind:draft {metrics} on:next={() => completeStep('settings')} on:back={() => prevStep('settings')} />
     {:else if currentStep === 'creatives'}
-      <StepCreatives bind:draft on:next={() => completeStep('creatives')} on:back={() => prevStep('creatives')} />
+      <StepCreatives bind:draft {metrics} on:next={() => completeStep('creatives')} on:back={() => prevStep('creatives')} />
     {:else if currentStep === 'photos'}
       <StepPhotos bind:draft on:next={() => completeStep('photos')} on:back={() => prevStep('photos')} />
     {:else if currentStep === 'analytics'}
