@@ -2003,7 +2003,13 @@ async function buildMediaPlanBlob() {
 
   const netBudget = brief.budget?.amount || meta.totalBudget || 0;
   const days = meta.days || 31;
-  const hpd  = Math.round(meta.hpd || 7);
+  // Always compute actual schedule hours from brief (meta.hpd uses RECO_HOURS_PER_DAY=12 constant
+  // in recommendation mode which is wrong for display — use real schedule instead)
+  const _schedHours = (brief.schedule && brief.dates?.start && brief.dates?.end)
+    ? computeScheduleHoursForPeriod(brief.schedule, brief.dates.start, brief.dates.end)
+    : null;
+  const hpdActual = (_schedHours && _schedHours.avgHpd > 0) ? _schedHours.avgHpd : (meta.hpd || 12);
+  const hpd = +hpdActual.toFixed(2);
 
   const dateStr   = s => s ? String(s).split("-").reverse().join(".") : "—";
   const periodStr = `${dateStr(brief.dates?.start)} — ${dateStr(brief.dates?.end)}`;
@@ -2083,8 +2089,19 @@ async function buildMediaPlanBlob() {
     if (sch.type === "all_day") return "00:00 – 24:00";
     if (sch.type === "peak")    return "07:00 – 23:00";
     if (sch.type === "custom")  return `${sch.from || "00:00"} – ${sch.to || "24:00"}`;
-    if (sch.type === "weekly" && sch.mode === "global") {
-      return (sch.globalIntervals || []).map(iv => `${iv.from} – ${iv.to}`).join(" / ");
+    if (sch.type === "weekly") {
+      if (sch.mode === "global") {
+        return (sch.globalIntervals || []).map(iv => `${iv.from}–${iv.to}`).join(" / ");
+      }
+      // by_dow: show per-day slots for days that have intervals
+      const DOW_LABEL = { mon:"пн", tue:"вт", wed:"ср", thu:"чт", fri:"пт", sat:"сб", sun:"вс" };
+      const weekly = sch.weekly || {};
+      const parts = Object.entries(DOW_LABEL)
+        .filter(([k]) => Array.isArray(weekly[k]) && weekly[k].length > 0)
+        .map(([k, lbl]) =>
+          `${lbl} ${weekly[k].map(iv => `${iv.from}–${iv.to}`).join(",")}`
+        );
+      return parts.join(" / ");
     }
     return "";
   }
@@ -2162,6 +2179,8 @@ async function buildMediaPlanBlob() {
     const regOts     = rd.ots     || 0;
     const regCnt     = rd.screens || Object.values(rfMap[city] || {}).reduce((a, v) => a + v.length, 0);
     cfStats[city] = {};
+
+    // First pass: compute per-format avg bids and screen-count weights
     for (const [fmt_, fmtScr] of Object.entries(rfMap[city] || {})) {
       const w = regCnt > 0 ? fmtScr.length / regCnt : (1 / Object.keys(rfMap[city]).length);
       const bids = fmtScr.map(s => {
@@ -2172,11 +2191,28 @@ async function buildMediaPlanBlob() {
       const otsArr = fmtScr.map(s => Number.isFinite(s.ots) && s.ots > 0 ? s.ots : null).filter(Boolean);
       const avgOts = otsArr.length ? otsArr.reduce((a, b) => a + b, 0) / otsArr.length : 0;
       cfStats[city][fmt_] = {
-        cnt: fmtScr.length, avgBid, avgOts,
-        plays:  regPlays  * w,
-        budget: regBudget * w,
-        ots:    regOts    * w,
+        cnt: fmtScr.length, avgBid, avgOts, _w: w,
+        plays: regPlays * w,
+        ots:   regOts   * w,
+        budget: 0,  // filled in second pass
       };
+    }
+
+    // Second pass: split budget proportionally to (screenCount × avgBid) — bid-weighted
+    // This correctly accounts for formats with very different rates (e.g. MF 120 vs SS 15)
+    const fmtKeys = Object.keys(cfStats[city]);
+    const bidWeightSum = fmtKeys.reduce((s, f) => {
+      const st = cfStats[city][f];
+      return s + st.cnt * st.avgBid;
+    }, 0);
+    for (const f of fmtKeys) {
+      const st = cfStats[city][f];
+      if (bidWeightSum > 0) {
+        st.budget = regBudget * (st.cnt * st.avgBid) / bidWeightSum;
+      } else {
+        // All formats have no bid data — fall back to screen-count split
+        st.budget = regBudget * st._w;
+      }
     }
   }
 
@@ -2204,9 +2240,13 @@ async function buildMediaPlanBlob() {
   }
 
   // ── Итого row ────────────────────────────────────────────────────
-  const totB = perReg.reduce((a, r) => a + (r.budget || 0), 0);
-  const totP = perReg.reduce((a, r) => a + (r.plays  || 0), 0);
-  const totO = perReg.reduce((a, r) => a + (r.ots    || 0), 0);
+  // Sum only the cities that are displayed (those present in rfMap).
+  // perReg may contain duplicate region aliases (e.g. "Сочи" + "городской округ Сочи")
+  // that map to the same screens — only one of them survives the rfMap filter in `cities`.
+  const citySet = new Set(cities);
+  const totB = perReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.budget || 0), 0);
+  const totP = perReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.plays  || 0), 0);
+  const totO = perReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.ots    || 0), 0);
   sc(ws, totalRow, 1, "итого", { bold: true, fill: C_HDR, h: "right" });
   sc(ws, totalRow, 2, Math.round(totP), { bold: true, fill: C_HDR, numFmt: "#,##0" });
   sc(ws, totalRow, 3, Math.round(totO), { bold: true, fill: C_HDR, numFmt: "#,##0" });
@@ -2278,13 +2318,14 @@ async function buildMediaPlanBlob() {
     });
 
     // ── base+4: График ч/сутки ────────────────────────────────────
+    const hpdFmt = Number.isInteger(hpd) ? "0" : "0.##";
     sc(ws, base + 4, 1, "График, ч/сутки", { bold: true, fill: C_LIGHT, v: "center" });
-    sc(ws, base + 4, 2, hpd,               { fill: C_GREEN, numFmt: "0", h: "right", v: "center" });
+    sc(ws, base + 4, 2, hpd,               { fill: C_GREEN, numFmt: hpdFmt, h: "right", v: "center" });
     if (schedTxt) sc(ws, base + 4, 3, schedTxt,
       { fill: C_GREEN, size: 9, h: "center", v: "center", wrap: true });
     else ws.getCell(base + 4, 3).border = THIN_B;
     fmts.forEach((_, fi) => {
-      sc(ws, base + 4, 5 + fi, hpd, { fill: C_GREEN, numFmt: "0", h: "right", v: "center" });
+      sc(ws, base + 4, 5 + fi, hpd, { fill: C_GREEN, numFmt: hpdFmt, h: "right", v: "center" });
     });
 
     // ── base+5: Прогноз кол-ва выходов ───────────────────────────
