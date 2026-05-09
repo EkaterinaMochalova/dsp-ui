@@ -43,24 +43,29 @@
   }
 
   // ── Status config ─────────────────────────────────────────────────────
-  // The API may return: APPROVED / PENDING / REJECTED / ACTIVE / MODERATION / DECLINED
+  // API field is `state`, not `status`. Known values: APPROVED, PENDING, REJECTED,
+  // ACTIVE, MODERATION, DECLINED, PREMODERATION
   const STATUS = {
-    APPROVED:   { label: 'Согласован',   cls: 'st-green'  },
-    ACTIVE:     { label: 'Согласован',   cls: 'st-green'  },
-    PENDING:    { label: 'На модерации', cls: 'st-yellow' },
-    MODERATION: { label: 'На модерации', cls: 'st-yellow' },
-    REJECTED:   { label: 'Отклонён',     cls: 'st-red'    },
-    DECLINED:   { label: 'Отклонён',     cls: 'st-red'    },
+    APPROVED:      { label: 'Согласован',   cls: 'st-green'  },
+    ACTIVE:        { label: 'Согласован',   cls: 'st-green'  },
+    PENDING:       { label: 'На модерации', cls: 'st-yellow' },
+    MODERATION:    { label: 'На модерации', cls: 'st-yellow' },
+    PREMODERATION: { label: 'На модерации', cls: 'st-yellow' },
+    REJECTED:      { label: 'Отклонён',     cls: 'st-red'    },
+    DECLINED:      { label: 'Отклонён',     cls: 'st-red'    },
   }
 
   // Canonical key for filtering (collapse aliases)
   function statusKey(raw) {
     if (!raw) return ''
-    if (raw === 'ACTIVE')     return 'APPROVED'
-    if (raw === 'MODERATION') return 'PENDING'
-    if (raw === 'DECLINED')   return 'REJECTED'
+    if (raw === 'ACTIVE')                        return 'APPROVED'
+    if (raw === 'MODERATION' || raw === 'PREMODERATION') return 'PENDING'
+    if (raw === 'DECLINED')                      return 'REJECTED'
     return raw
   }
+
+  // Read status from `state` field (API) or fallback to `status`
+  function getState(obj) { return obj?.state ?? obj?.status ?? '' }
 
   const FILTER_TABS = [
     { key: 'ALL',      label: 'Все'           },
@@ -73,7 +78,7 @@
   $: filtered = creatives.filter(c => {
     const q = search.trim().toLowerCase()
     if (q && !c.name?.toLowerCase().includes(q)) return false
-    if (statusFilter !== 'ALL' && statusKey(c.status) !== statusFilter) return false
+    if (statusFilter !== 'ALL' && statusKey(getState(c)) !== statusFilter) return false
     return true
   })
 
@@ -133,24 +138,30 @@
 
   // ── Format helpers ────────────────────────────────────────────────────
   function mediaTypeLabel(c) {
-    const t = c.mediaType ?? c.type ?? ''
-    if (t === 'VIDEO' || t === 'video') return 'Видео'
-    if (t === 'IMAGE' || t === 'image' || t === 'STATIC') return 'Изображение'
-    return t || '—'
+    // API returns type: "PICTURE" | "VIDEO" | "IMAGE" | "STATIC"
+    const t = (c.mediaType ?? c.type ?? '').toUpperCase()
+    if (t === 'VIDEO') return 'Видео'
+    if (t === 'PICTURE' || t === 'IMAGE' || t === 'STATIC') return 'Изображение'
+    return c.type ?? '—'
   }
 
   function durationLabel(c) {
+    // API returns duration in milliseconds (e.g. 5000 = 5s)
     const d = c.duration ?? c.slotDuration
-    return d ? `${d} с` : '—'
+    if (!d) return '—'
+    const sec = d >= 1000 ? Math.round(d / 1000) : d
+    return `${sec} с`
   }
 
   function thumbUrl(c) {
-    return c.thumbnailUrl ?? c.previewUrl ?? c.url ?? null
+    // mediaContents may carry a previewUrl/url
+    const first = c.mediaContents?.[0] ?? c.files?.[0]
+    return c.thumbnailUrl ?? c.previewUrl ?? first?.previewUrl ?? first?.url ?? c.url ?? null
   }
 
   function isVideo(c) {
-    const t = c.mediaType ?? c.type ?? ''
-    return t === 'VIDEO' || t === 'video'
+    const t = (c.mediaType ?? c.type ?? '').toUpperCase()
+    return t === 'VIDEO'
   }
 </script>
 
@@ -245,8 +256,8 @@
       <div class="cr-grid">
         {#each filtered as c (c.id)}
           {@const sel = isSelected(c.id)}
-          {@const sk  = statusKey(c.status)}
-          {@const st  = STATUS[c.status] ?? STATUS[sk] ?? { label: c.status ?? '—', cls: '' }}
+          {@const sk  = statusKey(getState(c))}
+          {@const st  = STATUS[getState(c)] ?? STATUS[sk] ?? { label: getState(c) || '—', cls: '' }}
           <!-- svelte-ignore a11y-click-events-have-key-events -->
           <!-- svelte-ignore a11y-no-static-element-interactions -->
           <div class="cr-card" class:cr-card-sel={sel} on:click={() => toggleSelect(c.id)}>
@@ -298,11 +309,13 @@
                 </span>
               </div>
 
-              <!-- Per-file dimensions with individual statuses -->
-              {#if c.files?.length}
+              <!-- Per-file / per-mediaContent dimensions with individual statuses -->
+              <!-- API uses mediaContents[] or files[] depending on endpoint -->
+              {@const fileList = c.mediaContents?.length ? c.mediaContents : (c.files?.length ? c.files : [])}
+              {#if fileList.length}
                 <div class="cr-card-files">
-                  {#each c.files as f}
-                    {@const fk = statusKey(f.status ?? c.status)}
+                  {#each fileList as f}
+                    {@const fk = statusKey(getState(f)) || sk}
                     <div class="cr-file-row">
                       {#if fk === 'APPROVED'}
                         <svg class="file-icon file-icon-ok" viewBox="0 0 20 20" fill="currentColor">
@@ -313,7 +326,9 @@
                           <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                         </svg>
                       {/if}
-                      <span class="cr-file-dim">{f.width && f.height ? `${f.width} x ${f.height}` : '—'}</span>
+                      <span class="cr-file-dim">
+                        {f.width && f.height ? `${f.width} x ${f.height}` : (f.name ?? '—')}
+                      </span>
                     </div>
                   {/each}
                 </div>
