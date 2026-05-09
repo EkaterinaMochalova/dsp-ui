@@ -94,14 +94,25 @@
     uploading = true; uploadErr = ''
     try {
       for (const file of files) {
-        const created = await api.creatives.upload(file, file.name, null, draft.customerId)
-        if (created) {
-          creatives = [created, ...creatives]
-          draft.creativeIds = [...draft.creativeIds, created.id]
+        // Step 1: upload the binary file → get media record back
+        const uploaded = await api.creatives.uploadFile(file)
+        // Step 2: create the creative record referencing the uploaded media
+        const mediaId = uploaded?.id ?? uploaded?.mediaId ?? null
+        const payload = {
+          name: file.name,
+          ...(mediaId ? { mediaId } : {}),
+          ...(uploaded?.url  ? { url:  uploaded.url  } : {}),
+          ...(draft.customerId ? { customerId: draft.customerId } : {}),
+        }
+        const created = await api.creatives.create(payload)
+        const record = created ?? uploaded  // fall back to upload response if create returns null
+        if (record?.id) {
+          creatives = [record, ...creatives]
+          draft.creativeIds = [...draft.creativeIds, record.id]
         }
       }
     } catch (err) {
-      uploadErr = 'Ошибка при загрузке файла'
+      uploadErr = err?.data?.message ?? err?.data ?? 'Ошибка при загрузке файла'
     } finally {
       uploading = false
       e.target.value = ''

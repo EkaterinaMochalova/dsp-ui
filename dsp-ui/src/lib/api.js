@@ -89,21 +89,25 @@ export const api = {
   },
 
   creatives: {
+    // GET /clients/request-medias — full library of uploaded creatives (AdCreativeModelItemDTO)
     list(params = {}) {
       const q = new URLSearchParams({ page: 0, size: 100, ...params })
-      return request(`/clients/creative-names?${q}`)
+      return request(`/clients/request-medias?${q}`)
     },
+    // GET /clients/campaigns/{id}/creative-names — lightweight [{id, name}] attached to a campaign
     listForCampaign(campaignId) {
       return request(`/clients/campaigns/${campaignId}/creative-names`)
     },
-    upload(file, name, duration, customerId) {
+    // POST /clients/request-medias — create a new creative record (then attach media files separately)
+    create(data) {
+      return request('/clients/request-medias', { method: 'POST', body: JSON.stringify(data) })
+    },
+    // POST /clients/medias/upload — upload the actual media file
+    uploadFile(file) {
       const fd = new FormData()
       fd.append('file', file)
-      if (name)       fd.append('name', name)
-      if (duration)   fd.append('duration', duration)
-      if (customerId) fd.append('customerId', customerId)
       const token = getToken()
-      return fetch(`${BASE}/clients/creative-names`, {
+      return fetch(`${BASE}/clients/medias/upload`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: fd,
