@@ -94,16 +94,17 @@
 
   // ── Derived ───────────────────────────────────────────────────────────
   $: selectedCreatives = creatives.filter(c => draft.creativeIds.includes(c.id))
-  $: activeCreative    = selectedCreatives.find(c => c.id === activeId) ?? null
-  $: pickerFiltered    = creatives.filter(c => {
+
+  // Compute activeCreative without writing back to activeId (avoids cycle)
+  $: activeCreative = selectedCreatives.find(c => c.id === activeId)
+      ?? (selectedCreatives.length ? selectedCreatives[0] : null)
+
+  $: pickerFiltered = creatives.filter(c => {
     const q = pickerSearch.trim().toLowerCase()
     if (q && !c.name?.toLowerCase().includes(q)) return false
     if (statusFilter !== 'ALL' && statusKey(getState(c)) !== statusFilter) return false
     return true
   })
-
-  // auto-select first when list changes
-  $: if (!activeCreative && selectedCreatives.length) activeId = selectedCreatives[0]?.id
 
   // ── Targeting helpers ─────────────────────────────────────────────────
   function getTargeting(id) {
