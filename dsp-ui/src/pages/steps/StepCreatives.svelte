@@ -46,23 +46,30 @@
   // API field is `state`, not `status`. Known values: APPROVED, PENDING, REJECTED,
   // ACTIVE, MODERATION, DECLINED, PREMODERATION
   const STATUS = {
-    NEW:           { label: 'Новый',        cls: 'st-blue'   },
-    APPROVED:      { label: 'Согласован',   cls: 'st-green'  },
-    ACTIVE:        { label: 'Согласован',   cls: 'st-green'  },
-    PENDING:       { label: 'На модерации', cls: 'st-yellow' },
-    MODERATION:    { label: 'На модерации', cls: 'st-yellow' },
-    PREMODERATION: { label: 'На модерации', cls: 'st-yellow' },
-    REJECTED:      { label: 'Отклонён',     cls: 'st-red'    },
-    DECLINED:      { label: 'Отклонён',     cls: 'st-red'    },
+    NEW:                { label: 'Новый',              cls: 'st-blue'  },
+    APPROVED:           { label: 'Согласован',         cls: 'st-green'  },
+    ACTIVE:             { label: 'Согласован',         cls: 'st-green'  },
+    PENDING:            { label: 'На модерации',       cls: 'st-yellow' },
+    MODERATION:         { label: 'На модерации',       cls: 'st-yellow' },
+    PREMODERATION:      { label: 'На модерации',       cls: 'st-yellow' },
+    REJECTED:           { label: 'Отклонён',           cls: 'st-red'    },
+    DECLINED:           { label: 'Отклонён',           cls: 'st-red'    },
+    SENDING_ERROR:      { label: 'Ошибка отправки',   cls: 'st-red'    },
+    REACTIVATION_ERROR: { label: 'Ошибка активации',  cls: 'st-red'    },
+    ERROR:              { label: 'Ошибка',             cls: 'st-red'    },
+    ARCHIVED:           { label: 'Заархивирован',      cls: 'st-grey'   },
+    ARCHIVE:            { label: 'Заархивирован',      cls: 'st-grey'   },
   }
 
   // Canonical key for filtering (collapse aliases)
   function statusKey(raw) {
     if (!raw) return ''
-    if (raw === 'ACTIVE')                                return 'APPROVED'
-    if (raw === 'MODERATION' || raw === 'PREMODERATION') return 'PENDING'
-    if (raw === 'DECLINED')                              return 'REJECTED'
-    return raw  // NEW, APPROVED, PENDING, REJECTED pass through
+    if (raw === 'ACTIVE')                                          return 'APPROVED'
+    if (raw === 'MODERATION' || raw === 'PREMODERATION')           return 'PENDING'
+    if (raw === 'DECLINED')                                        return 'REJECTED'
+    if (raw === 'SENDING_ERROR' || raw === 'REACTIVATION_ERROR' || raw === 'ERROR') return 'ERROR'
+    if (raw === 'ARCHIVE')                                         return 'ARCHIVED'
+    return raw
   }
 
   // Read status from `state` field (API) or fallback to `status`
@@ -311,9 +318,14 @@
                     <svg class="st-icon" viewBox="0 0 20 20" fill="currentColor">
                       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
                     </svg>
-                  {:else if sk === 'REJECTED'}
+                  {:else if sk === 'REJECTED' || sk === 'ERROR'}
                     <svg class="st-icon" viewBox="0 0 20 20" fill="currentColor">
                       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                    </svg>
+                  {:else if sk === 'ARCHIVED'}
+                    <svg class="st-icon" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z"/>
+                      <path fill-rule="evenodd" d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clip-rule="evenodd"/>
                     </svg>
                   {/if}
                   {st.label}
@@ -533,6 +545,7 @@
   .st-green  { background: #DCFCE7; color: #15803D; }
   .st-yellow { background: #FEF9C3; color: #854D0E; }
   .st-red    { background: #FEE2E2; color: #B91C1C; }
+  .st-grey   { background: #F1F5F9; color: #64748B; }
 
   /* ── Per-file dimensions ── */
   .cr-card-files { display: flex; flex-direction: column; gap: 3px; }
