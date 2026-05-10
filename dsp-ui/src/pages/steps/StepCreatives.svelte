@@ -163,6 +163,11 @@
     const t = (c.mediaType ?? c.type ?? '').toUpperCase()
     return t === 'VIDEO'
   }
+
+  // mediaContents[] (API) or files[] fallback
+  function getFileList(c) {
+    return c.mediaContents?.length ? c.mediaContents : (c.files ?? [])
+  }
 </script>
 
 <!-- Hidden file input -->
@@ -310,11 +315,9 @@
               </div>
 
               <!-- Per-file / per-mediaContent dimensions with individual statuses -->
-              <!-- API uses mediaContents[] or files[] depending on endpoint -->
-              {@const fileList = c.mediaContents?.length ? c.mediaContents : (c.files?.length ? c.files : [])}
-              {#if fileList.length}
+              {#if getFileList(c).length}
                 <div class="cr-card-files">
-                  {#each fileList as f}
+                  {#each getFileList(c) as f}
                     {@const fk = statusKey(getState(f)) || sk}
                     <div class="cr-file-row">
                       {#if fk === 'APPROVED'}
