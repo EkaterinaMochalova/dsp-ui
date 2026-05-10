@@ -222,8 +222,15 @@
   }
 
   function thumbUrl(c) {
+    // mediaContents[].mediaContent.file may carry a url/previewUrl
     const first = c.mediaContents?.[0] ?? c.files?.[0]
-    return c.thumbnailUrl ?? c.previewUrl ?? first?.previewUrl ?? first?.url ?? c.url ?? null
+    const firstFile = first?.mediaContent?.file ?? first
+    return (
+      c.thumbnailUrl ?? c.previewUrl ??
+      firstFile?.previewUrl ?? firstFile?.url ?? firstFile?.thumbnailUrl ??
+      first?.previewUrl ?? first?.url ??
+      c.url ?? null
+    )
   }
 
   function isVideo(c) {
@@ -455,15 +462,24 @@
             {:else}
               {#each getFileList(activeCreative) as f, i}
                 {@const fk = statusKey(getState(f)) || statusKey(getState(activeCreative))}
+                {@const fw = f.resolution?.width  ?? f.width  ?? f.mediaContent?.file?.width}
+                {@const fh = f.resolution?.height ?? f.height ?? f.mediaContent?.file?.height}
+                {@const fst = STATUS[getState(f)] ?? STATUS[fk] ?? null}
                 <div class="cr-media-row">
-                  <span class="cr-media-name">{f.name ?? `Файл ${i+1}`}</span>
-                  {#if f.width && f.height}<span class="cr-media-dim">{f.width}×{f.height}</span>{/if}
+                  <span class="cr-media-name">{f.name ?? f.mediaContent?.file?.name ?? `Файл ${i+1}`}</span>
+                  {#if fw && fh}<span class="cr-media-dim">{fw}×{fh}</span>{/if}
+                  {#if fst}<span class="cr-status-badge {fst.cls}" style="font-size:10px;padding:1px 6px">{fst.label}</span>{/if}
+                  <!-- status icon -->
                   {#if fk === 'APPROVED'}
-                    <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style="color:#16A34A;flex-shrink:0">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:#16A34A;flex-shrink:0" title="Согласован">
                       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                     </svg>
+                  {:else if fk === 'ERROR' || fk === 'REJECTED'}
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:#DC2626;flex-shrink:0" title={fst?.label ?? fk}>
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                    </svg>
                   {:else if fk}
-                    <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style="color:#D97706;flex-shrink:0">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:#D97706;flex-shrink:0" title={fst?.label ?? fk}>
                       <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                     </svg>
                   {/if}
