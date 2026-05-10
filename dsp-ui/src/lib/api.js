@@ -84,8 +84,12 @@ export const api = {
   },
 
   filters: {
-    states() { return request('/clients/filters/campaign-states') },
-    types()  { return request('/clients/filters/campaign-types') },
+    states()           { return request('/clients/filters/campaign-states') },
+    types()            { return request('/clients/filters/campaign-types') },
+    interests()        { return request('/clients/filters/interests') },
+    genders()          { return request('/clients/filters/genders') },
+    incomeCategories() { return request('/clients/filters/income-categories') },
+    ageGroups()        { return request('/clients/filters/age-groups') },
   },
 
   creatives: {

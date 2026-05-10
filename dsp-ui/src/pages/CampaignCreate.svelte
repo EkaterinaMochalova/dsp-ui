@@ -44,6 +44,7 @@
     cityIds: [],
     screenIds: [],
     creativeIds: [],
+    creativeTargeting: {},
   }
 
   // Forecast metrics (updated when screens/dates change)
