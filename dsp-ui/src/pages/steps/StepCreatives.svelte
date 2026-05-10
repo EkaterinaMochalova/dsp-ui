@@ -46,6 +46,7 @@
   // API field is `state`, not `status`. Known values: APPROVED, PENDING, REJECTED,
   // ACTIVE, MODERATION, DECLINED, PREMODERATION
   const STATUS = {
+    NEW:           { label: 'Новый',        cls: 'st-blue'   },
     APPROVED:      { label: 'Согласован',   cls: 'st-green'  },
     ACTIVE:        { label: 'Согласован',   cls: 'st-green'  },
     PENDING:       { label: 'На модерации', cls: 'st-yellow' },
@@ -58,10 +59,10 @@
   // Canonical key for filtering (collapse aliases)
   function statusKey(raw) {
     if (!raw) return ''
-    if (raw === 'ACTIVE')                        return 'APPROVED'
+    if (raw === 'ACTIVE')                                return 'APPROVED'
     if (raw === 'MODERATION' || raw === 'PREMODERATION') return 'PENDING'
-    if (raw === 'DECLINED')                      return 'REJECTED'
-    return raw
+    if (raw === 'DECLINED')                              return 'REJECTED'
+    return raw  // NEW, APPROVED, PENDING, REJECTED pass through
   }
 
   // Read status from `state` field (API) or fallback to `status`
@@ -297,7 +298,12 @@
               <!-- Overall status badge -->
               <div class="cr-card-status-row">
                 <span class="cr-status-badge {st.cls}">
-                  {#if sk === 'APPROVED'}
+                  {#if sk === 'NEW'}
+                    <!-- sparkle / new dot -->
+                    <svg class="st-icon" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"/>
+                    </svg>
+                  {:else if sk === 'APPROVED'}
                     <svg class="st-icon" viewBox="0 0 20 20" fill="currentColor">
                       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                     </svg>
@@ -523,6 +529,7 @@
     white-space: nowrap;
   }
   .st-icon { width: 12px; height: 12px; flex-shrink: 0; }
+  .st-blue   { background: #DBEAFE; color: #1D4ED8; }
   .st-green  { background: #DCFCE7; color: #15803D; }
   .st-yellow { background: #FEF9C3; color: #854D0E; }
   .st-red    { background: #FEE2E2; color: #B91C1C; }
