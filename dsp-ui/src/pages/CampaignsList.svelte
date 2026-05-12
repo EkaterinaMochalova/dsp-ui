@@ -43,6 +43,9 @@
   // Stats keyed by campaign ID: { totalShowed, totalOts, totalBudgetShowed, cpm }
   let statsMap = {}
 
+  // Cities keyed by campaign ID: string[]
+  let citiesMap = {}
+
   onMount(async () => {
     try {
       ;[allStates, allTypes] = await Promise.all([
@@ -84,13 +87,17 @@
           return 0
         })
       }
-      if (rows[0]) console.log('[list] campaign keys:', Object.keys(rows[0]), 'segments:', rows[0].segments?.length, 'cities:', rows[0].cities)
       campaigns = rows
+      citiesMap = {}   // clear while new data loads
       totalElements = data.totalElements ?? 0
       totalPages = data.totalPages ?? 0
 
-      // Load stats for the visible campaigns in the background
-      if (campaigns.length > 0) loadStats(campaigns.map(c => c.id))
+      // Load stats + cities for visible campaigns in background
+      if (campaigns.length > 0) {
+        const ids = campaigns.map(c => c.id)
+        loadStats(ids)
+        loadCities(ids)
+      }
     } catch (e) {
       error = 'Не удалось загрузить кампании'
     } finally {
@@ -136,6 +143,26 @@
       statsMap = agg
     } catch {
       // Stats are non-critical — silently ignore errors
+    }
+  }
+
+  async function loadCities(ids) {
+    try {
+      // Fetch full campaign details in parallel; extract unique city names per campaign
+      const results = await Promise.all(ids.map(id => api.campaigns.get(id).catch(() => null)))
+      const map = {}
+      for (const camp of results) {
+        if (!camp) continue
+        const names = [...new Set(
+          (camp.segments ?? [])
+            .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
+            .filter(Boolean)
+        )]
+        map[camp.id] = names
+      }
+      citiesMap = map
+    } catch {
+      // Cities are non-critical
     }
   }
 
@@ -191,23 +218,8 @@
     window.location.hash = '#/campaigns/' + id
   }
 
-  function getCityNames(c) {
-    // Primary: segments[].inventories[].city  (confirmed API shape)
-    const fromSegs = (c.segments ?? [])
-      .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
-      .filter(Boolean)
-    if (fromSegs.length) return [...new Set(fromSegs)]
-
-    // Fallback: explicit cities array
-    const fromCities = (c.cities ?? []).map(x => x.name).filter(Boolean)
-    if (fromCities.length) return fromCities
-
-    // Last resort: single city field
-    return c.city?.name ? [c.city.name] : []
-  }
-
   function formatCities(c) {
-    const names = getCityNames(c)
+    const names = citiesMap[c.id] ?? []
     if (!names.length) return '—'
     if (names.length <= 2) return names.join(', ')
     return names.slice(0, 2).join(', ') + `, +${names.length - 2}`
