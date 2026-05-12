@@ -70,10 +70,21 @@
         ...(filterBudgetMin ? { budgetFrom: filterBudgetMin } : {}),
         ...(filterBudgetMax ? { budgetTo:   filterBudgetMax } : {}),
       }
-      console.log('[load] sort:', params.sort)
       const data = await api.campaigns.list(params)
-      console.log('[load] pageable sort:', JSON.stringify(data.pageable?.sort ?? data.sort))
-      campaigns = data.content ?? []
+      let rows = data.content ?? []
+
+      // Client-side sort fallback in case the API ignores the sort param
+      if (rows.length > 0) {
+        const dir = sortDir === 'asc' ? 1 : -1
+        rows = [...rows].sort((a, b) => {
+          const av = a[sortBy] ?? ''
+          const bv = b[sortBy] ?? ''
+          if (av < bv) return -1 * dir
+          if (av > bv) return  1 * dir
+          return 0
+        })
+      }
+      campaigns = rows
       totalElements = data.totalElements ?? 0
       totalPages = data.totalPages ?? 0
 

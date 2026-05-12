@@ -63,6 +63,58 @@
     },
   }
 
+  // Save state
+  let saving = false
+  let saveError = ''
+
+  function buildPayload() {
+    const budget = Number(draft.customBudgetTotal) || 0
+    const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
+
+    return {
+      name:      draft.name,
+      type:      draft.type,
+      ...(draft.customerId ? { customer: { id: draft.customerId } } : {}),
+      ...(draft.brandId    ? { brand:    { id: draft.brandId    } } : {}),
+      startDate: draft.startDate,
+      endDate:   draft.endDate,
+      bidType:   draft.bidType,
+      totalBudget: budget,
+      ...(markup != null   ? { additionalCharge: markup } : {}),
+      maxImpressionsCount:       Number(draft.limitCampaign) || 0,
+      maxDailyImpressionsCount:  Number(draft.limitDay)      || 0,
+      maxHourlyImpressionsCount: Number(draft.limitHour)     || 0,
+      ...(draft.limitMinute ? { maxMinuteImpressionsCount: Number(draft.limitMinute) } : {}),
+      segments: draft.screenIds.length > 0
+        ? [{ inventories: draft.screenIds.map(id => ({ id })) }]
+        : [],
+      ...(draft.creativeIds?.length
+        ? { creatives: draft.creativeIds.map(id => ({ id })) }
+        : {}),
+    }
+  }
+
+  async function saveCampaign() {
+    if (saving) return
+    saving = true
+    saveError = ''
+    try {
+      const payload = buildPayload()
+      if (draft.id) {
+        await api.campaigns.update(draft.id, payload)
+      } else {
+        const created = await api.campaigns.create(payload)
+        if (created?.id) draft = { ...draft, id: created.id }
+      }
+      window.location.hash = '#/campaigns'
+    } catch (e) {
+      saveError = e?.data?.message ?? e?.data ?? 'Не удалось сохранить кампанию'
+      console.warn('Save error:', e)
+    } finally {
+      saving = false
+    }
+  }
+
   // Forecast metrics (updated when screens/dates change)
   let metrics = { impressions: 0, ots: 0, budget: null }
   let hasScreensAndDates = false
@@ -371,8 +423,13 @@
     </div>
 
     <!-- Save / Launch -->
+    {#if saveError}
+      <div class="save-error">{saveError}</div>
+    {/if}
     <div class="wizard-actions">
-      <button class="btn-save">Сохранить</button>
+      <button class="btn-save" on:click={saveCampaign} disabled={saving}>
+        {#if saving}Сохранение…{:else}Сохранить{/if}
+      </button>
       <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1}>Запустить</button>
     </div>
   </div>
