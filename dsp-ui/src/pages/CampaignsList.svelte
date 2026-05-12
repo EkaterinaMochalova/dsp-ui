@@ -180,6 +180,24 @@
     if (sortBy !== field) return 'both'
     return sortDir === 'asc' ? 'up' : 'down'
   }
+
+  // Budget per day derived from total budget ÷ campaign duration
+  function budgetDay(c) {
+    if (!c.budget || !c.startDate || !c.endDate) return null
+    const days = Math.max(1, Math.round((new Date(c.endDate) - new Date(c.startDate)) / 86400000) + 1)
+    return c.budget / days
+  }
+
+  // Row context menu
+  let openRowMenu = null
+  function toggleRowMenu(id, e) {
+    e.stopPropagation()
+    openRowMenu = openRowMenu === id ? null : id
+  }
+  function closeRowMenu() { openRowMenu = null }
+
+  const STOPPABLE = ['ACTIVE','ACTIVATED','BOOKED','RESERVED']
+  const STARTABLE = ['STOPPED','CANCELLED','NEW']
 </script>
 
 <!-- ── Toolbar ── -->
@@ -471,12 +489,37 @@
                   <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
                 </td>
                 <td class="budget-cell">
-                  <div class="budget-main" style="font-size:12px">—</div>
+                  <div class="budget-main" style="font-size:12px">
+                    {budgetDay(c) != null ? formatMoney(budgetDay(c)) : '—'}
+                  </div>
                 </td>
-                <td style="font-size:12px;color:var(--text-muted)">{c.otsCount ?? c.ots ?? '—'}</td>
-                <td style="font-size:12px;color:var(--text-muted)">{c.impressionsCount ?? c.impressionCount ?? '—'}</td>
-                <td>
-                  <button class="row-menu-btn" title="Действия">⋮</button>
+                <td style="font-size:12px;color:var(--text-muted)">{(c.otsCount ?? c.ots)?.toLocaleString('ru-RU') ?? '—'}</td>
+                <td style="font-size:12px;color:var(--text-muted)">{(c.impressionsCount ?? c.impressionCount)?.toLocaleString('ru-RU') ?? '—'}</td>
+                <td style="position:relative">
+                  <button class="row-menu-btn" title="Действия" on:click={(e) => toggleRowMenu(c.id, e)}>⋮</button>
+                  {#if openRowMenu === c.id}
+                    <div class="row-menu-dropdown">
+                      <button class="dropdown-item" on:click={() => { openCampaign(c.id); closeRowMenu() }}>
+                        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+                        Открыть
+                      </button>
+                      {#if STOPPABLE.includes(c.state)}
+                        <button class="dropdown-item dropdown-item--warn" on:click={closeRowMenu}>
+                          <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"/></svg>
+                          Остановить
+                        </button>
+                      {:else if STARTABLE.includes(c.state)}
+                        <button class="dropdown-item dropdown-item--green" on:click={closeRowMenu}>
+                          <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
+                          Запустить
+                        </button>
+                      {/if}
+                      <button class="dropdown-item" on:click={closeRowMenu}>
+                        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"/><path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z"/></svg>
+                        Дублировать
+                      </button>
+                    </div>
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -530,9 +573,10 @@
 {/if}
 </div>
 
-<!-- Close dropdown on outside click -->
+<!-- Close dropdowns on outside click -->
 <svelte:window on:click|capture={(e) => {
   if (!e.target.closest('.chip') && !e.target.closest('.dropdown')) openChip = null
+  if (!e.target.closest('.row-menu-btn') && !e.target.closest('.row-menu-dropdown')) openRowMenu = null
 }} />
 
 <style>
@@ -658,6 +702,25 @@
   .sort-icon-muted {
     opacity: 0.35;
   }
+
+  /* Row context menu */
+  .row-menu-dropdown {
+    position: absolute;
+    top: calc(100% - 2px);
+    right: 0;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 8px);
+    box-shadow: 0 4px 20px rgba(0,0,0,.14);
+    z-index: 300;
+    min-width: 160px;
+    padding: 4px 0;
+  }
+  .dropdown-item--warn { color: #ef4444 !important; }
+  .dropdown-item--warn:hover { background: #fef2f2 !important; color: #ef4444 !important; }
+  .dropdown-item--green { color: #16a34a !important; }
+  .dropdown-item--green:hover { background: #f0fdf4 !important; color: #16a34a !important; }
+  .dropdown-item svg { vertical-align: middle; margin-right: 6px; flex-shrink: 0; }
 
   /* Name link as button */
   .name-link {
