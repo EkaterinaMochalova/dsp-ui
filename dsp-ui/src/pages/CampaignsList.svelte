@@ -127,12 +127,10 @@
 
   function setSort(field) {
     if (field === sortBy) {
-      if (sortDir === 'asc') sortDir = 'desc'
-      else if (sortDir === 'desc') { sortBy = 'startDate'; sortDir = 'desc' }
-      else { sortDir = 'asc' }
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc'
     } else {
       sortBy = field
-      sortDir = 'asc'
+      sortDir = 'desc'
     }
     load(0)
   }
