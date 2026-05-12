@@ -138,32 +138,69 @@
     if (campaignId) {
       try {
         const camp = await api.campaigns.get(campaignId)
+        console.log('[CampaignCreate] loaded campaign:', JSON.stringify(camp, null, 2))
+
+        // ── Budget resolution ──────────────────────────────────────────
+        // Try every known location the API might store the budget value.
+        const resolvedBudget =
+          camp.limits?.budgetLimit?.total   // most common: set via limits.budgetLimit.total
+          ?? camp.limits?.budget?.total
+          ?? camp.budgetLimit?.total
+          ?? camp.budget                    // flat field (list endpoint)
+          ?? camp.budgetTotal
+          ?? 0
+
+        // ── Limit type ─────────────────────────────────────────────────
+        // If the campaign has an OTS limit → OTS mode; otherwise COUNT
+        const resolvedLimitType =
+          camp.limitType
+          ?? (camp.limits?.otsLimit ? 'OTS' : null)
+          ?? (camp.limits?.count    ? 'COUNT' : null)
+          ?? draft.limitType
+
+        // ── Impression limits ──────────────────────────────────────────
+        // limits.count OR limits.impressionLimit OR flat limitCampaign/Day/Hour
+        const lc = camp.limits?.count ?? camp.limits?.impressionLimit ?? {}
+        const lo = camp.limits?.otsLimit ?? camp.limits?.ots ?? {}
+
+        // ── Buyer markup ───────────────────────────────────────────────
+        const resolvedMarkup =
+          camp.buyerMarkup
+          ?? camp.markup
+          ?? camp.clientMarkup
+          ?? ''
+
         draft = {
           ...draft,
-          id:    camp.id ?? campaignId,
-          state: camp.state ?? draft.state,
-          name: camp.name ?? draft.name,
-          type: camp.type ?? draft.type,
-          customerId: camp.customer?.id ?? camp.customerId ?? draft.customerId,
-          customerName: camp.customer?.name ?? draft.customerName,
-          brandId: camp.brand?.id ?? camp.brandId ?? draft.brandId,
-          brandName: camp.brand?.name ?? draft.brandName,
-          agencyName: camp.agency?.name ?? draft.agencyName,
-          startDate: camp.startDate?.split('T')[0] ?? camp.startDate ?? draft.startDate,
-          endDate: camp.endDate?.split('T')[0] ?? camp.endDate ?? draft.endDate,
-          bidType: camp.bidType ?? draft.bidType,
-          budget: camp.budget ?? draft.budget,
-          screenIds: camp.inventories?.map(i => i.id) ?? camp.screenIds ?? draft.screenIds,
-          cities: camp.cities?.map(c => c.name) ?? draft.cities,
-          cityIds: camp.cities?.map(c => c.id) ?? draft.cityIds,
-          limitType: camp.limitType ?? draft.limitType,
-          limitCampaign: String(camp.limits?.count?.campaign ?? camp.limitCampaign ?? draft.limitCampaign ?? ''),
-          limitDay: String(camp.limits?.count?.day ?? camp.limitDay ?? draft.limitDay ?? ''),
-          limitHour: String(camp.limits?.count?.hour ?? camp.limitHour ?? draft.limitHour ?? ''),
-          customBudgetTotal: String(camp.budget ?? draft.customBudgetTotal ?? ''),
+          id:               camp.id ?? campaignId,
+          state:            camp.state ?? draft.state,
+          name:             camp.name ?? draft.name,
+          type:             camp.type ?? draft.type,
+          customerId:       camp.customer?.id     ?? camp.customerId    ?? draft.customerId,
+          customerName:     camp.customer?.name   ?? draft.customerName,
+          brandId:          camp.brand?.id        ?? camp.brandId       ?? draft.brandId,
+          brandName:        camp.brand?.name      ?? draft.brandName,
+          agencyName:       camp.agency?.name     ?? draft.agencyName,
+          startDate:        camp.startDate?.slice(0, 10) ?? draft.startDate,
+          endDate:          camp.endDate?.slice(0, 10)   ?? draft.endDate,
+          bidType:          camp.bidType          ?? draft.bidType,
+          limitType:        resolvedLimitType,
+          limitCampaign:    String(lc.campaign ?? lc.total ?? camp.limitCampaign ?? ''),
+          limitDay:         String(lc.day      ?? camp.limitDay          ?? ''),
+          limitHour:        String(lc.hour     ?? camp.limitHour         ?? ''),
+          limitMinute:      String(lc.minute   ?? camp.limitMinute       ?? ''),
+          otsLimitCampaign: String(lo.campaign ?? lo.total ?? camp.otsLimitCampaign ?? ''),
+          otsLimitDay:      String(lo.day      ?? camp.otsLimitDay       ?? ''),
+          otsLimitHour:     String(lo.hour     ?? camp.otsLimitHour      ?? ''),
+          buyerMarkup:      resolvedMarkup,
+          customBudgetTotal: resolvedBudget > 0 ? String(resolvedBudget) : '',
+          screenIds:  camp.inventories?.map(i => i.id ?? i.inventory?.id).filter(Boolean)
+                      ?? camp.screenIds ?? draft.screenIds,
+          cities:     camp.cities?.map(c => c.name) ?? draft.cities,
+          cityIds:    camp.cities?.map(c => c.id)   ?? draft.cityIds,
         }
-        // Mark all steps as completed so the left sidebar shows checkmarks
-        for (const s of STEPS) { completedSteps = { ...completedSteps, [s.id]: true } }
+        // Mark all steps done → left sidebar shows checkmarks
+        for (const s of STEPS) completedSteps = { ...completedSteps, [s.id]: true }
       } catch (e) {
         console.warn('Failed to load campaign', e)
       }
