@@ -138,37 +138,45 @@
     if (campaignId) {
       try {
         const camp = await api.campaigns.get(campaignId)
-        console.log('[CampaignCreate] loaded campaign:', JSON.stringify(camp, null, 2))
 
-        // ── Budget resolution ──────────────────────────────────────────
-        // Try every known location the API might store the budget value.
-        const resolvedBudget =
-          camp.limits?.budgetLimit?.total   // most common: set via limits.budgetLimit.total
-          ?? camp.limits?.budget?.total
-          ?? camp.budgetLimit?.total
-          ?? camp.budget                    // flat field (list endpoint)
-          ?? camp.budgetTotal
-          ?? 0
+        // ── Budget ─────────────────────────────────────────────────────
+        // Real API field is camp.totalBudget (buyer side: camp.budgetBuyer)
+        const resolvedBudget = camp.totalBudget ?? camp.budgetBuyer ?? 0
 
         // ── Limit type ─────────────────────────────────────────────────
-        // If the campaign has an OTS limit → OTS mode; otherwise COUNT
         const resolvedLimitType =
           camp.limitType
-          ?? (camp.limits?.otsLimit ? 'OTS' : null)
-          ?? (camp.limits?.count    ? 'COUNT' : null)
+          ?? (camp.otsLimitCampaign || camp.maxOtsCount ? 'OTS' : null)
           ?? draft.limitType
 
-        // ── Impression limits ──────────────────────────────────────────
-        // limits.count OR limits.impressionLimit OR flat limitCampaign/Day/Hour
-        const lc = camp.limits?.count ?? camp.limits?.impressionLimit ?? {}
-        const lo = camp.limits?.otsLimit ?? camp.limits?.ots ?? {}
+        // ── Screens ────────────────────────────────────────────────────
+        // Screens live at camp.segments[].inventories[].id, NOT camp.inventories[]
+        const resolvedScreenIds = (camp.segments ?? [])
+          .flatMap(s => (s.inventories ?? []).map(i => i.id ?? i.inventory?.id))
+          .filter(Boolean)
+
+        // ── Cities ─────────────────────────────────────────────────────
+        // camp.cities may be empty; fall back to extracting from segments.inventories.city
+        const resolvedCities = camp.cities?.length
+          ? camp.cities.map(c => c.name)
+          : [...new Set(
+              (camp.segments ?? [])
+                .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
+                .filter(Boolean)
+            )]
+        const resolvedCityIds = camp.cities?.length
+          ? camp.cities.map(c => c.id)
+          : [...new Set(
+              (camp.segments ?? [])
+                .flatMap(s => (s.inventories ?? []).map(i => i.city?.id))
+                .filter(Boolean)
+            )]
 
         // ── Buyer markup ───────────────────────────────────────────────
-        const resolvedMarkup =
-          camp.buyerMarkup
-          ?? camp.markup
-          ?? camp.clientMarkup
-          ?? ''
+        // Real API field is camp.additionalCharge (e.g. 50 = 50%)
+        const resolvedMarkup = camp.additionalCharge != null
+          ? String(camp.additionalCharge)
+          : (camp.buyerMarkup ?? camp.markup ?? '')
 
         draft = {
           ...draft,
@@ -176,28 +184,28 @@
           state:            camp.state ?? draft.state,
           name:             camp.name ?? draft.name,
           type:             camp.type ?? draft.type,
-          customerId:       camp.customer?.id     ?? camp.customerId    ?? draft.customerId,
-          customerName:     camp.customer?.name   ?? draft.customerName,
-          brandId:          camp.brand?.id        ?? camp.brandId       ?? draft.brandId,
-          brandName:        camp.brand?.name      ?? draft.brandName,
-          agencyName:       camp.agency?.name     ?? draft.agencyName,
+          customerId:       camp.customer?.id   ?? camp.customerId  ?? draft.customerId,
+          customerName:     camp.customer?.name ?? draft.customerName,
+          brandId:          camp.brand?.id      ?? camp.brandId     ?? draft.brandId,
+          brandName:        camp.brand?.name    ?? draft.brandName,
+          agencyName:       camp.agency?.name   ?? draft.agencyName,
           startDate:        camp.startDate?.slice(0, 10) ?? draft.startDate,
           endDate:          camp.endDate?.slice(0, 10)   ?? draft.endDate,
-          bidType:          camp.bidType          ?? draft.bidType,
+          bidType:          camp.bidType ?? draft.bidType,
           limitType:        resolvedLimitType,
-          limitCampaign:    String(lc.campaign ?? lc.total ?? camp.limitCampaign ?? ''),
-          limitDay:         String(lc.day      ?? camp.limitDay          ?? ''),
-          limitHour:        String(lc.hour     ?? camp.limitHour         ?? ''),
-          limitMinute:      String(lc.minute   ?? camp.limitMinute       ?? ''),
-          otsLimitCampaign: String(lo.campaign ?? lo.total ?? camp.otsLimitCampaign ?? ''),
-          otsLimitDay:      String(lo.day      ?? camp.otsLimitDay       ?? ''),
-          otsLimitHour:     String(lo.hour     ?? camp.otsLimitHour      ?? ''),
+          // Impression limits: flat fields maxImpressionsCount / maxDailyImpressionsCount / maxHourlyImpressionsCount
+          limitCampaign:    String(camp.maxImpressionsCount      || camp.limitCampaign      || ''),
+          limitDay:         String(camp.maxDailyImpressionsCount || camp.limitDay           || ''),
+          limitHour:        String(camp.maxHourlyImpressionsCount || camp.limitHour         || ''),
+          limitMinute:      String(camp.limitMinute ?? ''),
+          otsLimitCampaign: String(camp.maxOtsCount      || camp.otsLimitCampaign || ''),
+          otsLimitDay:      String(camp.maxDailyOtsCount || camp.otsLimitDay      || ''),
+          otsLimitHour:     String(camp.maxHourlyOtsCount || camp.otsLimitHour   || ''),
           buyerMarkup:      resolvedMarkup,
           customBudgetTotal: resolvedBudget > 0 ? String(resolvedBudget) : '',
-          screenIds:  camp.inventories?.map(i => i.id ?? i.inventory?.id).filter(Boolean)
-                      ?? camp.screenIds ?? draft.screenIds,
-          cities:     camp.cities?.map(c => c.name) ?? draft.cities,
-          cityIds:    camp.cities?.map(c => c.id)   ?? draft.cityIds,
+          screenIds:        resolvedScreenIds.length ? resolvedScreenIds : draft.screenIds,
+          cities:           resolvedCities,
+          cityIds:          resolvedCityIds,
         }
         // Mark all steps done → left sidebar shows checkmarks
         for (const s of STEPS) completedSteps = { ...completedSteps, [s.id]: true }
