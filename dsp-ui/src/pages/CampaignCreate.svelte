@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import RightBar from '../components/RightBar.svelte'
+  import StatusBadge from '../components/StatusBadge.svelte'
   import StepStart        from './steps/StepStart.svelte'
   import StepBasicParams  from './steps/StepBasicParams.svelte'
   import StepBudget       from './steps/StepBudget.svelte'
@@ -16,11 +17,14 @@
   import StepStats        from './steps/StepStats.svelte'
 
   export let campaignType = 'RTB'
+  export let campaignId = null
+  export let initialStep = 'start'
 
   // Campaign draft state
   let draft = {
     type: campaignType,
     name: '',
+    state: null,
     customerId: null,
     brandId: null,
     bidType: 'BID', // BID | OTS
@@ -126,9 +130,44 @@
     { id: 'stats',     label: 'Статистика',                      subs: [] },
   ]
 
-  let currentStep = 'start'
+  let currentStep = initialStep
   let completedSteps = {}   // plain object — spread creates new ref, guaranteed reactive
   let screensView = 'selection'  // 'selection' | 'bids' | 'schedule'
+
+  onMount(async () => {
+    if (campaignId) {
+      try {
+        const camp = await api.campaigns.get(campaignId)
+        draft = {
+          ...draft,
+          state: camp.state ?? draft.state,
+          name: camp.name ?? draft.name,
+          type: camp.type ?? draft.type,
+          customerId: camp.customer?.id ?? camp.customerId ?? draft.customerId,
+          customerName: camp.customer?.name ?? draft.customerName,
+          brandId: camp.brand?.id ?? camp.brandId ?? draft.brandId,
+          brandName: camp.brand?.name ?? draft.brandName,
+          agencyName: camp.agency?.name ?? draft.agencyName,
+          startDate: camp.startDate?.split('T')[0] ?? camp.startDate ?? draft.startDate,
+          endDate: camp.endDate?.split('T')[0] ?? camp.endDate ?? draft.endDate,
+          bidType: camp.bidType ?? draft.bidType,
+          budget: camp.budget ?? draft.budget,
+          screenIds: camp.inventories?.map(i => i.id) ?? camp.screenIds ?? draft.screenIds,
+          cities: camp.cities?.map(c => c.name) ?? draft.cities,
+          cityIds: camp.cities?.map(c => c.id) ?? draft.cityIds,
+          limitType: camp.limitType ?? draft.limitType,
+          limitCampaign: String(camp.limits?.count?.campaign ?? camp.limitCampaign ?? draft.limitCampaign ?? ''),
+          limitDay: String(camp.limits?.count?.day ?? camp.limitDay ?? draft.limitDay ?? ''),
+          limitHour: String(camp.limits?.count?.hour ?? camp.limitHour ?? draft.limitHour ?? ''),
+          customBudgetTotal: String(camp.budget ?? draft.customBudgetTotal ?? ''),
+        }
+        // Mark all steps as completed so the left sidebar shows checkmarks
+        for (const s of STEPS) { completedSteps = { ...completedSteps, [s.id]: true } }
+      } catch (e) {
+        console.warn('Failed to load campaign', e)
+      }
+    }
+  })
 
   function goToStep(id) { currentStep = id; if (id !== 'screens') screensView = 'selection' }
 
@@ -302,6 +341,9 @@
         </svg>
       </button>
       <span class="creation-title">{campaignName}</span>
+      {#if campaignId && draft.state}
+        <StatusBadge state={draft.state} />
+      {/if}
       <button class="creation-topbar-action" title="Скачать">
         <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
