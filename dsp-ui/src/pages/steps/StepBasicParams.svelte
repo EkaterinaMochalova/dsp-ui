@@ -43,13 +43,22 @@
   })
 
   async function onCustomerChange() {
-    draft.brandId = null
+    draft.brandId   = null
+    draft.brandName = null
     brands = []
-    if (!draft.customerId) return
+    if (!draft.customerId) { draft.customerName = null; return }
+    // Store name for summary display
+    const found = customers.find(c => c.id === draft.customerId)
+    draft.customerName = found?.name ?? null
     try {
       const data = await api.customers.brands(draft.customerId)
       brands = data.content ?? []
     } catch {}
+  }
+
+  function onBrandChange() {
+    const found = brands.find(b => b.id === draft.brandId)
+    draft.brandName = found?.name ?? null
   }
 
   function addCity(name) {
@@ -106,6 +115,7 @@
         class="field-select"
         class:placeholder={!draft.brandId}
         bind:value={draft.brandId}
+        on:change={onBrandChange}
         disabled={!draft.customerId || brands.length === 0}
       >
         <option value={null}>Выберите или создайте бренд</option>

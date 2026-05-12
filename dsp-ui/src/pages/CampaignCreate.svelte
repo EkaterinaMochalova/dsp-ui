@@ -354,7 +354,11 @@
     {:else if currentStep === 'analytics'}
       <StepAnalytics bind:draft on:next={() => completeStep('analytics')} on:back={() => prevStep('analytics')} />
     {:else if currentStep === 'summary'}
-      <StepSummary bind:draft {metrics} on:back={() => prevStep('summary')} />
+      <StepSummary bind:draft {metrics}
+        on:back={() => prevStep('summary')}
+        on:launch={() => goToStep('stats')}
+        on:goto={e => goToStep(e.detail)}
+      />
     {:else if currentStep === 'stats'}
       <StepStats bind:draft on:back={() => prevStep('stats')} />
     {/if}
