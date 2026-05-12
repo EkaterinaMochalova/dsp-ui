@@ -234,10 +234,18 @@
   $: hasDateFilter = !!(filterDateFrom || filterDateTo)
   $: hasBudgetFilter = !!(filterBudgetMin || filterBudgetMax)
 
-  function sortIcon(field) {
-    if (sortBy !== field) return 'both'
-    return sortDir === 'asc' ? 'up' : 'down'
-  }
+  // Reactive sort icons — $: guarantees re-evaluation whenever sortBy/sortDir change
+  $: si = (() => {
+    const icon = f => sortBy === f ? (sortDir === 'asc' ? 'up' : 'down') : 'both'
+    return {
+      name:             icon('name'),
+      startDate:        icon('startDate'),
+      endDate:          icon('endDate'),
+      budget:           icon('budget'),
+      otsCount:         icon('otsCount'),
+      impressionsCount: icon('impressionsCount'),
+    }
+  })()
 
   // Budget per day derived from total budget ÷ campaign duration
   function budgetDay(c) {
@@ -412,62 +420,62 @@
     <thead>
       <tr>
         <th style="width:110px">Статус</th>
-        <th>
+        <th style="min-width:200px">
           <button class="sort-th" on:click={() => setSort('name')}>
             Кампания
-            {#if sortIcon('name') === 'up'}
+            {#if si.name === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            {:else if sortIcon('name') === 'down'}
+            {:else if si.name === 'down'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 2v8M2 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else}
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
         </th>
-        <th>Гор.</th>
-        <th>
+        <th style="width:70px">Гор.</th>
+        <th style="width:90px">
           <button class="sort-th" on:click={() => setSort('startDate')}>
             Начало
-            {#if sortIcon('startDate') === 'up'}
+            {#if si.startDate === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            {:else if sortIcon('startDate') === 'down'}
+            {:else if si.startDate === 'down'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 2v8M2 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else}
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
         </th>
-        <th>
+        <th style="width:90px">
           <button class="sort-th" on:click={() => setSort('endDate')}>
             Конец
-            {#if sortIcon('endDate') === 'up'}
+            {#if si.endDate === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            {:else if sortIcon('endDate') === 'down'}
+            {:else if si.endDate === 'down'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 2v8M2 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else}
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
         </th>
-        <th>
+        <th style="width:110px">
           <button class="sort-th" on:click={() => setSort('budget')}>
             Бюджет
-            {#if sortIcon('budget') === 'up'}
+            {#if si.budget === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            {:else if sortIcon('budget') === 'down'}
+            {:else if si.budget === 'down'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 2v8M2 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else}
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
         </th>
-        <th>Бюджет в день</th>
+        <th style="width:110px">Бюджет в день</th>
         <th>
           <button class="sort-th" on:click={() => setSort('otsCount')}>
             OTS
-            {#if sortIcon('otsCount') === 'up'}
+            {#if si.otsCount === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            {:else if sortIcon('otsCount') === 'down'}
+            {:else if si.otsCount === 'down'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 2v8M2 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else}
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -477,9 +485,9 @@
         <th>
           <button class="sort-th" on:click={() => setSort('impressionsCount')}>
             Выходы
-            {#if sortIcon('impressionsCount') === 'up'}
+            {#if si.impressionsCount === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            {:else if sortIcon('impressionsCount') === 'down'}
+            {:else if si.impressionsCount === 'down'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 2v8M2 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else}
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -798,7 +806,9 @@
     width: 10px;
     height: 12px;
     flex-shrink: 0;
+    flex-grow: 0;
     vertical-align: middle;
+    display: inline-block; /* keeps space stable */
   }
   .sort-icon-muted {
     opacity: 0.35;
