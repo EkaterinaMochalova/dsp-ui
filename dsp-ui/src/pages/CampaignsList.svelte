@@ -191,29 +191,17 @@
   }
 
   function getCityNames(c) {
-    // 1. Explicit cities array (may be empty even when inventories have cities)
-    const fromCities = c.cities?.map(x => x.name).filter(Boolean) ?? []
-    if (fromCities.length) return fromCities
-
-    // 2. inventoryList[].inventory.city  (common list-endpoint shape)
-    const fromInvList = (c.inventoryList ?? [])
-      .map(x => x.inventory?.city?.name ?? x.city?.name)
-      .filter(Boolean)
-    if (fromInvList.length) return [...new Set(fromInvList)]
-
-    // 3. inventories[].city  (flat array)
-    const fromInv = (c.inventories ?? [])
-      .map(x => x.city?.name ?? x.inventory?.city?.name)
-      .filter(Boolean)
-    if (fromInv.length) return [...new Set(fromInv)]
-
-    // 4. segments[].inventories[].city  (full nested shape)
+    // Primary: segments[].inventories[].city  (confirmed API shape)
     const fromSegs = (c.segments ?? [])
       .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
       .filter(Boolean)
     if (fromSegs.length) return [...new Set(fromSegs)]
 
-    // 5. single city fallback
+    // Fallback: explicit cities array
+    const fromCities = (c.cities ?? []).map(x => x.name).filter(Boolean)
+    if (fromCities.length) return fromCities
+
+    // Last resort: single city field
     return c.city?.name ? [c.city.name] : []
   }
 
