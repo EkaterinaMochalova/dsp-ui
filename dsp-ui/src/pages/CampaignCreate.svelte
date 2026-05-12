@@ -140,6 +140,7 @@
         const camp = await api.campaigns.get(campaignId)
         draft = {
           ...draft,
+          id:    camp.id ?? campaignId,
           state: camp.state ?? draft.state,
           name: camp.name ?? draft.name,
           type: camp.type ?? draft.type,

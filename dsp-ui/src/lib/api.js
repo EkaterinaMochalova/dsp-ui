@@ -124,6 +124,19 @@ export const api = {
     },
   },
 
+  impressions: {
+    // GET /clients/impressions/campaigns-stats?campaignIds=id1,id2,...&priceMode=...
+    // Returns array of per-inventory stats; items with no inventory field are campaign-level aggregates.
+    campaignStats(campaignIds, priceMode = 'CUSTOMER_CHARGE_EXCLUDED') {
+      const ids = Array.isArray(campaignIds) ? campaignIds.join(',') : String(campaignIds)
+      return request(`/clients/impressions/campaigns-stats?campaignIds=${ids}&priceMode=${priceMode}`)
+    },
+    // Single campaign stats — same endpoint with one ID
+    singleCampaignStats(campaignId, priceMode = 'CUSTOMER_CHARGE_EXCLUDED') {
+      return request(`/clients/impressions/campaigns-stats?campaignIds=${campaignId}&priceMode=${priceMode}`)
+    },
+  },
+
   inventories: {
     list(params = {}) {
       const q = new URLSearchParams({ enabled: 'true', ...params })

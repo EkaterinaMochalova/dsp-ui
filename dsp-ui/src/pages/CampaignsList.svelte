@@ -40,6 +40,9 @@
   // Group chips open state
   let openChip = null
 
+  // Stats keyed by campaign ID: { totalShowed, totalOts, totalBudgetShowed, cpm }
+  let statsMap = {}
+
   onMount(async () => {
     try {
       ;[allStates, allTypes] = await Promise.all([
@@ -59,11 +62,11 @@
         page,
         size: PAGE_SIZE,
         sort: sortBy + ',' + sortDir,
-        ...(filterType    ? { type: filterType }          : {}),
-        ...(filterState   ? { state: filterState }        : {}),
-        ...(filterSearch  ? { search: filterSearch }      : {}),
-        ...(filterDateFrom ? { startDate: filterDateFrom } : {}),
-        ...(filterDateTo   ? { endDate: filterDateTo }     : {}),
+        ...(filterType      ? { type: filterType }            : {}),
+        ...(filterState     ? { state: filterState }          : {}),
+        ...(filterSearch    ? { search: filterSearch }        : {}),
+        ...(filterDateFrom  ? { startDate: filterDateFrom }   : {}),
+        ...(filterDateTo    ? { endDate: filterDateTo }       : {}),
         ...(filterBudgetMin ? { budgetFrom: filterBudgetMin } : {}),
         ...(filterBudgetMax ? { budgetTo:   filterBudgetMax } : {}),
       }
@@ -71,10 +74,54 @@
       campaigns = data.content ?? []
       totalElements = data.totalElements ?? 0
       totalPages = data.totalPages ?? 0
+
+      // Load stats for the visible campaigns in the background
+      if (campaigns.length > 0) loadStats(campaigns.map(c => c.id))
     } catch (e) {
       error = 'Не удалось загрузить кампании'
     } finally {
       loading = false
+    }
+  }
+
+  async function loadStats(ids) {
+    try {
+      const rows = await api.impressions.campaignStats(ids)
+      if (!Array.isArray(rows)) return
+
+      // Build map: campaignId → aggregated totals
+      // The endpoint returns per-inventory rows; aggregate per campaign.
+      // Rows without an inventory field are campaign-level summaries — prefer those.
+      const agg = {}
+      for (const r of rows) {
+        const cid = r.campaign?.id
+        if (!cid) continue
+
+        if (!r.inventory) {
+          // Campaign-level summary row — use directly, highest priority
+          agg[cid] = {
+            totalShowed:       r.totalCountShowed  ?? r.totalShowed  ?? 0,
+            totalOts:          r.otsCountShowed    ?? r.totalOpOts   ?? 0,
+            totalBudgetShowed: r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0,
+            cpm:               r.cpm ?? 0,
+            _fromSummary:      true,
+          }
+        } else if (!agg[cid]?._fromSummary) {
+          // Per-inventory row — accumulate
+          if (!agg[cid]) agg[cid] = { totalShowed: 0, totalOts: 0, totalBudgetShowed: 0, cpm: 0, _count: 0 }
+          agg[cid].totalShowed       += r.totalShowed       ?? r.totalCountShowed ?? 0
+          agg[cid].totalOts          += r.totalOts          ?? r.totalOpOts       ?? 0
+          agg[cid].totalBudgetShowed += r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0
+          agg[cid]._count            = (agg[cid]._count ?? 0) + 1
+          // CPM: weighted average
+          agg[cid].cpm = agg[cid]._count > 0
+            ? (agg[cid].cpm * (agg[cid]._count - 1) + (r.cpm ?? 0)) / agg[cid]._count
+            : (r.cpm ?? 0)
+        }
+      }
+      statsMap = agg
+    } catch {
+      // Stats are non-critical — silently ignore errors
     }
   }
 
@@ -487,14 +534,39 @@
                 </td>
                 <td class="budget-cell">
                   <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
+                  {#if statsMap[c.id]?.totalBudgetShowed > 0 && c.budget > 0}
+                    {@const pct = Math.min(100, Math.round(statsMap[c.id].totalBudgetShowed / c.budget * 100))}
+                    <div class="budget-sub">
+                      <span class="budget-pct">{pct}%</span>
+                      <div class="budget-bar-track">
+                        <div class="budget-bar-fill" style="width:{pct}%"></div>
+                      </div>
+                      <span style="font-size:11px;color:var(--text-muted)">{formatMoney(statsMap[c.id].totalBudgetShowed)}</span>
+                    </div>
+                  {/if}
                 </td>
                 <td class="budget-cell">
                   <div class="budget-main" style="font-size:12px">
                     {budgetDay(c) != null ? formatMoney(budgetDay(c)) : '—'}
                   </div>
                 </td>
-                <td style="font-size:12px;color:var(--text-muted)">{(c.otsCount ?? c.ots)?.toLocaleString('ru-RU') ?? '—'}</td>
-                <td style="font-size:12px;color:var(--text-muted)">{(c.impressionsCount ?? c.impressionCount)?.toLocaleString('ru-RU') ?? '—'}</td>
+                <td style="font-size:12px;color:var(--text-muted)">
+                  {#if statsMap[c.id]}
+                    {statsMap[c.id].totalOts.toLocaleString('ru-RU')}
+                  {:else}
+                    {(c.otsCount ?? c.ots)?.toLocaleString('ru-RU') ?? '—'}
+                  {/if}
+                </td>
+                <td style="font-size:12px;color:var(--text-muted)">
+                  {#if statsMap[c.id]}
+                    <div>{statsMap[c.id].totalShowed.toLocaleString('ru-RU')}</div>
+                    {#if statsMap[c.id].cpm}
+                      <div style="font-size:11px;color:var(--text-muted)">CPM {statsMap[c.id].cpm.toFixed(0)} ₽</div>
+                    {/if}
+                  {:else}
+                    {(c.impressionsCount ?? c.impressionCount)?.toLocaleString('ru-RU') ?? '—'}
+                  {/if}
+                </td>
                 <td style="position:relative">
                   <button class="row-menu-btn" title="Действия" on:click={(e) => toggleRowMenu(c.id, e)}>⋮</button>
                   {#if openRowMenu === c.id}
