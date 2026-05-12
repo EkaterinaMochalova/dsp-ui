@@ -45,6 +45,18 @@
     screenIds: [],
     creativeIds: [],
     creativeTargeting: {},
+    photoReports: {
+      saveAll: false,
+      selectByCountry: false,
+      period: 'campaign',
+      days: 5,
+      showSummary: false,
+      showSchedule: false,
+    },
+    analytics: {
+      counters: [],
+      offlineBlocks: [],
+    },
   }
 
   // Forecast metrics (updated when screens/dates change)
