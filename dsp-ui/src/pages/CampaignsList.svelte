@@ -84,6 +84,7 @@
           return 0
         })
       }
+      if (rows[0]) console.log('[list] campaign keys:', Object.keys(rows[0]), 'segments:', rows[0].segments?.length, 'cities:', rows[0].cities)
       campaigns = rows
       totalElements = data.totalElements ?? 0
       totalPages = data.totalPages ?? 0
