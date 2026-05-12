@@ -451,11 +451,11 @@
 <!-- ── Table ── -->
 <div class="page-body">
 <div class="table-wrap">
-  <table>
+  <table class="campaigns-table">
     <thead>
       <tr>
-        <th style="width:110px">Статус</th>
-        <th style="min-width:200px">
+        <th style="width:100px">Статус</th>
+        <th>
           <button class="sort-th" on:click={() => setSort('name')}>
             Кампания
             {#if si.name === 'up'}
@@ -467,8 +467,8 @@
             {/if}
           </button>
         </th>
-        <th style="width:130px">Город</th>
-        <th style="width:90px">
+        <th style="width:130px;white-space:nowrap">Город</th>
+        <th style="width:95px">
           <button class="sort-th" on:click={() => setSort('startDate')}>
             Начало
             {#if si.startDate === 'up'}
@@ -480,7 +480,7 @@
             {/if}
           </button>
         </th>
-        <th style="width:90px">
+        <th style="width:95px">
           <button class="sort-th" on:click={() => setSort('endDate')}>
             Конец
             {#if si.endDate === 'up'}
@@ -492,7 +492,7 @@
             {/if}
           </button>
         </th>
-        <th style="width:110px">
+        <th style="width:120px">
           <button class="sort-th" on:click={() => setSort('budget')}>
             Бюджет
             {#if si.budget === 'up'}
@@ -504,7 +504,7 @@
             {/if}
           </button>
         </th>
-        <th style="width:110px">Бюджет в день</th>
+        <th style="width:105px">Бюджет в день</th>
         <th>
           <button class="sort-th" on:click={() => setSort('otsCount')}>
             OTS
@@ -847,6 +847,27 @@
   }
   .sort-icon-muted {
     opacity: 0.35;
+  }
+
+  /* Campaigns table — fixed layout prevents column-width shifts on sort */
+  .campaigns-table {
+    table-layout: fixed;
+  }
+  /* Name cell: don't wrap, truncate with ellipsis */
+  .campaigns-table td:nth-child(2),
+  .campaigns-table th:nth-child(2) {
+    overflow: hidden;
+  }
+  .name-link {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .cell-advertiser {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Row context menu */
