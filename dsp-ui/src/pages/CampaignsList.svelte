@@ -190,6 +190,14 @@
     window.location.hash = '#/campaigns/' + id
   }
 
+  function formatCities(c) {
+    const names = c.cities?.map(x => x.name).filter(Boolean)
+      ?? (c.city?.name ? [c.city.name] : [])
+    if (!names.length) return '—'
+    if (names.length <= 2) return names.join(', ')
+    return names.slice(0, 2).join(', ') + `, +${names.length - 2}`
+  }
+
   // Group campaigns by customer name for display
   $: groups = groupCampaigns(campaigns)
 
@@ -432,7 +440,7 @@
             {/if}
           </button>
         </th>
-        <th style="width:70px">Гор.</th>
+        <th style="width:130px">Город</th>
         <th style="width:90px">
           <button class="sort-th" on:click={() => setSort('startDate')}>
             Начало
@@ -558,7 +566,7 @@
                   <div class="cell-advertiser">{c.agency?.name ?? ''}</div>
                 </td>
                 <td style="color:var(--text-muted);font-size:12px">
-                  {c.cities?.map(city => city.name).join(', ') || c.city?.name || '—'}
+                  {formatCities(c)}
                 </td>
                 <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
                   {formatDate(c.startDate)}
@@ -644,7 +652,7 @@
               <div class="cell-advertiser">{c.agency?.name ?? ''}</div>
             </td>
             <td style="color:var(--text-muted);font-size:12px">
-              {c.cities?.map(city => city.name).join(', ') || c.city?.name || '—'}
+              {formatCities(c)}
             </td>
             <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
               {formatDate(c.startDate)}
