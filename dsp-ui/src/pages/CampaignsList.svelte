@@ -70,7 +70,9 @@
         ...(filterBudgetMin ? { budgetFrom: filterBudgetMin } : {}),
         ...(filterBudgetMax ? { budgetTo:   filterBudgetMax } : {}),
       }
+      console.log('[load] sort:', params.sort)
       const data = await api.campaigns.list(params)
+      console.log('[load] pageable sort:', JSON.stringify(data.pageable?.sort ?? data.sort))
       campaigns = data.content ?? []
       totalElements = data.totalElements ?? 0
       totalPages = data.totalPages ?? 0
