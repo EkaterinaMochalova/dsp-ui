@@ -416,10 +416,22 @@
         <th>Гор.</th>
         <th>
           <button class="sort-th" on:click={() => setSort('startDate')}>
-            Даты
+            Начало
             {#if sortIcon('startDate') === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else if sortIcon('startDate') === 'down'}
+              <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 2v8M2 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {:else}
+              <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {/if}
+          </button>
+        </th>
+        <th>
+          <button class="sort-th" on:click={() => setSort('endDate')}>
+            Конец
+            {#if sortIcon('endDate') === 'up'}
+              <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {:else if sortIcon('endDate') === 'down'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 2v8M2 7l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else}
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -468,22 +480,22 @@
     </thead>
     <tbody>
       {#if loading}
-        <tr><td colspan="9" class="state-cell">
+        <tr><td colspan="10" class="state-cell">
           <div class="spinner"></div>
           Загружаю кампании…
         </td></tr>
 
       {:else if error}
-        <tr><td colspan="9" class="state-cell" style="color:#EF4444">{error}</td></tr>
+        <tr><td colspan="10" class="state-cell" style="color:#EF4444">{error}</td></tr>
 
       {:else if campaigns.length === 0}
-        <tr><td colspan="9" class="state-cell">Кампании не найдены</td></tr>
+        <tr><td colspan="10" class="state-cell">Кампании не найдены</td></tr>
 
       {:else if activeTab === 'groups'}
         {#each groups as group (group.name)}
           <!-- Group header row -->
           <tr class="group-row">
-            <td colspan="4">
+            <td colspan="5">
               <div class="group-name" on:click={() => toggleGroup(group.name)}>
                 <!-- Folder icon -->
                 <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:var(--text-muted);flex-shrink:0">
@@ -530,7 +542,10 @@
                   {c.cities?.map(city => city.name).join(', ') || c.city?.name || '—'}
                 </td>
                 <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
-                  {formatDate(c.startDate)} – {formatDate(c.endDate)}
+                  {formatDate(c.startDate)}
+                </td>
+                <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
+                  {formatDate(c.endDate)}
                 </td>
                 <td class="budget-cell">
                   <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
@@ -613,7 +628,10 @@
               {c.cities?.map(city => city.name).join(', ') || c.city?.name || '—'}
             </td>
             <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
-              {formatDate(c.startDate)} – {formatDate(c.endDate)}
+              {formatDate(c.startDate)}
+            </td>
+            <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
+              {formatDate(c.endDate)}
             </td>
             <td class="budget-cell">
               <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
