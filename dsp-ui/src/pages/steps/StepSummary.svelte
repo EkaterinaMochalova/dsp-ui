@@ -244,7 +244,7 @@
   <!-- ── Bottom action bar ─────────────────────────────────────────────── -->
   <div class="sv-bar">
     <div class="sv-bar-left">
-      <button class="sv-btn-save">Сохранить</button>
+      <button class="sv-btn-save" on:click={() => dispatch('save')}>Сохранить</button>
       {#if launched}
         <button class="sv-btn-stop" on:click={handleStop}>Остановить</button>
       {:else}

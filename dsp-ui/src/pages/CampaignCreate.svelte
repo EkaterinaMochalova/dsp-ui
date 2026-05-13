@@ -517,6 +517,7 @@
         on:back={() => prevStep('summary')}
         on:launch={() => goToStep('stats')}
         on:goto={e => goToStep(e.detail)}
+        on:save={saveCampaign}
       />
     {:else if currentStep === 'stats'}
       <StepStats bind:draft on:back={() => prevStep('stats')} />
