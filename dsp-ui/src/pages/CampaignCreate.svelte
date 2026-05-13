@@ -92,7 +92,7 @@
       maxHourlyImpressionsCount: Number(draft.limitHour)     || 0,
       ...(draft.limitMinute ? { maxMinuteImpressionsCount: Number(draft.limitMinute) } : {}),
       segments: draft.screenIds.length > 0
-        ? [{ inventories: draft.screenIds.map(id => ({ id })) }]
+        ? [{ inventories: draft.screenIds.map(id => ({ id })), mediaSegments: [] }]
         : [],
       ...(draft.creativeIds?.length
         ? { creatives: draft.creativeIds.map(id => ({ id })) }
