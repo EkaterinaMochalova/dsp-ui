@@ -67,6 +67,12 @@
   let saving = false
   let saveError = ''
 
+  function toApiDate(d) {
+    if (!d) return null
+    // API expects "2026-05-12T00:00:00", draft stores "2026-05-12"
+    return d.includes('T') ? d : d + 'T00:00:00'
+  }
+
   function buildPayload() {
     const budget = Number(draft.customBudgetTotal) || 0
     const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
@@ -76,8 +82,8 @@
       type:      draft.type,
       ...(draft.customerId ? { customer: { id: draft.customerId } } : {}),
       ...(draft.brandId    ? { brand:    { id: draft.brandId    } } : {}),
-      startDate: draft.startDate,
-      endDate:   draft.endDate,
+      startDate: toApiDate(draft.startDate),
+      endDate:   toApiDate(draft.endDate),
       bidType:   draft.bidType,
       totalBudget: budget,
       ...(markup != null   ? { additionalCharge: markup } : {}),
@@ -100,16 +106,24 @@
     saveError = ''
     try {
       const payload = buildPayload()
+      console.log('[save] payload:', JSON.stringify(payload))
+      let result
       if (draft.id) {
-        await api.campaigns.update(draft.id, payload)
+        result = await api.campaigns.update(draft.id, payload)
       } else {
-        const created = await api.campaigns.create(payload)
-        if (created?.id) draft = { ...draft, id: created.id }
+        result = await api.campaigns.create(payload)
+        if (result?.id) draft = { ...draft, id: result.id }
       }
+      console.log('[save] success:', result)
       window.location.hash = '#/campaigns'
     } catch (e) {
-      saveError = e?.data?.message ?? e?.data ?? 'Не удалось сохранить кампанию'
-      console.warn('Save error:', e)
+      console.warn('[save] error:', JSON.stringify(e))
+      const msg = e?.data?.message
+        ?? e?.data?.error
+        ?? (typeof e?.data === 'string' ? e.data : null)
+        ?? e?.message
+        ?? 'Не удалось сохранить кампанию'
+      saveError = msg
     } finally {
       saving = false
     }
