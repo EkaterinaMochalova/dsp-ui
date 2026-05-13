@@ -102,10 +102,12 @@
 
   async function saveCampaign() {
     if (saving) return
+    if (!draft.name?.trim()) { saveError = 'Укажите название кампании'; return }
     saving = true
     saveError = ''
     try {
       const payload = buildPayload()
+      console.log('[save] method:', draft.id ? 'PATCH' : 'POST', 'id:', draft.id)
       console.log('[save] payload:', JSON.stringify(payload))
       let result
       if (draft.id) {
@@ -118,11 +120,14 @@
       window.location.hash = '#/campaigns'
     } catch (e) {
       console.warn('[save] error:', JSON.stringify(e))
-      const msg = e?.data?.message
-        ?? e?.data?.error
-        ?? (typeof e?.data === 'string' ? e.data : null)
-        ?? e?.message
-        ?? 'Не удалось сохранить кампанию'
+      const status = e?.status
+      const msg = status === 403
+        ? 'Нет прав для сохранения кампании (403). Проверьте права доступа.'
+        : e?.data?.message
+          ?? e?.data?.error
+          ?? (typeof e?.data === 'string' ? e.data : null)
+          ?? e?.message
+          ?? 'Не удалось сохранить кампанию'
       saveError = msg
     } finally {
       saving = false

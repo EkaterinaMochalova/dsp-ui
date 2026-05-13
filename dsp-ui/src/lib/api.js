@@ -60,7 +60,7 @@ export const api = {
       return request('/clients/campaigns', { method: 'POST', body: JSON.stringify(data) })
     },
     update(id, data) {
-      return request(`/clients/campaigns/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+      return request(`/clients/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
     },
     forecast(data) {
       return request('/clients/campaigns/forecast', { method: 'POST', body: JSON.stringify(data) })
