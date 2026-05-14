@@ -85,7 +85,7 @@
     const APPROVED_STATUSES = new Set(['APPROVED', 'ACTIVE'])
     const approvedCreativeIds = (draft.creativeIds ?? []).filter(id => {
       const s = draft.creativeStatuses?.[id]
-      return !s || APPROVED_STATUSES.has(s)   // include if status unknown (loaded from server)
+      return APPROVED_STATUSES.has(s)   // only include explicitly approved ones
     })
     const mediaSegments = approvedCreativeIds.map(id => ({
       id,
