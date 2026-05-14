@@ -331,6 +331,7 @@
       minBid: inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? null,
       ots: inv.minBidInfo?.ots ?? inv.metadata?.ots ?? null,
       owner: inv.displayOwner?.name || '',
+      ownerId: inv.displayOwner?.id ?? null,
       photo: inv.images?.[0]?.preview ?? null,
       active: inv.enabled !== false,
       hasCamera: inv.photoReportOption != null && inv.photoReportOption !== 'NO',

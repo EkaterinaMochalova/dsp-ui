@@ -76,28 +76,66 @@
     return d.includes('T') ? d : d + 'T00:00:00'
   }
 
-  function buildPayload() {
-    const budget = Number(draft.customBudgetTotal) || 0
-    const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
+  const DEFAULT_PHOTO_SETTINGS = {
+    saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
+  }
 
-    // Build segments in the exact format the production app sends:
-    // - NO segment `id` → Hibernate INSERTs fresh rows, avoids "Key 0 is missing in the map"
-    // - inventories: minimal {id, timeSettings, priority, bid} only
-    // - mediaSegments: [] (always, required non-nullable)
-    // - photoReportSettings per segment
-    const segments = (rawCamp?.segments ?? []).map(seg => ({
-      displayOwnerId: seg.displayOwner?.id ?? null,
-      inventories: (seg.inventories ?? []).map(inv => ({
-        id:           inv.id,
-        timeSettings: inv.timeSettings ?? [],
-        priority:     inv.priority     ?? 1,
-        bid:          inv.bid          ?? 0,
+  function buildSegments() {
+    // If rawCamp already has segments, preserve them exactly (edit flow)
+    if (rawCamp?.segments?.length > 0) {
+      return rawCamp.segments.map(seg => ({
+        displayOwnerId: seg.displayOwner?.id ?? null,
+        inventories: (seg.inventories ?? []).map(inv => ({
+          id:           inv.id,
+          timeSettings: inv.timeSettings ?? [],
+          priority:     inv.priority     ?? 1,
+          bid:          Number(draft.screenBids?.[inv.id]) || inv.bid ?? 0,
+        })),
+        mediaSegments: [],
+        photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
+      }))
+    }
+
+    // New campaign (or rawCamp has no segments yet) — build from draft.screenIds
+    if (!draft.screenIds?.length) return []
+
+    // Look up cached screen objects so we can group by displayOwner
+    const cacheKey = (draft.cities ?? []).length > 0
+      ? [...draft.cities].sort().join('|')
+      : '__all__'
+    const cached = window._dspScreensCache?.[cacheKey] ?? []
+    const screenMap = new Map(cached.map(s => [s.id, s]))
+
+    // Group selected screens by ownerId
+    const byOwner = new Map()
+    for (const id of draft.screenIds) {
+      const s = screenMap.get(id)
+      const ownerId = s?.ownerId ?? null
+      if (!byOwner.has(ownerId)) byOwner.set(ownerId, [])
+      byOwner.get(ownerId).push(id)
+    }
+
+    return [...byOwner.entries()].map(([ownerId, ids]) => ({
+      displayOwnerId: ownerId,
+      inventories: ids.map(id => ({
+        id,
+        timeSettings: [],
+        priority: 1,
+        bid: Number(draft.screenBids?.[id]) || 0,
       })),
       mediaSegments: [],
-      photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? {
-        saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
-      },
+      photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
+  }
+
+  function buildPayload() {
+    const budgetBuyer = Number(draft.customBudgetTotal) || 0
+    const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
+    const additionalChargePct = markup ?? rawCamp?.additionalCharge ?? 0
+    // budget = client-facing price (buyer price + markup); budgetBuyer = base buyer price
+    const budget = Math.round(budgetBuyer * (1 + additionalChargePct / 100) * 100) / 100
+
+    const segments = buildSegments()
 
     return {
       name:        draft.name,
@@ -109,12 +147,12 @@
       startDate:   toApiDate(draft.startDate),
       endDate:     toApiDate(draft.endDate),
       budget,
-      budgetBuyer:       budget,
+      budgetBuyer,
       dailyBudget:       rawCamp?.dailyBudget       ?? null,
       dailyBudgetBuyer:  rawCamp?.dailyBudgetBuyer  ?? null,
       hourlyBudget:      rawCamp?.hourlyBudget       ?? null,
       hourlyBudgetBuyer: rawCamp?.hourlyBudgetBuyer  ?? null,
-      additionalCharge:  markup ?? rawCamp?.additionalCharge ?? 0,
+      additionalCharge:  additionalChargePct,
       maxImpressionsCount:       Number(draft.limitCampaign) || 0,
       maxDailyImpressionsCount:  Number(draft.limitDay)      || 0,
       maxHourlyImpressionsCount: Number(draft.limitHour)     || 0,
