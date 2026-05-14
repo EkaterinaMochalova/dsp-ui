@@ -81,6 +81,9 @@
   }
 
   function buildSegments() {
+    // Build mediaSegments from selected creative IDs
+    const mediaSegments = (draft.creativeIds ?? []).map(id => ({ requestMediaId: id }))
+
     // If rawCamp already has segments, preserve them exactly (edit flow)
     if (rawCamp?.segments?.length > 0) {
       return rawCamp.segments.map(seg => ({
@@ -91,7 +94,7 @@
           priority:     inv.priority     ?? 1,
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
-        mediaSegments: [],
+        mediaSegments,
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
@@ -123,7 +126,7 @@
         priority: 1,
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
-      mediaSegments: [],
+      mediaSegments,
       photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
@@ -416,6 +419,15 @@
           cities:           resolvedCities,
           cityIds:          resolvedCityIds,
         }
+
+        // ── Creatives ──────────────────────────────────────────────────
+        // Load creative IDs attached to this campaign
+        try {
+          const creativeNames = await api.creatives.listForCampaign(campaignId)
+          if (Array.isArray(creativeNames) && creativeNames.length) {
+            draft = { ...draft, creativeIds: creativeNames.map(c => c.id) }
+          }
+        } catch { /* non-fatal */ }
         // Mark all steps done → left sidebar shows checkmarks
         for (const s of STEPS) completedSteps = { ...completedSteps, [s.id]: true }
       } catch (e) {
