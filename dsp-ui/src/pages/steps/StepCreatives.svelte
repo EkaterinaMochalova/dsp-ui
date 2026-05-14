@@ -7,6 +7,7 @@
   export let metrics = { impressions: 0, ots: 0, budget: null }
 
   if (!draft.creativeIds)        draft.creativeIds = []
+  if (!draft.creativeStatuses)   draft.creativeStatuses = {}   // id → statusKey
   if (!draft.creativeTargeting)  draft.creativeTargeting = {}
 
   // ── Library state ─────────────────────────────────────────────────────
@@ -163,14 +164,22 @@
   function isSelected(id) { return draft.creativeIds.includes(id) }
 
   function toggleSelect(id) {
-    draft.creativeIds = isSelected(id)
-      ? draft.creativeIds.filter(x => x !== id)
-      : [...draft.creativeIds, id]
+    if (isSelected(id)) {
+      draft.creativeIds = draft.creativeIds.filter(x => x !== id)
+      const { [id]: _, ...rest } = draft.creativeStatuses
+      draft.creativeStatuses = rest
+    } else {
+      draft.creativeIds = [...draft.creativeIds, id]
+      const c = creatives.find(c => c.id === id)
+      if (c) draft.creativeStatuses = { ...draft.creativeStatuses, [id]: statusKey(getState(c)) }
+    }
   }
 
   function removeCreative(id) {
     draft.creativeIds = draft.creativeIds.filter(x => x !== id)
     if (activeId === id) activeId = draft.creativeIds[0] ?? null
+    const { [id]: _, ...rest } = draft.creativeStatuses
+    draft.creativeStatuses = rest
   }
 
   // ── Upload ────────────────────────────────────────────────────────────
@@ -195,6 +204,7 @@
         if (record?.id) {
           creatives = [record, ...creatives]
           draft.creativeIds = [...draft.creativeIds, record.id]
+          draft.creativeStatuses = { ...draft.creativeStatuses, [record.id]: statusKey(getState(record)) }
           activeId = record.id
         }
       }

@@ -81,8 +81,13 @@
   }
 
   function buildSegments() {
-    // Build mediaSegments from selected creative IDs
-    const mediaSegments = (draft.creativeIds ?? []).map(id => ({
+    // Only approved creatives can be attached; backend rejects non-approved ones
+    const APPROVED_STATUSES = new Set(['APPROVED', 'ACTIVE'])
+    const approvedCreativeIds = (draft.creativeIds ?? []).filter(id => {
+      const s = draft.creativeStatuses?.[id]
+      return !s || APPROVED_STATUSES.has(s)   // include if status unknown (loaded from server)
+    })
+    const mediaSegments = approvedCreativeIds.map(id => ({
       id,
       default: false,
       externalConditionParamsId: null,
