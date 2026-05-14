@@ -268,7 +268,7 @@
     saveError = ''
     try {
       const id = await doSave()
-      await api.campaigns.activate(id)
+      await api.campaigns.setState(id, 'ACTIVE')
       window.location.hash = '#/campaigns'
     } catch (e) {
       console.warn('[launch] error:', JSON.stringify(e))
