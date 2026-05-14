@@ -433,11 +433,27 @@
         }
 
         // ── Creatives ──────────────────────────────────────────────────
-        // Load creative IDs attached to this campaign
+        // Load creative IDs + their approval status for this campaign
         try {
-          const creativeNames = await api.creatives.listForCampaign(campaignId)
-          if (Array.isArray(creativeNames) && creativeNames.length) {
-            draft = { ...draft, creativeIds: creativeNames.map(c => c.id) }
+          const [creativeNames, creativeLib] = await Promise.allSettled([
+            api.creatives.listForCampaign(campaignId),
+            api.creatives.list(camp.customer?.id ? { customerId: camp.customer.id } : {}),
+          ])
+          const ids = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])
+            ?.map?.(c => c.id) ?? []
+          if (ids.length) {
+            const libItems = creativeLib.status === 'fulfilled'
+              ? (creativeLib.value?.content ?? creativeLib.value ?? [])
+              : []
+            const statusMap = {}
+            for (const c of libItems) {
+              const raw = c?.state ?? c?.status ?? ''
+              if (raw === 'ACTIVE') statusMap[c.id] = 'APPROVED'
+              else if (raw === 'MODERATION' || raw === 'PREMODERATION') statusMap[c.id] = 'PENDING'
+              else if (raw === 'DECLINED' || raw === 'REJECTED') statusMap[c.id] = 'REJECTED'
+              else if (raw) statusMap[c.id] = raw
+            }
+            draft = { ...draft, creativeIds: ids, creativeStatuses: statusMap }
           }
         } catch { /* non-fatal */ }
         // Mark all steps done → left sidebar shows checkmarks
