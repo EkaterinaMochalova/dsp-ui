@@ -91,6 +91,18 @@
   <h1 class="step-title">Основные параметры</h1>
 
   <div class="step-card">
+    <!-- Campaign name -->
+    <div class="field-group">
+      <div class="field-label">Название кампании <span class="field-required">*</span></div>
+      <input
+        class="field-input"
+        class:input-error={!draft.name?.trim()}
+        type="text"
+        placeholder="Введите название"
+        bind:value={draft.name}
+      />
+    </div>
+
     <!-- Advertiser -->
     <div class="field-group">
       <div class="field-label">Рекламодатель</div>
@@ -225,7 +237,7 @@
 
   <div class="step-nav">
     <button class="btn-back" on:click={() => dispatch('back')}>Назад</button>
-    <button class="btn-next" on:click={() => dispatch('next')} disabled={!draft.customerId}>Дальше</button>
+    <button class="btn-next" on:click={() => dispatch('next')} disabled={!draft.customerId || !draft.name?.trim()}>Дальше</button>
   </div>
 </div>
 
@@ -235,6 +247,9 @@
 }} />
 
 <style>
+  .field-required { color: var(--danger, #EF4444); margin-left: 2px; }
+  .input-error { border-color: var(--danger, #EF4444) !important; }
+
   .date-range-row {
     display: flex;
     align-items: center;
