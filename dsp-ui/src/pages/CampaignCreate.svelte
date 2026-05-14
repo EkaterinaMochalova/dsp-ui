@@ -82,7 +82,14 @@
 
   function buildSegments() {
     // Build mediaSegments from selected creative IDs
-    const mediaSegments = (draft.creativeIds ?? []).map(id => ({ requestMediaId: id }))
+    const mediaSegments = (draft.creativeIds ?? []).map(id => ({
+      id,
+      default: false,
+      externalConditionParamsId: null,
+      weatherParams: null,
+      jamParams: null,
+      fixedTimeShow: null,
+    }))
 
     // If rawCamp already has segments, preserve them exactly (edit flow)
     if (rawCamp?.segments?.length > 0) {
