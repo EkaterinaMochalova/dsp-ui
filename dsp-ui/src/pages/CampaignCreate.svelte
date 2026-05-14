@@ -20,6 +20,9 @@
   export let campaignId = null
   export let initialStep = 'start'
 
+  // Raw API response for the existing campaign — used as the base for PUT (read-modify-write)
+  let rawCamp = null
+
   // Campaign draft state
   let draft = {
     type: campaignType,
@@ -77,26 +80,79 @@
     const budget = Number(draft.customBudgetTotal) || 0
     const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
 
+    // Build segments in the exact format the production app sends:
+    // - NO segment `id` → Hibernate INSERTs fresh rows, avoids "Key 0 is missing in the map"
+    // - inventories: minimal {id, timeSettings, priority, bid} only
+    // - mediaSegments: [] (always, required non-nullable)
+    // - photoReportSettings per segment
+    const segments = (rawCamp?.segments ?? []).map(seg => ({
+      displayOwnerId: seg.displayOwner?.id ?? null,
+      inventories: (seg.inventories ?? []).map(inv => ({
+        id:           inv.id,
+        timeSettings: inv.timeSettings ?? [],
+        priority:     inv.priority     ?? 1,
+        bid:          inv.bid          ?? 0,
+      })),
+      mediaSegments: [],
+      photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? {
+        saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
+      },
+    }))
+
     return {
-      name:      draft.name,
-      type:      draft.type,
-      ...(draft.customerId ? { customer: { id: draft.customerId } } : {}),
-      ...(draft.brandId    ? { brand:    { id: draft.brandId    } } : {}),
-      startDate: toApiDate(draft.startDate),
-      endDate:   toApiDate(draft.endDate),
-      bidType:   draft.bidType,
-      totalBudget: budget,
-      ...(markup != null   ? { additionalCharge: markup } : {}),
+      name:        draft.name,
+      description: rawCamp?.description ?? '',
+      brandId:     Number(draft.brandId)    || rawCamp?.brand?.id    || null,
+      customerId:  Number(draft.customerId) || rawCamp?.customer?.id || null,
+      type:        draft.type,
+      bidType:     draft.bidType,
+      startDate:   toApiDate(draft.startDate),
+      endDate:     toApiDate(draft.endDate),
+      budget,
+      budgetBuyer:       budget,
+      dailyBudget:       rawCamp?.dailyBudget       ?? null,
+      dailyBudgetBuyer:  rawCamp?.dailyBudgetBuyer  ?? null,
+      hourlyBudget:      rawCamp?.hourlyBudget       ?? null,
+      hourlyBudgetBuyer: rawCamp?.hourlyBudgetBuyer  ?? null,
+      additionalCharge:  markup ?? rawCamp?.additionalCharge ?? 0,
       maxImpressionsCount:       Number(draft.limitCampaign) || 0,
       maxDailyImpressionsCount:  Number(draft.limitDay)      || 0,
       maxHourlyImpressionsCount: Number(draft.limitHour)     || 0,
       ...(draft.limitMinute ? { maxMinuteImpressionsCount: Number(draft.limitMinute) } : {}),
-      segments: draft.screenIds.length > 0
-        ? [{ inventories: draft.screenIds.map(id => ({ id })), mediaSegments: [] }]
-        : [],
-      ...(draft.creativeIds?.length
-        ? { creatives: draft.creativeIds.map(id => ({ id })) }
-        : {}),
+      ots:                 rawCamp?.ots                 ?? null,
+      dailyOts:            rawCamp?.dailyOts            ?? null,
+      hourlyOts:           rawCamp?.hourlyOts           ?? null,
+      impressionIntervalInMinutes: rawCamp?.impressionIntervalInMinutes ?? null,
+      impressionInterval:  rawCamp?.impressionInterval  ?? null,
+      poi:                 rawCamp?.poi                 ?? null,
+      targetAudience:      rawCamp?.targetAudience      ?? null,
+      photoReportSettings: rawCamp?.photoReportSettings ?? null,
+      strategy:            rawCamp?.strategy            ?? 'STANDARD',
+      strategyLimitType:   rawCamp?.strategyLimitType   ?? (draft.bidType === 'OTS' ? 'BY_OTS' : 'BY_PLAYS'),
+      segments,
+    }
+  }
+
+  // Extract inventory IDs that the backend reported as "not found" from a 400 error
+  function extractInvalidInventoryIds(err) {
+    const fields = err?.data?.errors?.field ?? []
+    return new Set(
+      fields
+        .filter(f => f.message?.includes('не был найден'))
+        .map(f => f.rejectedValue)
+    )
+  }
+
+  // Strip known-invalid inventory IDs from a payload's segments
+  function stripInvalidInventories(payload, invalidIds) {
+    return {
+      ...payload,
+      segments: payload.segments
+        .map(s => ({
+          ...s,
+          inventories: s.inventories.filter(inv => !invalidIds.has(inv.id ?? inv)),
+        }))
+        .filter(s => s.inventories.length > 0),
     }
   }
 
@@ -106,17 +162,27 @@
     saving = true
     saveError = ''
     try {
-      const payload = buildPayload()
-      console.log('[save] method:', draft.id ? 'PATCH' : 'POST', 'id:', draft.id)
-      console.log('[save] payload:', JSON.stringify(payload))
+      let payload = buildPayload()
+      console.log('[save] segments:', payload.segments?.length, '| inv0 keys:', Object.keys(payload.segments?.[0]?.inventories?.[0] ?? {}).join(','))
       let result
       if (draft.id) {
-        result = await api.campaigns.update(draft.id, payload)
+        try {
+          result = await api.campaigns.update(draft.id, payload)
+        } catch (e) {
+          // Auto-retry: if the backend reports deleted/unavailable inventories, strip them and resend
+          const invalidIds = extractInvalidInventoryIds(e)
+          if (e?.status === 400 && invalidIds.size > 0) {
+            console.warn(`[save] Removing ${invalidIds.size} deleted inventories and retrying`)
+            payload = stripInvalidInventories(payload, invalidIds)
+            result = await api.campaigns.update(draft.id, payload)
+          } else {
+            throw e
+          }
+        }
       } else {
         result = await api.campaigns.create(payload)
         if (result?.id) draft = { ...draft, id: result.id }
       }
-      console.log('[save] success:', result)
       window.location.hash = '#/campaigns'
     } catch (e) {
       console.warn('[save] error:', JSON.stringify(e))
@@ -209,6 +275,7 @@
     if (campaignId) {
       try {
         const camp = await api.campaigns.get(campaignId)
+        rawCamp = camp
 
         // ── Budget ─────────────────────────────────────────────────────
         // Real API field is camp.totalBudget (buyer side: camp.budgetBuyer)
@@ -462,7 +529,12 @@
           <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
       </button>
-      <span class="creation-title">{campaignName}</span>
+      <input
+        class="creation-title-input"
+        type="text"
+        placeholder="Название кампании"
+        bind:value={draft.name}
+      />
       {#if campaignId && draft.state}
         <StatusBadge state={draft.state} />
       {/if}
