@@ -65,6 +65,13 @@ export const api = {
     setState(id, state, comment = '') {
       return request(`/clients/campaigns/${id}/state/${state}`, { method: 'POST', body: JSON.stringify({ comment }) })
     },
+    // Attach approved creatives to a campaign after save
+    uploadMedia(id, requestMediaIds) {
+      return request(`/clients/campaigns/${id}/upload-media`, {
+        method: 'POST',
+        body: JSON.stringify({ requestMediaIds }),
+      })
+    },
     forecast(data) {
       return request('/clients/campaigns/forecast', { method: 'POST', body: JSON.stringify(data) })
     },

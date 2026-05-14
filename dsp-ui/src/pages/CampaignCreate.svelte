@@ -81,20 +81,9 @@
   }
 
   function buildSegments() {
-    // Only approved creatives can be attached; backend rejects non-approved ones
-    const APPROVED_STATUSES = new Set(['APPROVED', 'ACTIVE'])
-    const approvedCreativeIds = (draft.creativeIds ?? []).filter(id => {
-      const s = draft.creativeStatuses?.[id]
-      return APPROVED_STATUSES.has(s)   // only include explicitly approved ones
-    })
-    const mediaSegments = approvedCreativeIds.map(id => ({
-      id,
-      default: false,
-      externalConditionParamsId: null,
-      weatherParams: null,
-      jamParams: null,
-      fixedTimeShow: null,
-    }))
+    // Creatives are attached via a separate endpoint (POST /campaigns/{id}/upload-media),
+    // NOT through the PUT body — the production app always sends mediaSegments: []
+    const mediaSegments = []
 
     // If rawCamp already has segments, preserve them exactly (edit flow)
     if (rawCamp?.segments?.length > 0) {
@@ -232,7 +221,16 @@
       result = await api.campaigns.create(payload)
       if (result?.id) draft = { ...draft, id: result.id }
     }
-    return draft.id ?? result?.id
+    const savedId = draft.id ?? result?.id
+
+    // Attach approved creatives via the dedicated endpoint (non-fatal)
+    const APPROVED = new Set(['APPROVED', 'ACTIVE'])
+    const approvedIds = (draft.creativeIds ?? []).filter(id => APPROVED.has(draft.creativeStatuses?.[id]))
+    if (approvedIds.length && savedId) {
+      try { await api.campaigns.uploadMedia(savedId, approvedIds) } catch { /* non-fatal */ }
+    }
+
+    return savedId
   }
 
   async function saveCampaign() {
