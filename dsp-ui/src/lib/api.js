@@ -62,8 +62,8 @@ export const api = {
     update(id, data) {
       return request(`/clients/campaigns/${id}`, { method: 'PUT', body: JSON.stringify(data) })
     },
-    setState(id, state) {
-      return request(`/clients/campaigns/${id}/state`, { method: 'POST', body: JSON.stringify({ state }) })
+    setState(id, state, comment = '') {
+      return request(`/clients/campaigns/${id}/state/${state}`, { method: 'POST', body: JSON.stringify({ comment }) })
     },
     forecast(data) {
       return request('/clients/campaigns/forecast', { method: 'POST', body: JSON.stringify(data) })
