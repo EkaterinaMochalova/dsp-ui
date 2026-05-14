@@ -287,12 +287,14 @@
 
       for (let start = 1; start < totalPages; start += BATCH) {
         const end = Math.min(start + BATCH, totalPages)
-        const batch = await Promise.all(
+        const batch = await Promise.allSettled(
           Array.from({ length: end - start }, (_, i) =>
             api.inventories.list({ page: start + i, size: PAGE_SIZE })
           )
         )
-        batch.forEach(r => allItems.push(...(r.content ?? [])))
+        batch.forEach(r => {
+          if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
+        })
         loadingProgress = Math.round((end / totalPages) * 100)
       }
 
