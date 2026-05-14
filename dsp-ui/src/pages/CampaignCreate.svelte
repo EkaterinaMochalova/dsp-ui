@@ -89,7 +89,7 @@
           id:           inv.id,
           timeSettings: inv.timeSettings ?? [],
           priority:     inv.priority     ?? 1,
-          bid:          Number(draft.screenBids?.[inv.id]) || inv.bid ?? 0,
+          bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
         mediaSegments: [],
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
