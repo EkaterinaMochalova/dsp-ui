@@ -136,6 +136,7 @@
     const budget = Math.round(budgetBuyer * (1 + additionalChargePct / 100) * 100) / 100
 
     const segments = buildSegments()
+    console.log('[buildSegments] rawCamp.segments:', rawCamp?.segments?.length, '| draft.screenIds:', draft.screenIds?.length, '| result:', segments.length)
 
     return {
       name:        draft.name,
