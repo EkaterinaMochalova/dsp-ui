@@ -195,33 +195,38 @@
     }
   }
 
+  // Core save — returns the saved campaign id, throws on failure
+  async function doSave() {
+    let payload = buildPayload()
+    console.log('[buildSegments] rawCamp.segments:', rawCamp?.segments?.length, '| draft.screenIds:', draft.screenIds?.length, '| result:', payload.segments?.length)
+    let result
+    if (draft.id) {
+      try {
+        result = await api.campaigns.update(draft.id, payload)
+      } catch (e) {
+        const invalidIds = extractInvalidInventoryIds(e)
+        if (e?.status === 400 && invalidIds.size > 0) {
+          console.warn(`[save] Removing ${invalidIds.size} deleted inventories and retrying`)
+          payload = stripInvalidInventories(payload, invalidIds)
+          result = await api.campaigns.update(draft.id, payload)
+        } else {
+          throw e
+        }
+      }
+    } else {
+      result = await api.campaigns.create(payload)
+      if (result?.id) draft = { ...draft, id: result.id }
+    }
+    return draft.id ?? result?.id
+  }
+
   async function saveCampaign() {
     if (saving) return
     if (!draft.name?.trim()) { saveError = 'Укажите название кампании'; return }
     saving = true
     saveError = ''
     try {
-      let payload = buildPayload()
-      console.log('[save] segments:', payload.segments?.length, '| inv0 keys:', Object.keys(payload.segments?.[0]?.inventories?.[0] ?? {}).join(','))
-      let result
-      if (draft.id) {
-        try {
-          result = await api.campaigns.update(draft.id, payload)
-        } catch (e) {
-          // Auto-retry: if the backend reports deleted/unavailable inventories, strip them and resend
-          const invalidIds = extractInvalidInventoryIds(e)
-          if (e?.status === 400 && invalidIds.size > 0) {
-            console.warn(`[save] Removing ${invalidIds.size} deleted inventories and retrying`)
-            payload = stripInvalidInventories(payload, invalidIds)
-            result = await api.campaigns.update(draft.id, payload)
-          } else {
-            throw e
-          }
-        }
-      } else {
-        result = await api.campaigns.create(payload)
-        if (result?.id) draft = { ...draft, id: result.id }
-      }
+      await doSave()
       window.location.hash = '#/campaigns'
     } catch (e) {
       console.warn('[save] error:', JSON.stringify(e))
@@ -236,6 +241,33 @@
       saveError = msg
     } finally {
       saving = false
+    }
+  }
+
+  let launching = false
+
+  async function launchCampaign() {
+    if (saving || launching) return
+    if (!draft.name?.trim()) { saveError = 'Укажите название кампании'; return }
+    launching = true
+    saveError = ''
+    try {
+      const id = await doSave()
+      await api.campaigns.activate(id)
+      window.location.hash = '#/campaigns'
+    } catch (e) {
+      console.warn('[launch] error:', JSON.stringify(e))
+      const status = e?.status
+      const msg = status === 403
+        ? 'Нет прав для запуска кампании (403).'
+        : e?.data?.message
+          ?? e?.data?.error
+          ?? (typeof e?.data === 'string' ? e.data : null)
+          ?? e?.message
+          ?? 'Не удалось запустить кампанию'
+      saveError = msg
+    } finally {
+      launching = false
     }
   }
 
@@ -555,7 +587,9 @@
       <button class="btn-save" on:click={saveCampaign} disabled={saving}>
         {#if saving}Сохранение…{:else}Сохранить{/if}
       </button>
-      <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1}>Запустить</button>
+      <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1} on:click={launchCampaign} disabled={saving || launching}>
+        {#if launching}Запуск…{:else}Запустить{/if}
+      </button>
     </div>
   </div>
 
@@ -631,7 +665,7 @@
     {:else if currentStep === 'summary'}
       <StepSummary bind:draft {metrics}
         on:back={() => prevStep('summary')}
-        on:launch={() => goToStep('stats')}
+        on:launch={launchCampaign}
         on:goto={e => goToStep(e.detail)}
         on:save={saveCampaign}
       />

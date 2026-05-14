@@ -59,12 +59,11 @@
 
   async function handleLaunch() {
     launching = true
-    await new Promise(r => setTimeout(r, 800))
-    launching  = false
-    launched   = true
-    showToast  = true
-    setTimeout(() => (showToast = false), 3500)
-    dispatch('launch')
+    try {
+      await dispatch('launch')
+    } finally {
+      launching = false
+    }
   }
 
   function handleStop() {

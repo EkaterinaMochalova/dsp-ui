@@ -60,7 +60,13 @@ export const api = {
       return request('/clients/campaigns', { method: 'POST', body: JSON.stringify(data) })
     },
     update(id, data) {
-      return request(`/clients/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+      return request(`/clients/campaigns/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+    },
+    activate(id) {
+      return request(`/clients/campaigns/${id}/activate`, { method: 'POST' })
+    },
+    stop(id) {
+      return request(`/clients/campaigns/${id}/stop`, { method: 'POST' })
     },
     forecast(data) {
       return request('/clients/campaigns/forecast', { method: 'POST', body: JSON.stringify(data) })
@@ -172,12 +178,14 @@ export const api = {
       const totalPages = first.totalPages ?? 1
       const extra = Math.min(totalPages - 1, 9) // up to 10 pages = 5000 items
       if (extra > 0) {
-        const rest = await Promise.all(
+        const rest = await Promise.allSettled(
           Array.from({ length: extra }, (_, i) =>
             request(`/clients/inventories?enabled=true&page=${i + 1}&size=${PAGE}`)
           )
         )
-        rest.forEach(r => items.push(...(r.content ?? [])))
+        rest.forEach(r => {
+          if (r.status === 'fulfilled') items.push(...(r.value?.content ?? []))
+        })
       }
       const seen = new Map()
       for (const inv of items) {
