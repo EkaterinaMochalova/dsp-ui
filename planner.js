@@ -5925,7 +5925,7 @@ function dspApplyInventories(raw) {
 }
 
 // ---- IndexedDB-кэш инвентаря (нет лимита размера, переживает Shift+R) ----
-const DSP_CACHE_TTL  = 24 * 60 * 60 * 1000; // 24 часа
+const DSP_CACHE_TTL  = 7 * 24 * 60 * 60 * 1000; // 7 дней
 const DSP_IDB_NAME   = "dsp_planner";
 const DSP_IDB_STORE  = "inventory";
 const DSP_IDB_VER    = 1;
