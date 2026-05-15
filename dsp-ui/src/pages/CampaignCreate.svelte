@@ -295,9 +295,16 @@
               payload = stripInvalidInventories(payload, invalidIds)
             }
             if (creativeErr) {
+              const errFields = e?.data?.errors?.field ?? []
+              console.warn('[save] Creative error fields:', errFields.map(f => `${f.field}: ${f.message}`))
               const badSegs = extractCreativeErrorSegmentIndices(e)
-              console.warn('[save] Creative errors on segment indices:', [...badSegs], '— stripping new creatives from those segments only')
-              const fallbackPayload = buildPayloadStrippingBadSegments(badSegs)
+              // If we couldn't parse specific indices, strip all segments (safe fallback)
+              const allSegIndices = new Set(
+                Array.from({ length: (rawCamp?.segments ?? []).length || payload.segments.length }, (_, i) => i)
+              )
+              const stripIndices = badSegs.size > 0 ? badSegs : allSegIndices
+              console.warn('[save] Stripping new creatives from segment indices:', [...stripIndices])
+              const fallbackPayload = buildPayloadStrippingBadSegments(stripIndices)
               payload = invalidIds.size > 0 ? stripInvalidInventories(fallbackPayload, invalidIds) : fallbackPayload
             }
             result = await api.campaigns.update(existingId, payload)
@@ -537,6 +544,7 @@
           const mediasIds = [...new Set(
             (camp.segments ?? []).flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id)).filter(Boolean)
           )]
+          console.log('[onMount] creative-names:', nameIds, '| segments[].medias IDs:', mediasIds)
           const allIds = nameIds.length ? nameIds : mediasIds
           if (allIds.length) {
             const libItems = creativeLib.status === 'fulfilled'
