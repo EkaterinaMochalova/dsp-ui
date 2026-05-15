@@ -115,6 +115,10 @@ export const api = {
     listForCampaign(campaignId) {
       return request(`/clients/campaigns/${campaignId}/creative-names`)
     },
+    // GET /clients/request-medias/{id}/segments — per-displayOwner approval status
+    segments(creativeId) {
+      return request(`/clients/request-medias/${creativeId}/segments?page=0&size=100`)
+    },
     // POST /clients/request-medias — create a new creative record (then attach media files separately)
     create(data) {
       return request('/clients/request-medias', { method: 'POST', body: JSON.stringify(data) })

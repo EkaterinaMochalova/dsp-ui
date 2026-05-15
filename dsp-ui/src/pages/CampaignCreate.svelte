@@ -223,13 +223,40 @@
     }
     const savedId = draft.id ?? result?.id
 
-    // Attach creatives that have been sent to owners (APPROVED/ACTIVE or PENDING/MODERATION).
-    // Excludes NEW creatives (just uploaded, not yet submitted to any owner).
-    const SENT_TO_OWNERS = new Set(['APPROVED', 'ACTIVE', 'PENDING', 'MODERATION', 'PREMODERATION'])
-    const approvedIds = (draft.creativeIds ?? []).filter(id => SENT_TO_OWNERS.has(draft.creativeStatuses?.[id]))
-    if (approvedIds.length && savedId) {
-      try { await api.campaigns.uploadMedia(savedId, approvedIds) } catch { /* non-fatal */ }
-    }
+    // Attach creatives that have been sent to owners and approved by at least one
+    // display owner who is part of this campaign's segments.
+    try {
+      // 1. Campaign vendor IDs (from the payload we already built)
+      const campaignOwnerIds = new Set(
+        payload.segments.map(s => s.displayOwnerId).filter(id => id != null)
+      )
+
+      // 2. Candidate creatives: sent to owners (not NEW/ARCHIVED/ERROR)
+      const SENT_TO_OWNERS = new Set(['APPROVED', 'ACTIVE', 'PENDING', 'MODERATION', 'PREMODERATION'])
+      const candidates = (draft.creativeIds ?? []).filter(id => SENT_TO_OWNERS.has(draft.creativeStatuses?.[id]))
+
+      let toUpload = candidates
+      if (campaignOwnerIds.size > 0 && candidates.length > 0) {
+        // 3. Fetch per-vendor segments for all candidates in parallel
+        const segResults = await Promise.allSettled(
+          candidates.map(id => api.creatives.segments(id))
+        )
+        toUpload = candidates.filter((id, i) => {
+          const res = segResults[i]
+          if (res.status !== 'fulfilled') return false
+          const segs = res.value?.content ?? []
+          // Keep if any segment belongs to a campaign vendor and is APPROVED/ACTIVE
+          return segs.some(s =>
+            campaignOwnerIds.has(s.displayOwner?.id) &&
+            (s.state === 'APPROVED' || s.state === 'ACTIVE')
+          )
+        })
+      }
+
+      if (toUpload.length && savedId) {
+        await api.campaigns.uploadMedia(savedId, toUpload)
+      }
+    } catch { /* non-fatal — creative attachment never blocks save */ }
 
     return savedId
   }
