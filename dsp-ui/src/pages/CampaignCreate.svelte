@@ -80,11 +80,16 @@
     saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
   }
 
+  // vendorApprovalMap: { [creativeId]: Set<vendorId> } — which vendors approved each creative.
+  // Built async in doSave before buildPayload, null means "skip vendor filtering".
+  let _vendorApprovalMap = null
+
   function buildSegments() {
     // GET response uses 'medias' field; PUT request uses 'mediaSegments' (non-nullable).
     // Response entry: { requestMedia: { id: X }, default, ... }
     // Request entry:  { id: X (= requestMediaId), default, externalConditionParamsId, ... }
-    function buildMediaSegments(existingMedias = []) {
+    // Creatives are filtered per-vendor: only include if approved by this segment's displayOwner.
+    function buildMediaSegments(existingMedias = [], vendorId = null) {
       // Transform response format → request format, preserving all targeting fields
       const existing = existingMedias.map(m => ({
         id: m.requestMedia?.id ?? m.id ?? 0,
@@ -96,11 +101,17 @@
       }))
       const existingIds = new Set(existing.map(m => m.id).filter(Boolean))
 
-      // Only APPROVED/ACTIVE creatives accepted by backend
       const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-      const toAdd = (draft.creativeIds ?? []).filter(id =>
-        APPROVED_STATES.has(draft.creativeStatuses?.[id]) && !existingIds.has(id)
-      )
+      const toAdd = (draft.creativeIds ?? []).filter(id => {
+        if (!APPROVED_STATES.has(draft.creativeStatuses?.[id])) return false
+        if (existingIds.has(id)) return false
+        // Vendor-aware: only include if this vendor approved the creative
+        if (_vendorApprovalMap && vendorId != null) {
+          const approvedVendors = _vendorApprovalMap[id]
+          if (approvedVendors && !approvedVendors.has(vendorId)) return false
+        }
+        return true
+      })
 
       return [
         ...existing,
@@ -125,7 +136,7 @@
           priority:     inv.priority     ?? 1,
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
-        mediaSegments: buildMediaSegments(seg.medias ?? []),
+        mediaSegments: buildMediaSegments(seg.medias ?? [], seg.displayOwner?.id ?? null),
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
@@ -155,7 +166,7 @@
         priority: 1,
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
-      mediaSegments: buildMediaSegments([]),
+      mediaSegments: buildMediaSegments([], ownerId),
       photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
@@ -229,6 +240,29 @@
 
   // Core save — returns the saved campaign id (number), throws on failure
   async function doSave() {
+    // Pre-fetch per-vendor approval map so buildSegments can filter per displayOwner
+    const creativeIds = draft.creativeIds ?? []
+    if (creativeIds.length > 0) {
+      try {
+        const results = await Promise.allSettled(creativeIds.map(id => api.creatives.segments(id)))
+        _vendorApprovalMap = {}
+        for (let i = 0; i < creativeIds.length; i++) {
+          const res = results[i]
+          if (res.status === 'fulfilled') {
+            _vendorApprovalMap[creativeIds[i]] = new Set(
+              (res.value?.content ?? [])
+                .filter(s => s.state === 'APPROVED' || s.state === 'ACTIVE')
+                .map(s => s.displayOwner?.id)
+                .filter(Boolean)
+            )
+          }
+          // fetch failed → leave undefined → optimistic include for that creative
+        }
+      } catch { _vendorApprovalMap = null }
+    } else {
+      _vendorApprovalMap = null
+    }
+
     let payload = buildPayload()
     // Coerce to number-or-null so template literals never produce "undefined"
     const existingId = draft.id != null && draft.id !== '' ? Number(draft.id) : null
