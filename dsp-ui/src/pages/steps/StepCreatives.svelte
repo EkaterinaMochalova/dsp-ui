@@ -27,19 +27,25 @@
   let activeId  = draft.creativeIds[0] ?? null
   let activeTab = 'media'          // 'media' | 'conditions' | 'audience' | 'timing'
 
-  // ── Per-vendor segments for active creative ───────────────────────────
+  // ── Per-vendor segments + detail for active creative ─────────────────
   let activeSegments = []
   let segmentsLoading = false
+  let activeDetail = null   // full detail object when list response lacks layout.media
 
-  $: if (activeId) loadSegments(activeId)
+  $: if (activeId) loadActiveData(activeId)
 
-  async function loadSegments(id) {
+  async function loadActiveData(id) {
     segmentsLoading = true
     activeSegments = []
+    activeDetail = null
     try {
-      const res = await api.creatives.segments(id)
-      activeSegments = res?.content ?? []
-    } catch { activeSegments = [] }
+      const [segsRes, detailRes] = await Promise.allSettled([
+        api.creatives.segments(id),
+        api.creatives.detail(id),
+      ])
+      activeSegments = segsRes.status === 'fulfilled' ? (segsRes.value?.content ?? []) : []
+      activeDetail   = detailRes.status === 'fulfilled' ? detailRes.value : null
+    } catch { /* non-fatal */ }
     finally { segmentsLoading = false }
   }
 
@@ -508,7 +514,8 @@
         <!-- ── Tab: Медиафайлы ─────────────────────────────────────── -->
         {#if activeTab === 'media'}
           <div class="cr-tab-body">
-            {@const media = activeCreative.layout?.media ?? activeCreative.mediaFiles?.[0] ?? null}
+            {@const richCreative = activeDetail ?? activeCreative}
+            {@const media = richCreative.layout?.media ?? richCreative.mediaFiles?.[0] ?? null}
             {@const file  = media?.file}
 
             <!-- File card -->
@@ -516,9 +523,9 @@
               <div class="cr-file-card">
                 <!-- Preview thumb -->
                 <div class="cr-file-thumb">
-                  {#if thumbUrl(activeCreative)}
-                    <img src={thumbUrl(activeCreative)} alt={media.name} style="width:100%;height:100%;object-fit:cover;border-radius:6px"/>
-                  {:else if isVideo(activeCreative)}
+                  {#if thumbUrl(richCreative)}
+                    <img src={thumbUrl(richCreative)} alt={media.name} style="width:100%;height:100%;object-fit:cover;border-radius:6px"/>
+                  {:else if isVideo(richCreative)}
                     <svg width="24" height="24" viewBox="0 0 20 20" fill="currentColor" style="color:#94A3B8">
                       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
                     </svg>

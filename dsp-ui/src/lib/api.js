@@ -115,6 +115,10 @@ export const api = {
     listForCampaign(campaignId) {
       return request(`/clients/campaigns/${campaignId}/creative-names`)
     },
+    // GET /clients/request-medias/{id} — full creative detail (has mediaFiles, segments, etc.)
+    detail(creativeId) {
+      return request(`/clients/request-medias/${creativeId}`)
+    },
     // GET /clients/request-medias/{id}/segments — per-displayOwner approval status
     segments(creativeId) {
       return request(`/clients/request-medias/${creativeId}/segments?page=0&size=100`)
