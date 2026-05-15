@@ -4079,10 +4079,8 @@ async function onCalcClick() {
     let totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen);
 
     // Кэп по бюджету: сколько выходов можно купить на указанный бюджет.
-    // Если задана ручная частота (ppmManual > 0), бюджет-кэп не применяем:
-    // ppm — главный приоритет, фактический расход может превысить введённый бюджет.
-    const manualPpmActive = ppmOverride !== null && Number.isFinite(ppmManual) && ppmManual > 0;
-    if (!manualPpmActive && Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0 && Number.isFinite(budget) && budget > 0) {
+    // ppm-слайдер — верхний предел частоты, но бюджет всегда ограничивает фактический расход.
+    if (Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0 && Number.isFinite(budget) && budget > 0) {
       const budgetMaxPlays = Math.floor(budget / effectiveChosenBid);
       totalPlaysEffective = Math.min(totalPlaysEffective, budgetMaxPlays);
     }
