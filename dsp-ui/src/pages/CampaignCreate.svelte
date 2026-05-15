@@ -84,12 +84,14 @@
     // Creatives are attached via segments[].medias in the PUT body.
     // Only APPROVED/ACTIVE creatives are accepted by the backend.
     function buildMedias(existing = []) {
-      console.log('[buildMedias] existing:', JSON.stringify(existing))
       const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-      const selected = (draft.creativeIds ?? []).filter(id => APPROVED_STATES.has(draft.creativeStatuses?.[id]))
+      const allIds = draft.creativeIds ?? []
+      const allStatuses = Object.fromEntries(allIds.map(id => [id, draft.creativeStatuses?.[id] ?? '?']))
+      console.log('[buildMedias] creativeIds:', allIds, '| statuses:', allStatuses)
+      const selected = allIds.filter(id => APPROVED_STATES.has(draft.creativeStatuses?.[id]))
       const existingIds = new Set(existing.map(m => m.requestMedia?.id ?? m.id).filter(Boolean))
       const toAdd = selected.filter(id => !existingIds.has(id))
-      console.log('[buildMedias] selected approved:', selected, '| toAdd:', toAdd)
+      console.log('[buildMedias] approved:', selected, '| toAdd:', toAdd)
       return [
         ...existing,
         ...toAdd.map(id => ({ requestMedia: { id } })),
