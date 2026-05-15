@@ -233,7 +233,7 @@
         return !st || !EXCLUDE.has(st)
       })
 
-      if (!candidates.length || !savedId) return
+      if (!candidates.length || !savedId) return savedId
 
       // Campaign vendor IDs from segments
       const campaignOwnerIds = new Set(
@@ -311,6 +311,7 @@
     saveError = ''
     try {
       const id = await doSave()
+      if (!id) throw new Error('Не удалось получить ID кампании')
       await api.campaigns.setState(id, 'ACTIVE')
       window.location.hash = '#/campaigns'
     } catch (e) {
