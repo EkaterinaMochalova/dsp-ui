@@ -942,7 +942,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@75d6223c405a6cbc8ec668dcb8e282bd296f7e4a/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@06c2d87d68afc2a3fbd27c29206a8f6fe97909af/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
