@@ -465,9 +465,9 @@
             api.creatives.listForCampaign(campaignId),
             api.creatives.list(camp.customer?.id ? { customerId: camp.customer.id } : {}),
           ])
-          const ids = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])
+          const allIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])
             ?.map?.(c => c.id) ?? []
-          if (ids.length) {
+          if (allIds.length) {
             const libItems = creativeLib.status === 'fulfilled'
               ? (creativeLib.value?.content ?? creativeLib.value ?? [])
               : []
@@ -479,6 +479,9 @@
               else if (raw === 'DECLINED' || raw === 'REJECTED') statusMap[c.id] = 'REJECTED'
               else if (raw) statusMap[c.id] = raw
             }
+            // Exclude archived creatives — they can't be attached to campaigns
+            const ARCHIVED = new Set(['ARCHIVED', 'ARCHIVE'])
+            const ids = allIds.filter(id => !ARCHIVED.has(statusMap[id]))
             draft = { ...draft, creativeIds: ids, creativeStatuses: statusMap }
           }
         } catch { /* non-fatal */ }

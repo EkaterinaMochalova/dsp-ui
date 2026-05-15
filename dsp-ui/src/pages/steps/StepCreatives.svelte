@@ -385,19 +385,21 @@
             {@const sel = isSelected(c.id)}
             {@const sk  = statusKey(getState(c))}
             {@const st  = STATUS[getState(c)] ?? STATUS[sk] ?? { label: getState(c) || '—', cls: '' }}
+            {@const isArchived = sk === 'ARCHIVED'}
             <!-- svelte-ignore a11y-click-events-have-key-events -->
             <!-- svelte-ignore a11y-no-static-element-interactions -->
             <div
               class="cr-browse-card"
               class:cr-browse-card-sel={sel}
               class:cr-browse-card-active={activeId === c.id}
-              on:click={() => { activeId = c.id; if (!sel) toggleSelect(c.id) }}
+              class:cr-browse-card-archived={isArchived}
+              on:click={() => { activeId = c.id; if (!sel && !isArchived) toggleSelect(c.id) }}
             >
               <!-- Checkbox (stops propagation so click doesn't re-activate) -->
               <div class="cr-browse-check" on:click|stopPropagation>
-                <label class="cr-check-wrap">
-                  <input type="checkbox" checked={sel}
-                    on:change={() => { toggleSelect(c.id); if (!sel) activeId = c.id }} />
+                <label class="cr-check-wrap" class:cr-check-disabled={isArchived}>
+                  <input type="checkbox" checked={sel} disabled={isArchived}
+                    on:change={() => { if (!isArchived) { toggleSelect(c.id); if (!sel) activeId = c.id } }} />
                   <span class="cr-check-box"></span>
                 </label>
               </div>
@@ -506,7 +508,7 @@
         <!-- ── Tab: Медиафайлы ─────────────────────────────────────── -->
         {#if activeTab === 'media'}
           <div class="cr-tab-body">
-            {@const media = activeCreative.layout?.media}
+            {@const media = activeCreative.layout?.media ?? activeCreative.mediaFiles?.[0] ?? null}
             {@const file  = media?.file}
 
             <!-- File card -->
@@ -549,8 +551,6 @@
                   </div>
                 </div>
               </div>
-            {:else}
-              <div class="cr-tab-empty">Медиафайлы не найдены</div>
             {/if}
 
             <!-- Vendor approval -->
@@ -808,6 +808,9 @@
   .cr-browse-card:hover { border-color:#94A3B8; }
   .cr-browse-card-sel { background:#EFF6FF; }
   .cr-browse-card-active { border-color:var(--navy,#112853) !important; }
+  .cr-browse-card-archived { opacity:.5; cursor:default; }
+  .cr-browse-card-archived:hover { border-color:#E2E8F0; }
+  .cr-check-disabled { cursor:not-allowed; }
 
   .cr-browse-check { flex-shrink:0; }
   .cr-browse-thumb {
