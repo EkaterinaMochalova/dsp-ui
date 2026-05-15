@@ -289,6 +289,9 @@ function ownerPriority(screen) {
   return PREFERRED_OWNER_KEYWORDS.length + 1; // все остальные — ниже
 }
 
+// Russ Outdoor screens use OTS-based (CPM) pricing instead of per-play
+const isRussScreen = s => String(s.owner ?? s.Owner ?? "").toLowerCase().includes("russ");
+
 function targetPlaysPerHourPerScreen(mode) {
   // max_reach = больше всего экранов (низкий pph → нужно больше экранов)
   // balanced   = средне
@@ -1191,6 +1194,7 @@ async function loadScreens() {
       format,
       address,
       minBid: toNumber(r.minBid ?? r.min_bid ?? r.MINBID ?? r.minbid),
+      otsBid: toNumber(r.otsBid ?? r.ots_bid ?? r.cpm ?? r.CPM ?? r.ots_cpm),
       ots: toNumber(r.ots ?? r.OTS),
       grp: toNumber(r.grp ?? r.GRP),
       lat: toNumber(r.lat ?? r.Lat ?? r.LAT),
@@ -2315,12 +2319,18 @@ async function buildMediaPlanBlob() {
       sc(ws, base + 1, 5 + fi, cfStats[city][fmt_]?.cnt ?? null, { fill: C_GREEN, numFmt: "#,##0" });
     });
 
-    // ── base+2: Средняя ставка за показ ──────────────────────────
-    const wtRateD = wtAvgBid > 0 ? +wtAvgBid.toFixed(2) : null;
-    sc(ws, base + 2, 1, "Средняя ставка за показ", { bold: true, fill: C_LIGHT });
+    // ── base+2: Средняя ставка за показ (or CPM for all-Russ cities) ──
+    const isRussCity = rd.russOts === true;
+    const rateLabel = isRussCity ? "Ставка за 1000 OTS" : "Средняя ставка за показ";
+    const wtRateD = isRussCity
+      ? (rd.avgCpm != null ? +rd.avgCpm.toFixed(2) : null)
+      : (wtAvgBid > 0 ? +wtAvgBid.toFixed(2) : null);
+    sc(ws, base + 2, 1, rateLabel, { bold: true, fill: C_LIGHT });
     sc(ws, base + 2, 2, wtRateD,            { fill: C_GREEN, numFmt: "0.00" });
     fmts.forEach((fmt_, fi) => {
-      const r = cfStats[city][fmt_]?.avgBid > 0 ? roundRate(cfStats[city][fmt_].avgBid) : null;
+      const r = isRussCity
+        ? (rd.avgCpm != null ? +rd.avgCpm.toFixed(2) : null)
+        : (cfStats[city][fmt_]?.avgBid > 0 ? roundRate(cfStats[city][fmt_].avgBid) : null);
       sc(ws, base + 2, 5 + fi, r, { fill: C_GREEN, numFmt: "0.00" });
     });
 
@@ -4102,9 +4112,28 @@ async function onCalcClick() {
       }
     }
 
+    // Russ Outdoor: when ALL chosen screens are Russ and have CPM (otsBid),
+    // pricing is per 1000 OTS: OTS = budget / cpm × 1000; plays = OTS / avgOts
+    let russOtsBased = false;
+    let avgChosenCpm = null;
+    if (chosen.length > 0 && chosen.every(s => isRussScreen(s))) {
+      const cpms = chosen.map(s => s.otsBid).filter(v => Number.isFinite(v) && v > 0);
+      if (cpms.length > 0) {
+        avgChosenCpm = cpms.reduce((a, b) => a + b, 0) / cpms.length;
+        const avgOtsForRuss = avgNumberNonZero(chosen.map(s => s.ots));
+        if (avgOtsForRuss != null && avgOtsForRuss > 0 && budget > 0) {
+          const otsByBudget = Math.floor(budget / avgChosenCpm * 1000);
+          totalPlaysEffective = Math.round(otsByBudget / avgOtsForRuss);
+          russOtsBased = true;
+        }
+      }
+    }
+
     totalPlaysEffectiveAll += totalPlaysEffective;
 
-    const actualBudget = Math.ceil(totalPlaysEffective * effectiveChosenBid);
+    const actualBudget = russOtsBased
+      ? budget
+      : Math.ceil(totalPlaysEffective * effectiveChosenBid);
     totalBudgetFinal += actualBudget;
 
     if (brief.budget.mode !== "goal_ots") {
@@ -4131,6 +4160,8 @@ async function onCalcClick() {
       poolSize: pool.length,
       plays: totalPlaysEffective,
       ots: otsTotal,
+      avgCpm: avgChosenCpm,
+      russOts: russOtsBased,
       note: ""
     });
   }
