@@ -332,6 +332,48 @@
     return savedId
   }
 
+  // Reload rawCamp + draft.creativeIds from the API after a successful save.
+  // Called in-place so we don't depend on hash-router remounting the component.
+  // Pass preloadedCamp to reuse an already-fetched campaign response (avoids double GET).
+  async function reloadCampaign(id, preloadedCamp = null) {
+    const camp = preloadedCamp ?? await api.campaigns.get(id)
+    rawCamp = camp
+    // Only update draft id/state when fetching fresh (onMount sets the full draft separately)
+    if (!preloadedCamp) {
+      draft = { ...draft, id: camp.id ?? id, state: camp.state ?? draft.state }
+    }
+
+    const [creativeNames, creativeLib] = await Promise.allSettled([
+      api.creatives.listForCampaign(id),
+      api.creatives.list(camp.customer?.id ? { customerId: camp.customer.id } : {}),
+    ])
+    const nameIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])?.map?.(c => c.id) ?? []
+    const mediasIds = [...new Set(
+      (camp.segments ?? []).flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id)).filter(Boolean)
+    )]
+    console.log('[reload] creative-names:', nameIds, '| segments[].medias IDs:', mediasIds)
+    const allIds = nameIds.length ? nameIds : mediasIds
+    if (allIds.length) {
+      const libItems = creativeLib.status === 'fulfilled'
+        ? (creativeLib.value?.content ?? creativeLib.value ?? [])
+        : []
+      const statusMap = {}
+      for (const c of libItems) {
+        const raw = c?.state ?? c?.status ?? ''
+        if (raw === 'ACTIVE') statusMap[c.id] = 'APPROVED'
+        else if (raw === 'MODERATION' || raw === 'PREMODERATION') statusMap[c.id] = 'PENDING'
+        else if (raw === 'DECLINED' || raw === 'REJECTED') statusMap[c.id] = 'REJECTED'
+        else if (raw) statusMap[c.id] = raw
+      }
+      const ARCHIVED = new Set(['ARCHIVED', 'ARCHIVE'])
+      const ids = allIds.filter(id => !ARCHIVED.has(statusMap[id]))
+      draft = { ...draft, creativeIds: ids, creativeStatuses: statusMap }
+    } else {
+      // Nothing persisted — clear selection so user sees the real server state
+      draft = { ...draft, creativeIds: [], creativeStatuses: {} }
+    }
+  }
+
   async function saveCampaign() {
     if (saving) return
     if (!draft.name?.trim()) { saveError = 'Укажите название кампании'; return }
@@ -339,7 +381,13 @@
     saveError = ''
     try {
       const savedId = await doSave()
+      // Update URL (important for new campaigns where the ID wasn't in the URL yet)
       window.location.hash = `#/campaigns/${savedId}`
+      // Reload in-place so the component reflects the actual saved state.
+      // This is essential when editing an existing campaign — the hash doesn't change
+      // so the router won't remount the component, and rawCamp would stay stale.
+      await reloadCampaign(savedId)
+      goToStep('summary')
     } catch (e) {
       console.warn('[save] error:', JSON.stringify(e))
       const status = e?.status
@@ -533,37 +581,8 @@
         }
 
         // ── Creatives ──────────────────────────────────────────────────
-        // Load creative IDs from creative-names OR from segments[].medias (whichever has data)
-        try {
-          const [creativeNames, creativeLib] = await Promise.allSettled([
-            api.creatives.listForCampaign(campaignId),
-            api.creatives.list(camp.customer?.id ? { customerId: camp.customer.id } : {}),
-          ])
-          // Prefer creative-names; fall back to IDs embedded in segments[].medias
-          const nameIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])?.map?.(c => c.id) ?? []
-          const mediasIds = [...new Set(
-            (camp.segments ?? []).flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id)).filter(Boolean)
-          )]
-          console.log('[onMount] creative-names:', nameIds, '| segments[].medias IDs:', mediasIds)
-          const allIds = nameIds.length ? nameIds : mediasIds
-          if (allIds.length) {
-            const libItems = creativeLib.status === 'fulfilled'
-              ? (creativeLib.value?.content ?? creativeLib.value ?? [])
-              : []
-            const statusMap = {}
-            for (const c of libItems) {
-              const raw = c?.state ?? c?.status ?? ''
-              if (raw === 'ACTIVE') statusMap[c.id] = 'APPROVED'
-              else if (raw === 'MODERATION' || raw === 'PREMODERATION') statusMap[c.id] = 'PENDING'
-              else if (raw === 'DECLINED' || raw === 'REJECTED') statusMap[c.id] = 'REJECTED'
-              else if (raw) statusMap[c.id] = raw
-            }
-            // Exclude archived creatives — they can't be attached to campaigns
-            const ARCHIVED = new Set(['ARCHIVED', 'ARCHIVE'])
-            const ids = allIds.filter(id => !ARCHIVED.has(statusMap[id]))
-            draft = { ...draft, creativeIds: ids, creativeStatuses: statusMap }
-          }
-        } catch { /* non-fatal */ }
+        // Pass already-fetched camp to avoid a second GET request
+        try { await reloadCampaign(campaignId, camp) } catch { /* non-fatal */ }
         // Mark all steps done → left sidebar shows checkmarks
         for (const s of STEPS) completedSteps = { ...completedSteps, [s.id]: true }
       } catch (e) {
