@@ -206,6 +206,12 @@
     // Coerce to number-or-null so template literals never produce "undefined"
     const existingId = draft.id != null && draft.id !== '' ? Number(draft.id) : null
     console.log('[doSave] existingId:', existingId, '| draft.id:', draft.id)
+    // Log rawCamp shape so we can see where creatives are stored
+    if (rawCamp) {
+      console.log('[rawCamp] top-level keys:', Object.keys(rawCamp).join(', '))
+      const seg0 = rawCamp.segments?.[0]
+      if (seg0) console.log('[rawCamp] seg0 keys:', Object.keys(seg0).join(', '), '| mediaSegments:', JSON.stringify(seg0.mediaSegments ?? []))
+    }
 
     let result
     if (existingId) {
