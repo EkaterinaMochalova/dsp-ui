@@ -78,6 +78,7 @@
     { key: 'APPROVED', label: 'Согласованы'  },
     { key: 'PENDING',  label: 'На модерации' },
     { key: 'REJECTED', label: 'Отклонён'     },
+    { key: 'NEW',      label: 'Новый'        },
   ]
 
   function statusKey(raw) {
@@ -101,7 +102,10 @@
   $: browseFiltered = creatives.filter(c => {
     const q = browseSearch.trim().toLowerCase()
     if (q && !c.name?.toLowerCase().includes(q)) return false
-    if (statusFilter !== 'ALL' && statusKey(getState(c)) !== statusFilter) return false
+    const sk = statusKey(getState(c))
+    // In "ALL" view hide NEW creatives (not sent to any owner yet) — they can't be attached
+    if (statusFilter === 'ALL' && sk === 'NEW') return false
+    if (statusFilter !== 'ALL' && sk !== statusFilter) return false
     return true
   })
 
