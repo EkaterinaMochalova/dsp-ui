@@ -81,48 +81,51 @@
   }
 
   function buildSegments() {
-    // The PUT endpoint only accepts creatives that are APPROVED by the segment's vendor
-    // (displayOwner). We get this per-vendor approval data from request-media-segments
-    // (loaded in reloadCampaign as draft.vendorApprovedIds = { [vendorId]: Set<creativeId> }).
+    // The PUT endpoint uses approval record IDs in segments[].mediaSegments[].id — NOT the
+    // creative's own requestMedia ID. The approval record ties a creative to a specific vendor
+    // (displayOwner). Data shape from GET segments[].medias[]:
+    //   { id: <approvalRecordId>, adLayout: { id: <creativeId> }, state: "APPROVED", ... }
+    // Data shape from GET /clients/request-media-segments?displayOwnerIds={vid}:
+    //   { id: <approvalRecordId>, adLayout: { id: <creativeId> }, displayOwner: { id: vid }, ... }
     //
-    // For each segment:
-    //   existing medias (state=APPROVED from rawCamp) + newly selected creatives approved by vendor
-    //
-    // Creatives not approved by the segment's vendor are silently excluded — the backend
-    // would reject them with 400 "медиафайл needs to be approved for this segment".
+    // draft.vendorApprovedIds = { [vendorId]: Map<creativeId → approvalRecordId> }
+    // loaded in reloadCampaign via request-media-segments per vendor.
     function buildMediaSegments(rawSegMedias = [], displayOwnerId = null) {
-      // Already-persisted medias from rawCamp — only include state=APPROVED ones
+      // creativeId → approvalRecordId for this vendor (from request-media-segments)
+      const vendorMap = draft.vendorApprovedIds?.[displayOwnerId] ?? new Map()
+
+      // Existing approved medias: use their approval record IDs (m.id) directly in PUT
       const existing = (rawSegMedias ?? [])
         .filter(m => m.state === 'APPROVED')
         .map(m => ({
-          id:                        m.id,
+          id:                        m.id,   // approval record ID — correct for PUT
           default:                   m.default ?? false,
           externalConditionParamsId: m.externalConditionParamsId ?? null,
           weatherParams:             m.weatherParams ?? null,
           jamParams:                 m.jamParams     ?? null,
           fixedTimeShow:             m.fixedTimeShow ?? null,
         }))
-      const existingIds = new Set(existing.map(m => m.id))
 
-      // Newly selected creatives: only add if vendor-approved for this segment
-      const vendorApproved = draft.vendorApprovedIds?.[displayOwnerId] ?? new Set()
-      const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-      const toAdd = (draft.creativeIds ?? []).filter(id =>
-        !existingIds.has(id) &&
-        APPROVED_STATES.has(draft.creativeStatuses?.[id]) &&
-        vendorApproved.has(id)
-      ).map(id => ({
-        id,
-        default:                   false,
-        externalConditionParamsId: null,
-        weatherParams:             null,
-        jamParams:                 null,
-        fixedTimeShow:             null,
-      }))
+      // Track which creatives are already represented (by creative ID = adLayout.id)
+      const existingCreativeIds = new Set(
+        (rawSegMedias ?? []).filter(m => m.state === 'APPROVED').map(m => m.adLayout?.id).filter(Boolean)
+      )
 
-      const result = [...existing, ...toAdd]
-      if (toAdd.length) console.log(`[buildMediaSegments] vendor=${displayOwnerId} adding ${toAdd.length} new creatives:`, toAdd.map(m => m.id))
-      return result
+      // Newly selected creatives: look up their approval record ID for this vendor
+      // The vendor map is built from request-media-segments so vendor approval is guaranteed.
+      const toAdd = (draft.creativeIds ?? [])
+        .filter(creativeId => !existingCreativeIds.has(creativeId) && vendorMap.has(creativeId))
+        .map(creativeId => ({
+          id:                        vendorMap.get(creativeId),  // approval record ID for PUT
+          default:                   false,
+          externalConditionParamsId: null,
+          weatherParams:             null,
+          jamParams:                 null,
+          fixedTimeShow:             null,
+        }))
+
+      if (toAdd.length) console.log(`[buildMediaSegments] vendor=${displayOwnerId} adding ${toAdd.length} creative(s):`, toAdd.map(m => m.id))
+      return [...existing, ...toAdd]
     }
 
     // If rawCamp already has segments, preserve them (edit flow)
@@ -299,19 +302,28 @@
       ...displayOwnerIds.map(vid => api.creatives.listForVendor(vid)),
     ])
 
-    // Build vendorApprovedIds: { [vendorId]: Set<creativeId> }
+    // Build vendorApprovedIds: { [vendorId]: Map<creativeId → approvalRecordId> }
+    // Each request-media-segments item: { id: <approvalRecordId>, adLayout: { id: <creativeId> }, ... }
     const vendorApprovedIds = {}
     displayOwnerIds.forEach((vid, i) => {
       const res = vendorResults[i]
       const items = res?.status === 'fulfilled' ? (res.value?.content ?? res.value ?? []) : []
-      vendorApprovedIds[vid] = new Set(items.map(c => c.id).filter(Boolean))
+      const map = new Map()
+      for (const item of items) {
+        const creativeId = item.adLayout?.id
+        if (creativeId != null && item.id != null) map.set(creativeId, item.id)
+      }
+      vendorApprovedIds[vid] = map
     })
 
-    // Creatives currently in the campaign: prefer creative-names, fall back to segments[].medias
-    // Note: seg.medias[].id IS the creative ID (no requestMedia wrapper in the GET response)
+    // Creatives currently in the campaign.
+    // seg.medias[] items: { id: <approvalRecordId>, adLayout: { id: <creativeId> }, state, ... }
+    // We need creative IDs (adLayout.id) for draft.creativeIds, not approval record IDs.
     const nameIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])?.map?.(c => c.id) ?? []
     const mediasIds = [...new Set(
-      (camp.segments ?? []).flatMap(s => (s.medias ?? []).map(m => m.id)).filter(Boolean)
+      (camp.segments ?? []).flatMap(s =>
+        (s.medias ?? []).map(m => m.adLayout?.id ?? m.id)
+      ).filter(Boolean)
     )]
     console.log('[reload] creative-names:', nameIds, '| segments[].medias IDs:', mediasIds,
       '| vendorApproved:', Object.fromEntries(Object.entries(vendorApprovedIds).map(([k,v]) => [k, v.size])))
