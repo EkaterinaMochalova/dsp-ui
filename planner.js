@@ -479,7 +479,23 @@ function hoursPerDay(schedule) {
     return Math.max(0, minutes / 60);
   }
 
-  // weekly handled elsewhere
+  // weekly: compute average hours/day over the 7-day week from declared intervals
+  if (schedule?.type === "weekly") {
+    const DOW_KEYS = ["mon","tue","wed","thu","fri","sat","sun"];
+    const mode = schedule.mode || "by_dow";
+    const weekly = schedule.weekly || {};
+    const globalIntervals = Array.isArray(schedule.globalIntervals) ? schedule.globalIntervals : [];
+    let totalWeeklyHours = 0;
+    for (const key of DOW_KEYS) {
+      if (mode === "global") {
+        totalWeeklyHours += _hoursForWeekdayIntervals(globalIntervals);
+      } else {
+        totalWeeklyHours += _hoursForWeekdayIntervals(weekly[key]);
+      }
+    }
+    return totalWeeklyHours / 7;
+  }
+
   return 15;
 }
 
@@ -3736,13 +3752,14 @@ async function onCalcClick() {
   } else {
     // Recommendation mode
     if (brief.constructions?.enabled && brief.constructions.count > 0) {
-      // Бюджет = N конструкций × pphTarget выходов/ч × реальных часов кампании × avg рекомендованная ставка
-      // (вне зависимости от города — используем среднюю ставку по всем экранам пула)
+      // Бюджет = N конструкций × SC_OPT выходов/ч × реальных часов кампании × avg рекомендованная ставка.
+      // Используем SC_OPT (ёмкость), а не pphTarget (стратегия охвата/частоты):
+      // pphTarget определяет кол-во экранов, SC_OPT — реальная ёмкость планирования.
       const N = brief.constructions.count;
       const allPoolScreens0 = prepared.flatMap(r => r.pool);
       // Используем уже загруженный recoBid (если DSP-режим) или minBid×BID_MULTIPLIER
       const recoBid = avgEffectiveBid(allPoolScreens0, brief.bidMode, 1);
-      const totalBudget = Math.round(N * pphTarget * days * hpdFixed * recoBid);
+      const totalBudget = Math.round(N * SC_OPT * days * hpdFixed * recoBid);
 
       const alloc = allocateBudgetAcrossRegions(
         totalBudget,
@@ -3875,7 +3892,7 @@ async function onCalcClick() {
         if (allRecos.length > 0) {
           const N = brief.constructions.count;
           const overallAvgReco = allRecos.reduce((a, b) => a + b, 0) / allRecos.length;
-          const totalBudget = Math.round(N * pphTarget * days * hpdFixed * overallAvgReco);
+          const totalBudget = Math.round(N * SC_OPT * days * hpdFixed * overallAvgReco);
           const alloc = allocateBudgetAcrossRegions(
             totalBudget,
             prepared.map(r => ({ key: r.region, tier: getTierForGeo(r.region) })),
@@ -4019,19 +4036,15 @@ async function onCalcClick() {
       totalPlaysTheory = adjustedTotalPlaysTheory;
     }
 
-    // Если задано кол-во конструкций — частота определяется стратегией (pphTarget).
-    // Ручной слайдер ppm игнорируется; для рекомендованного бюджета pphTarget уже
-    // заложен в сумму бюджета. Для фиксированного — бюджет кэпит итоговую частоту.
+    // В режиме конструкций частота кэпится по SC_OPT (ёмкость площадки, 30 вых/ч).
+    // Ручной ppm из UI имеет приоритет. Бюджет (fixed per-city) дополнительно ограничивает
+    // фактический расход через budgetMaxPlays ниже по коду.
     const ppmManual = Number(
       brief.constructions?.perRegionPpm?.[region] ||
       brief.constructions?.playsPerHour || 0
     );
     const ppmOverride = (constructionsTarget !== null)
-      ? (
-          brief.budget.mode === "recommendation"
-            ? (Number.isFinite(ppmManual) && ppmManual > 0 ? ppmManual : pphTarget)
-            : pphTarget
-        )
+      ? (Number.isFinite(ppmManual) && ppmManual > 0 ? ppmManual : SC_OPT)
       : null;
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
