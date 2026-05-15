@@ -81,11 +81,19 @@
   }
 
   function buildSegments() {
-    // Creatives are attached via segments[].mediaSegments in the PUT body.
-    // We only preserve existing rawCamp entries for now — adding new ones requires
-    // knowing the exact DTO field name (logged in onMount via rawCamp inspection).
-    function mergeMediaSegments(existing = []) {
-      return existing
+    // Creatives are attached via segments[].medias in the PUT body.
+    // Only APPROVED/ACTIVE creatives are accepted by the backend.
+    function buildMedias(existing = []) {
+      console.log('[buildMedias] existing:', JSON.stringify(existing))
+      const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
+      const selected = (draft.creativeIds ?? []).filter(id => APPROVED_STATES.has(draft.creativeStatuses?.[id]))
+      const existingIds = new Set(existing.map(m => m.requestMedia?.id ?? m.id).filter(Boolean))
+      const toAdd = selected.filter(id => !existingIds.has(id))
+      console.log('[buildMedias] selected approved:', selected, '| toAdd:', toAdd)
+      return [
+        ...existing,
+        ...toAdd.map(id => ({ requestMedia: { id } })),
+      ]
     }
 
     // If rawCamp already has segments, preserve them (edit flow)
@@ -98,7 +106,7 @@
           priority:     inv.priority     ?? 1,
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
-        mediaSegments: mergeMediaSegments(seg.mediaSegments ?? []),
+        medias: buildMedias(seg.medias ?? []),
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
@@ -128,7 +136,7 @@
         priority: 1,
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
-      mediaSegments: mergeMediaSegments([]),
+      medias: buildMedias([]),
       photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
@@ -208,9 +216,8 @@
     console.log('[doSave] existingId:', existingId, '| draft.id:', draft.id)
     // Log rawCamp shape so we can see where creatives are stored
     if (rawCamp) {
-      console.log('[rawCamp] top-level keys:', Object.keys(rawCamp).join(', '))
       const seg0 = rawCamp.segments?.[0]
-      if (seg0) console.log('[rawCamp] seg0 keys:', Object.keys(seg0).join(', '), '| mediaSegments:', JSON.stringify(seg0.mediaSegments ?? []))
+      if (seg0) console.log('[rawCamp] seg0.medias:', JSON.stringify(seg0.medias ?? []))
     }
 
     let result
