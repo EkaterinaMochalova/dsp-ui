@@ -199,20 +199,23 @@
     }
   }
 
-  // Core save — returns the saved campaign id, throws on failure
+  // Core save — returns the saved campaign id (number), throws on failure
   async function doSave() {
     let payload = buildPayload()
-    console.log('[buildSegments] rawCamp.segments:', rawCamp?.segments?.length, '| draft.screenIds:', draft.screenIds?.length, '| result:', payload.segments?.length)
+    // Coerce to number-or-null so template literals never produce "undefined"
+    const existingId = draft.id != null && draft.id !== '' ? Number(draft.id) : null
+    console.log('[doSave] existingId:', existingId, '| draft.id:', draft.id)
+
     let result
-    if (draft.id) {
+    if (existingId) {
       try {
-        result = await api.campaigns.update(draft.id, payload)
+        result = await api.campaigns.update(existingId, payload)
       } catch (e) {
         const invalidIds = extractInvalidInventoryIds(e)
         if (e?.status === 400 && invalidIds.size > 0) {
           console.warn(`[save] Removing ${invalidIds.size} deleted inventories and retrying`)
           payload = stripInvalidInventories(payload, invalidIds)
-          result = await api.campaigns.update(draft.id, payload)
+          result = await api.campaigns.update(existingId, payload)
         } else {
           throw e
         }
@@ -221,11 +224,16 @@
       result = await api.campaigns.create(payload)
       if (result?.id) draft = { ...draft, id: result.id }
     }
-    const savedId = draft.id ?? result?.id
+
+    // Derive a clean numeric ID — throw immediately if we can't
+    const rawId = draft.id ?? result?.id
+    const savedId = rawId != null && rawId !== '' ? Number(rawId) : null
+    console.log('[doSave] savedId:', savedId, '| rawId:', rawId)
+    if (!savedId) throw new Error('Не удалось получить ID кампании после сохранения')
 
     // Attach selected creatives — only those approved by a vendor in this campaign.
+    // This block is fully non-fatal: any error is swallowed so save always succeeds.
     try {
-      // Creatives to consider: selected, not obviously invalid
       const EXCLUDE = new Set(['REJECTED', 'DECLINED', 'ARCHIVED', 'ARCHIVE', 'ERROR',
                                'SENDING_ERROR', 'REACTIVATION_ERROR', 'NEW'])
       const candidates = (draft.creativeIds ?? []).filter(id => {
@@ -233,43 +241,38 @@
         return !st || !EXCLUDE.has(st)
       })
 
-      if (!candidates.length || !savedId) return savedId
-
-      // Campaign vendor IDs from segments
-      const campaignOwnerIds = new Set(
-        payload.segments.map(s => s.displayOwnerId).filter(id => id != null)
-      )
-
-      let toUpload = candidates
-      if (campaignOwnerIds.size > 0) {
-        // Fetch per-vendor segments for all candidates in parallel
-        const segResults = await Promise.allSettled(
-          candidates.map(id => api.creatives.segments(id))
+      if (candidates.length > 0) {
+        // Campaign vendor IDs from segments
+        const campaignOwnerIds = new Set(
+          payload.segments.map(s => s.displayOwnerId).filter(id => id != null)
         )
-        toUpload = candidates.filter((id, i) => {
-          const res = segResults[i]
-          // Fetch failed → include optimistically (don't drop on network error)
-          if (res.status !== 'fulfilled') return true
-          const segs = res.value?.content ?? []
-          // No segments at all → include (newly uploaded, let backend decide)
-          if (segs.length === 0) return true
-          // Has segments → only include if at least one matches a campaign vendor and is approved
-          return segs.some(s =>
-            campaignOwnerIds.has(s.displayOwner?.id) &&
-            (s.state === 'APPROVED' || s.state === 'ACTIVE')
-          )
-        })
-      }
 
-      if (toUpload.length) {
-        try {
-          await api.campaigns.uploadMedia(savedId, toUpload)
-        } catch (e) {
-          // Backend rejected — retry with only confirmed APPROVED/ACTIVE
-          if (e?.status === 400) {
-            const APPROVED = new Set(['APPROVED', 'ACTIVE'])
-            const approvedOnly = toUpload.filter(id => APPROVED.has(draft.creativeStatuses?.[id]))
-            if (approvedOnly.length) await api.campaigns.uploadMedia(savedId, approvedOnly)
+        let toUpload = candidates
+        if (campaignOwnerIds.size > 0) {
+          const segResults = await Promise.allSettled(
+            candidates.map(id => api.creatives.segments(id))
+          )
+          toUpload = candidates.filter((id, i) => {
+            const res = segResults[i]
+            if (res.status !== 'fulfilled') return true
+            const segs = res.value?.content ?? []
+            if (segs.length === 0) return true
+            return segs.some(s =>
+              campaignOwnerIds.has(s.displayOwner?.id) &&
+              (s.state === 'APPROVED' || s.state === 'ACTIVE')
+            )
+          })
+        }
+
+        if (toUpload.length) {
+          try {
+            await api.campaigns.uploadMedia(savedId, toUpload)
+          } catch (e) {
+            if (e?.status === 400) {
+              const APPROVED = new Set(['APPROVED', 'ACTIVE'])
+              const approvedOnly = toUpload.filter(id => APPROVED.has(draft.creativeStatuses?.[id]))
+              if (approvedOnly.length) await api.campaigns.uploadMedia(savedId, approvedOnly)
+            }
           }
         }
       }
@@ -311,7 +314,6 @@
     saveError = ''
     try {
       const id = await doSave()
-      if (!id) throw new Error('Не удалось получить ID кампании')
       await api.campaigns.setState(id, 'ACTIVE')
       window.location.hash = '#/campaigns'
     } catch (e) {
