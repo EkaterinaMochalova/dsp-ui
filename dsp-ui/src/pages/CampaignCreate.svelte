@@ -81,11 +81,28 @@
   }
 
   function buildSegments() {
-    // Creatives are attached via a separate endpoint (POST /campaigns/{id}/upload-media),
-    // NOT through the PUT body — the production app always sends mediaSegments: []
-    const mediaSegments = []
+    // Creatives are linked through segments[].mediaSegments in the PUT body.
+    // Each entry is { requestMedia: { id: <requestMediaId> } }.
+    // We merge: preserve whatever is already on rawCamp, then add any newly
+    // selected creatives that aren't already present.
+    function mergeMediaSegments(existing = []) {
+      const EXCLUDE = new Set(['REJECTED', 'DECLINED', 'ARCHIVED', 'ARCHIVE', 'ERROR',
+                               'SENDING_ERROR', 'REACTIVATION_ERROR', 'NEW'])
+      const selected = (draft.creativeIds ?? []).filter(id => {
+        const st = draft.creativeStatuses?.[id]
+        return !st || !EXCLUDE.has(st)
+      })
+      // IDs already in the segment's mediaSegments list
+      const existingIds = new Set(existing.map(m => m.requestMedia?.id ?? m.id))
+      // Newly selected IDs that aren't already present
+      const toAdd = selected.filter(id => !existingIds.has(id))
+      return [
+        ...existing,
+        ...toAdd.map(id => ({ requestMedia: { id } })),
+      ]
+    }
 
-    // If rawCamp already has segments, preserve them exactly (edit flow)
+    // If rawCamp already has segments, preserve them (edit flow)
     if (rawCamp?.segments?.length > 0) {
       return rawCamp.segments.map(seg => ({
         displayOwnerId: seg.displayOwner?.id ?? null,
@@ -95,22 +112,20 @@
           priority:     inv.priority     ?? 1,
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
-        mediaSegments,
+        mediaSegments: mergeMediaSegments(seg.mediaSegments ?? []),
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
 
-    // New campaign (or rawCamp has no segments yet) — build from draft.screenIds
+    // New campaign — build segments from draft.screenIds
     if (!draft.screenIds?.length) return []
 
-    // Look up cached screen objects so we can group by displayOwner
     const cacheKey = (draft.cities ?? []).length > 0
       ? [...draft.cities].sort().join('|')
       : '__all__'
     const cached = window._dspScreensCache?.[cacheKey] ?? []
     const screenMap = new Map(cached.map(s => [s.id, s]))
 
-    // Group selected screens by ownerId
     const byOwner = new Map()
     for (const id of draft.screenIds) {
       const s = screenMap.get(id)
@@ -127,7 +142,7 @@
         priority: 1,
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
-      mediaSegments,
+      mediaSegments: mergeMediaSegments([]),
       photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
@@ -231,52 +246,8 @@
     console.log('[doSave] savedId:', savedId, '| rawId:', rawId)
     if (!savedId) throw new Error('Не удалось получить ID кампании после сохранения')
 
-    // Attach selected creatives — only those approved by a vendor in this campaign.
-    // This block is fully non-fatal: any error is swallowed so save always succeeds.
-    try {
-      const EXCLUDE = new Set(['REJECTED', 'DECLINED', 'ARCHIVED', 'ARCHIVE', 'ERROR',
-                               'SENDING_ERROR', 'REACTIVATION_ERROR', 'NEW'])
-      const candidates = (draft.creativeIds ?? []).filter(id => {
-        const st = draft.creativeStatuses?.[id]
-        return !st || !EXCLUDE.has(st)
-      })
-
-      if (candidates.length > 0) {
-        // Campaign vendor IDs from segments
-        const campaignOwnerIds = new Set(
-          payload.segments.map(s => s.displayOwnerId).filter(id => id != null)
-        )
-
-        let toUpload = candidates
-        if (campaignOwnerIds.size > 0) {
-          const segResults = await Promise.allSettled(
-            candidates.map(id => api.creatives.segments(id))
-          )
-          toUpload = candidates.filter((id, i) => {
-            const res = segResults[i]
-            if (res.status !== 'fulfilled') return true
-            const segs = res.value?.content ?? []
-            if (segs.length === 0) return true
-            return segs.some(s =>
-              campaignOwnerIds.has(s.displayOwner?.id) &&
-              (s.state === 'APPROVED' || s.state === 'ACTIVE')
-            )
-          })
-        }
-
-        if (toUpload.length) {
-          try {
-            await api.campaigns.uploadMedia(savedId, toUpload)
-          } catch (e) {
-            if (e?.status === 400) {
-              const APPROVED = new Set(['APPROVED', 'ACTIVE'])
-              const approvedOnly = toUpload.filter(id => APPROVED.has(draft.creativeStatuses?.[id]))
-              if (approvedOnly.length) await api.campaigns.uploadMedia(savedId, approvedOnly)
-            }
-          }
-        }
-      }
-    } catch { /* non-fatal — creative attachment never blocks save */ }
+    // Creatives are embedded in segments[].mediaSegments in the PUT payload (built in buildSegments).
+    // No separate upload step needed.
 
     return savedId
   }
@@ -319,9 +290,12 @@
     } catch (e) {
       console.warn('[launch] error:', JSON.stringify(e))
       const status = e?.status
+      // Extract the most useful message: prefer errors.global[0].message, then top-level message
+      const globalMsg = e?.data?.errors?.global?.[0]?.message
       const msg = status === 403
         ? 'Нет прав для запуска кампании (403).'
-        : e?.data?.message
+        : globalMsg
+          ?? e?.data?.message
           ?? e?.data?.error
           ?? (typeof e?.data === 'string' ? e.data : null)
           ?? e?.message
