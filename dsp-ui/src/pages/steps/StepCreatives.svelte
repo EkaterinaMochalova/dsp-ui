@@ -34,6 +34,10 @@
 
   $: if (activeId) loadActiveData(activeId)
 
+  $: richCreative = activeDetail ?? activeCreative
+  $: activeMedia  = richCreative?.layout?.media ?? richCreative?.mediaFiles?.[0] ?? null
+  $: activeFile   = activeMedia?.file ?? null
+
   async function loadActiveData(id) {
     segmentsLoading = true
     activeSegments = []
@@ -514,17 +518,13 @@
         <!-- ── Tab: Медиафайлы ─────────────────────────────────────── -->
         {#if activeTab === 'media'}
           <div class="cr-tab-body">
-            {@const richCreative = activeDetail ?? activeCreative}
-            {@const media = richCreative.layout?.media ?? richCreative.mediaFiles?.[0] ?? null}
-            {@const file  = media?.file}
-
             <!-- File card -->
-            {#if media}
+            {#if activeMedia}
               <div class="cr-file-card">
                 <!-- Preview thumb -->
                 <div class="cr-file-thumb">
                   {#if thumbUrl(richCreative)}
-                    <img src={thumbUrl(richCreative)} alt={media.name} style="width:100%;height:100%;object-fit:cover;border-radius:6px"/>
+                    <img src={thumbUrl(richCreative)} alt={activeMedia.name} style="width:100%;height:100%;object-fit:cover;border-radius:6px"/>
                   {:else if isVideo(richCreative)}
                     <svg width="24" height="24" viewBox="0 0 20 20" fill="currentColor" style="color:#94A3B8">
                       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
@@ -538,22 +538,22 @@
 
                 <!-- File details -->
                 <div class="cr-file-details">
-                  <div class="cr-file-name">{media.name ?? '—'}</div>
+                  <div class="cr-file-name">{activeMedia.name ?? '—'}</div>
                   <div class="cr-file-meta-row">
-                    {#if media.type}
-                      <span class="cr-file-chip">{media.type === 'VIDEO' ? 'Видео' : 'Изображение'}</span>
+                    {#if activeMedia.type}
+                      <span class="cr-file-chip">{activeMedia.type === 'VIDEO' ? 'Видео' : 'Изображение'}</span>
                     {/if}
-                    {#if file?.resolution?.width && file?.resolution?.height}
-                      <span class="cr-file-chip">{file.resolution.width}×{file.resolution.height}</span>
+                    {#if activeFile?.resolution?.width && activeFile?.resolution?.height}
+                      <span class="cr-file-chip">{activeFile.resolution.width}×{activeFile.resolution.height}</span>
                     {/if}
-                    {#if formatDuration(media.duration)}
-                      <span class="cr-file-chip">{formatDuration(media.duration)}</span>
+                    {#if formatDuration(activeMedia.duration)}
+                      <span class="cr-file-chip">{formatDuration(activeMedia.duration)}</span>
                     {/if}
-                    {#if formatSize(file?.size)}
-                      <span class="cr-file-chip">{formatSize(file.size)}</span>
+                    {#if formatSize(activeFile?.size)}
+                      <span class="cr-file-chip">{formatSize(activeFile.size)}</span>
                     {/if}
-                    {#if media.compatibleInventoryTypes?.length}
-                      <span class="cr-file-chip" style="color:#64748B">{media.compatibleInventoryTypes.join(', ')}</span>
+                    {#if activeMedia.compatibleInventoryTypes?.length}
+                      <span class="cr-file-chip" style="color:#64748B">{activeMedia.compatibleInventoryTypes.join(', ')}</span>
                     {/if}
                   </div>
                 </div>
