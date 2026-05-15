@@ -27,6 +27,22 @@
   let activeId  = draft.creativeIds[0] ?? null
   let activeTab = 'media'          // 'media' | 'conditions' | 'audience' | 'timing'
 
+  // ── Per-vendor segments for active creative ───────────────────────────
+  let activeSegments = []
+  let segmentsLoading = false
+
+  $: if (activeId) loadSegments(activeId)
+
+  async function loadSegments(id) {
+    segmentsLoading = true
+    activeSegments = []
+    try {
+      const res = await api.creatives.segments(id)
+      activeSegments = res?.content ?? []
+    } catch { activeSegments = [] }
+    finally { segmentsLoading = false }
+  }
+
   // ── Load data ─────────────────────────────────────────────────────────
   onMount(async () => {
     await loadCreatives()
@@ -269,6 +285,19 @@
     return `${n} медиафайлов`
   }
 
+  function formatSize(bytes) {
+    if (!bytes) return null
+    if (bytes >= 1_000_000) return (bytes / 1_000_000).toFixed(1) + ' МБ'
+    if (bytes >= 1_000)     return (bytes / 1_000).toFixed(0) + ' КБ'
+    return bytes + ' Б'
+  }
+
+  function formatDuration(ms) {
+    if (!ms) return null
+    const sec = ms >= 1000 ? Math.round(ms / 1000) : ms
+    return sec + ' сек.'
+  }
+
   const WEEKDAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
 </script>
 
@@ -477,32 +506,68 @@
         <!-- ── Tab: Медиафайлы ─────────────────────────────────────── -->
         {#if activeTab === 'media'}
           <div class="cr-tab-body">
-            {#if getFileList(activeCreative).length === 0}
-              <div class="cr-tab-empty">Медиафайлы не найдены</div>
-            {:else}
-              {#each getFileList(activeCreative) as f, i}
-                {@const fk = statusKey(getState(f)) || statusKey(getState(activeCreative))}
-                {@const fw = f.resolution?.width  ?? f.width  ?? f.mediaContent?.file?.width}
-                {@const fh = f.resolution?.height ?? f.height ?? f.mediaContent?.file?.height}
-                {@const fst = STATUS[getState(f)] ?? STATUS[fk] ?? null}
-                <div class="cr-media-row">
-                  <span class="cr-media-name">{f.name ?? f.mediaContent?.file?.name ?? `Файл ${i+1}`}</span>
-                  {#if fw && fh}<span class="cr-media-dim">{fw}×{fh}</span>{/if}
-                  {#if fst}<span class="cr-status-badge {fst.cls}" style="font-size:10px;padding:1px 6px">{fst.label}</span>{/if}
-                  <!-- status icon -->
-                  {#if fk === 'APPROVED'}
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:#16A34A;flex-shrink:0" title="Согласован">
-                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            {@const media = activeCreative.layout?.media}
+            {@const file  = media?.file}
+
+            <!-- File card -->
+            {#if media}
+              <div class="cr-file-card">
+                <!-- Preview thumb -->
+                <div class="cr-file-thumb">
+                  {#if thumbUrl(activeCreative)}
+                    <img src={thumbUrl(activeCreative)} alt={media.name} style="width:100%;height:100%;object-fit:cover;border-radius:6px"/>
+                  {:else if isVideo(activeCreative)}
+                    <svg width="24" height="24" viewBox="0 0 20 20" fill="currentColor" style="color:#94A3B8">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
                     </svg>
-                  {:else if fk === 'ERROR' || fk === 'REJECTED'}
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:#DC2626;flex-shrink:0" title={fst?.label ?? fk}>
-                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
-                    </svg>
-                  {:else if fk}
-                    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:#D97706;flex-shrink:0" title={fst?.label ?? fk}>
-                      <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                  {:else}
+                    <svg width="24" height="24" viewBox="0 0 20 20" fill="currentColor" style="color:#94A3B8">
+                      <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
                     </svg>
                   {/if}
+                </div>
+
+                <!-- File details -->
+                <div class="cr-file-details">
+                  <div class="cr-file-name">{media.name ?? '—'}</div>
+                  <div class="cr-file-meta-row">
+                    {#if media.type}
+                      <span class="cr-file-chip">{media.type === 'VIDEO' ? 'Видео' : 'Изображение'}</span>
+                    {/if}
+                    {#if file?.resolution?.width && file?.resolution?.height}
+                      <span class="cr-file-chip">{file.resolution.width}×{file.resolution.height}</span>
+                    {/if}
+                    {#if formatDuration(media.duration)}
+                      <span class="cr-file-chip">{formatDuration(media.duration)}</span>
+                    {/if}
+                    {#if formatSize(file?.size)}
+                      <span class="cr-file-chip">{formatSize(file.size)}</span>
+                    {/if}
+                    {#if media.compatibleInventoryTypes?.length}
+                      <span class="cr-file-chip" style="color:#64748B">{media.compatibleInventoryTypes.join(', ')}</span>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            {:else}
+              <div class="cr-tab-empty">Медиафайлы не найдены</div>
+            {/if}
+
+            <!-- Vendor approval -->
+            <div class="cr-section-label" style="margin-top:16px;margin-bottom:8px">Согласование по владельцам</div>
+            {#if segmentsLoading}
+              <div style="display:flex;align-items:center;gap:8px;color:#94A3B8;font-size:12.5px">
+                <span class="cr-spinner"></span> Загрузка…
+              </div>
+            {:else if activeSegments.length === 0}
+              <div style="font-size:12.5px;color:#94A3B8">Не отправлен ни одному владельцу</div>
+            {:else}
+              {#each activeSegments as seg}
+                {@const sk = statusKey(seg.state ?? '')}
+                {@const st = STATUS[seg.state] ?? STATUS[sk] ?? { label: seg.state ?? '—', cls: '' }}
+                <div class="cr-vendor-row">
+                  <div class="cr-vendor-name">{seg.displayOwner?.name ?? `Владелец ${seg.id}`}</div>
+                  <span class="cr-status-badge {st.cls}" style="font-size:10.5px">{st.label}</span>
                 </div>
               {/each}
             {/if}
@@ -806,10 +871,18 @@
   .cr-tab-empty { color:#94A3B8; font-size:13px; text-align:center; padding:32px 0; }
   .cr-section-label { font-size:12px; font-weight:600; color:#334155; margin-bottom:7px; }
 
-  /* Media files */
-  .cr-media-row { display:flex; align-items:center; gap:10px; padding:7px 10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; font-size:12.5px; color:#334155; margin-bottom:4px; }
-  .cr-media-name { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .cr-media-dim  { color:#64748B; font-variant-numeric:tabular-nums; flex-shrink:0; font-size:11.5px; }
+  /* File card */
+  .cr-file-card { display:flex; gap:12px; padding:12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; margin-bottom:4px; }
+  .cr-file-thumb { width:72px; height:52px; flex-shrink:0; border-radius:6px; background:#E2E8F0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .cr-file-details { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .cr-file-name { font-size:12.5px; font-weight:600; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cr-file-meta-row { display:flex; flex-wrap:wrap; gap:4px; }
+  .cr-file-chip { display:inline-flex; align-items:center; padding:1px 7px; border-radius:20px; font-size:10.5px; font-weight:500; background:#E2E8F0; color:#475569; white-space:nowrap; }
+
+  /* Vendor approval */
+  .cr-vendor-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid #F1F5F9; gap:10px; }
+  .cr-vendor-row:last-child { border-bottom:none; }
+  .cr-vendor-name { font-size:12.5px; color:#334155; font-weight:500; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   /* Chips */
   .cr-chip-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:0; }
