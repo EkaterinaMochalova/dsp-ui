@@ -4141,7 +4141,7 @@ async function onCalcClick() {
     totalBudgetFinal += actualBudget;
 
     if (brief.budget.mode !== "goal_ots") {
-      const playsPerHourPerScreen = (totalPlaysTheory / days / hpd) / Math.max(1, chosen.length);
+      const playsPerHourPerScreen = (totalPlaysEffective / days / hpd) / Math.max(1, chosen.length);
       if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
         warnings.push(`⚠️ Регион «${region}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
       }
