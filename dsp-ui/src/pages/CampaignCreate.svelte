@@ -312,8 +312,8 @@
     saving = true
     saveError = ''
     try {
-      await doSave()
-      window.location.hash = '#/campaigns'
+      const savedId = await doSave()
+      window.location.hash = `#/campaigns/${savedId}`
     } catch (e) {
       console.warn('[save] error:', JSON.stringify(e))
       const status = e?.status
