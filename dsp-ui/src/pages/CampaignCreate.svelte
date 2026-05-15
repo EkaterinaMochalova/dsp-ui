@@ -381,12 +381,9 @@
       try {
         const camp = await api.campaigns.get(campaignId)
         rawCamp = camp
-        // Temporary: log top-level keys + segments[0] structure to understand DTO shape
-        console.log('[rawCamp] keys:', Object.keys(camp))
         if (camp.segments?.[0]) {
           const s = camp.segments[0]
-          console.log('[rawCamp] segments[0] keys:', Object.keys(s))
-          console.log('[rawCamp] segments[0].mediaSegments:', JSON.stringify(s.mediaSegments ?? []))
+          console.log('[rawCamp] segments[0].medias:', JSON.stringify(s.medias ?? []))
         }
 
         // ── Budget ─────────────────────────────────────────────────────
