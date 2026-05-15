@@ -4046,15 +4046,18 @@ async function onCalcClick() {
       totalPlaysTheory = adjustedTotalPlaysTheory;
     }
 
-    // В режиме конструкций частота кэпится по SC_OPT (ёмкость площадки, 30 вых/ч).
-    // Ручной ppm из UI имеет приоритет. Бюджет (fixed per-city) дополнительно ограничивает
-    // фактический расход через budgetMaxPlays ниже по коду.
+    // В режиме конструкций:
+    // - Если задан ручной ppm — кэпим по нему.
+    // - Если задан только бюджет (без ручного ppm) — максимум это физический SC_MAX (60 вых/ч);
+    //   фактические выходы ограничиваются бюджетом через budgetMaxPlays ниже.
+    //   SC_OPT используется только в режиме рекомендации бюджета (budget=0).
     const ppmManual = Number(
       brief.constructions?.perRegionPpm?.[region] ||
       brief.constructions?.playsPerHour || 0
     );
+    const hasBudget = Number.isFinite(budget) && budget > 0;
     const ppmOverride = (constructionsTarget !== null)
-      ? (Number.isFinite(ppmManual) && ppmManual > 0 ? ppmManual : SC_OPT)
+      ? (Number.isFinite(ppmManual) && ppmManual > 0 ? ppmManual : (hasBudget ? null : SC_OPT))
       : null;
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
