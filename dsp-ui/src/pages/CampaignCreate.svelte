@@ -80,16 +80,11 @@
     saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
   }
 
-  // vendorApprovalMap: { [creativeId]: Set<vendorId> } — which vendors approved each creative.
-  // Built async in doSave before buildPayload, null means "skip vendor filtering".
-  let _vendorApprovalMap = null
-
-  function buildSegments() {
+  function buildSegments(overrideCreativeIds = null) {
     // GET response uses 'medias' field; PUT request uses 'mediaSegments' (non-nullable).
     // Response entry: { requestMedia: { id: X }, default, ... }
     // Request entry:  { id: X (= requestMediaId), default, externalConditionParamsId, ... }
-    // Creatives are filtered per-vendor: only include if approved by this segment's displayOwner.
-    function buildMediaSegments(existingMedias = [], vendorId = null) {
+    function buildMediaSegments(existingMedias = []) {
       // Transform response format → request format, preserving all targeting fields
       const existing = existingMedias.map(m => ({
         id: m.requestMedia?.id ?? m.id ?? 0,
@@ -101,15 +96,15 @@
       }))
       const existingIds = new Set(existing.map(m => m.id).filter(Boolean))
 
+      // overrideCreativeIds = null → use all approved; Set → restrict to those IDs only
+      const creativePool = overrideCreativeIds != null
+        ? (draft.creativeIds ?? []).filter(id => overrideCreativeIds.has(id))
+        : (draft.creativeIds ?? [])
+
       const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-      const toAdd = (draft.creativeIds ?? []).filter(id => {
+      const toAdd = creativePool.filter(id => {
         if (!APPROVED_STATES.has(draft.creativeStatuses?.[id])) return false
         if (existingIds.has(id)) return false
-        // Vendor-aware: only include if this vendor approved the creative
-        if (_vendorApprovalMap && vendorId != null) {
-          const approvedVendors = _vendorApprovalMap[id]
-          if (approvedVendors && !approvedVendors.has(vendorId)) return false
-        }
         return true
       })
 
@@ -136,7 +131,7 @@
           priority:     inv.priority     ?? 1,
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
-        mediaSegments: buildMediaSegments(seg.medias ?? [], seg.displayOwner?.id ?? null),
+        mediaSegments: buildMediaSegments(seg.medias ?? []),
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
@@ -166,19 +161,19 @@
         priority: 1,
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
-      mediaSegments: buildMediaSegments([], ownerId),
+      mediaSegments: buildMediaSegments([]),
       photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
 
-  function buildPayload() {
+  function buildPayload(overrideCreativeIds = null) {
     const budgetBuyer = Number(draft.customBudgetTotal) || 0
     const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
     const additionalChargePct = markup ?? rawCamp?.additionalCharge ?? 0
     // budget = client-facing price (buyer price + markup); budgetBuyer = base buyer price
     const budget = Math.round(budgetBuyer * (1 + additionalChargePct / 100) * 100) / 100
 
-    const segments = buildSegments()
+    const segments = buildSegments(overrideCreativeIds)
     console.log('[buildSegments] rawCamp.segments:', rawCamp?.segments?.length, '| draft.screenIds:', draft.screenIds?.length, '| result:', segments.length)
 
     return {
@@ -225,6 +220,30 @@
     )
   }
 
+  // Detect if a 400 error is about creative/media validation
+  // Returns true if any field error mentions creatives or media approval
+  function hasCreativeErrors(err) {
+    const fields = err?.data?.errors?.field ?? []
+    const CREATIVE_MSGS = ['медиафайл', 'Креатив', 'mediaSegments', 'креатив']
+    return fields.some(f =>
+      CREATIVE_MSGS.some(kw => f.message?.includes(kw) || f.field?.includes('mediaSegments'))
+    )
+  }
+
+  // Build a payload where segments with creative errors fall back to existing-only mediaSegments.
+  // We don't know which segment indices failed, so we retry with ONLY the creatives that were
+  // already saved in rawCamp (seg.medias). New selections are dropped for this save.
+  function buildPayloadWithoutNewCreatives() {
+    // Collect IDs that were already persisted in rawCamp segments
+    const persistedIds = new Set(
+      (rawCamp?.segments ?? [])
+        .flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id))
+        .filter(Boolean)
+    )
+    console.log('[retry] Falling back to persisted creative IDs only:', [...persistedIds])
+    return buildPayload(persistedIds)
+  }
+
   // Strip known-invalid inventory IDs from a payload's segments
   function stripInvalidInventories(payload, invalidIds) {
     return {
@@ -240,29 +259,6 @@
 
   // Core save — returns the saved campaign id (number), throws on failure
   async function doSave() {
-    // Pre-fetch per-vendor approval map so buildSegments can filter per displayOwner
-    const creativeIds = draft.creativeIds ?? []
-    if (creativeIds.length > 0) {
-      try {
-        const results = await Promise.allSettled(creativeIds.map(id => api.creatives.segments(id)))
-        _vendorApprovalMap = {}
-        for (let i = 0; i < creativeIds.length; i++) {
-          const res = results[i]
-          if (res.status === 'fulfilled') {
-            _vendorApprovalMap[creativeIds[i]] = new Set(
-              (res.value?.content ?? [])
-                .filter(s => s.state === 'APPROVED' || s.state === 'ACTIVE')
-                .map(s => s.displayOwner?.id)
-                .filter(Boolean)
-            )
-          }
-          // fetch failed → leave undefined → optimistic include for that creative
-        }
-      } catch { _vendorApprovalMap = null }
-    } else {
-      _vendorApprovalMap = null
-    }
-
     let payload = buildPayload()
     // Coerce to number-or-null so template literals never produce "undefined"
     const existingId = draft.id != null && draft.id !== '' ? Number(draft.id) : null
@@ -272,11 +268,23 @@
       try {
         result = await api.campaigns.update(existingId, payload)
       } catch (e) {
-        const invalidIds = extractInvalidInventoryIds(e)
-        if (e?.status === 400 && invalidIds.size > 0) {
-          console.warn(`[save] Removing ${invalidIds.size} deleted inventories and retrying`)
-          payload = stripInvalidInventories(payload, invalidIds)
-          result = await api.campaigns.update(existingId, payload)
+        if (e?.status === 400) {
+          const invalidIds = extractInvalidInventoryIds(e)
+          const creativeErr = hasCreativeErrors(e)
+          if (invalidIds.size > 0 || creativeErr) {
+            if (invalidIds.size > 0) {
+              console.warn(`[save] Removing ${invalidIds.size} deleted inventories`)
+              payload = stripInvalidInventories(payload, invalidIds)
+            }
+            if (creativeErr) {
+              console.warn('[save] Creative validation errors — retrying with persisted creatives only')
+              const fallbackPayload = buildPayloadWithoutNewCreatives()
+              payload = invalidIds.size > 0 ? stripInvalidInventories(fallbackPayload, invalidIds) : fallbackPayload
+            }
+            result = await api.campaigns.update(existingId, payload)
+          } else {
+            throw e
+          }
         } else {
           throw e
         }
