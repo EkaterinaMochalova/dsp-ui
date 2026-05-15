@@ -4051,13 +4051,17 @@ async function onCalcClick() {
     // - Если задан только бюджет (без ручного ppm) — максимум это физический SC_MAX (60 вых/ч);
     //   фактические выходы ограничиваются бюджетом через budgetMaxPlays ниже.
     //   SC_OPT используется только в режиме рекомендации бюджета (budget=0).
-    const ppmManual = Number(
-      brief.constructions?.perRegionPpm?.[region] ||
-      brief.constructions?.playsPerHour || 0
-    );
+    // perRegionPpm — явный per-city override (редкий), playsPerHour — слайдер UI (дефолт 10).
+    // Слайдер применяется только в режиме рекомендации (budget=0): там он задаёт целевую частоту.
+    // Когда задан бюджет — игнорируем слайдер и используем SC_MAX (60/ч) как физический предел;
+    // фактическая частота определяется бюджетом ÷ ставка.
+    const ppmRegionOverride = Number(brief.constructions?.perRegionPpm?.[region] || 0);
+    const ppmManual = ppmRegionOverride > 0 ? ppmRegionOverride : Number(brief.constructions?.playsPerHour || 0);
     const hasBudget = Number.isFinite(budget) && budget > 0;
     const ppmOverride = (constructionsTarget !== null)
-      ? (Number.isFinite(ppmManual) && ppmManual > 0 ? ppmManual : (hasBudget ? null : pphTarget))
+      ? (hasBudget
+          ? (ppmRegionOverride > 0 ? ppmRegionOverride : null)           // бюджет: только per-region override
+          : (ppmManual > 0 ? ppmManual : pphTarget))                     // рекомендация: слайдер или стратегия
       : null;
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
