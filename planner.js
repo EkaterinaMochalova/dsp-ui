@@ -4057,7 +4057,7 @@ async function onCalcClick() {
     );
     const hasBudget = Number.isFinite(budget) && budget > 0;
     const ppmOverride = (constructionsTarget !== null)
-      ? (Number.isFinite(ppmManual) && ppmManual > 0 ? ppmManual : (hasBudget ? null : SC_OPT))
+      ? (Number.isFinite(ppmManual) && ppmManual > 0 ? ppmManual : (hasBudget ? null : pphTarget))
       : null;
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
