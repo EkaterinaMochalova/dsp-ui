@@ -942,7 +942,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@54ea5cbfd7b082c5275675a457e7288f1021fae7/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@75d6223c405a6cbc8ec668dcb8e282bd296f7e4a/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -3985,20 +3985,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             <div class="ps-metric"><div class="k">CPM (стоимость 1\u202f000 OTS)</div><div class="v">\${(totalBudget > 0 && otsTotal > 0) ? Math.round(totalBudget / otsTotal * 1000).toLocaleString("ru-RU") + "\u202f₽" : "—"}</div></div>
           </div>
 
-          \${(() => {
-            const t = window.PLANNER?.computeRecoBudgetTiers?.();
-            if (!t) return "";
-            const items = [["Минимум", t.min], ["Оптимальный", t.optimal], ["Максимум", t.max]];
-            return \`<div style="margin-top:14px;padding-top:12px;border-top:1px solid #eef2f6;">
-              <div style="font-size:11px;font-weight:600;color:#8b83c5;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Диапазон бюджета</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;">\${items.map(([label, val]) =>
-                \`<div class="budget-tier-chip" style="cursor:default;">
-                  <span class="btc-label">\${label}</span>
-                  <span>\${fmtRange(val)}</span>
-                </div>\`
-              ).join("")}</div>
-            </div>\`;
-          })()}
           \${warnsHtml}
         </div>
 
