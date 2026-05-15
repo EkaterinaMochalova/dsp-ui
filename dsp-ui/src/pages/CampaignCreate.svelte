@@ -82,27 +82,10 @@
 
   function buildSegments() {
     // Creatives are attached via segments[].mediaSegments in the PUT body.
-    // Only APPROVED/ACTIVE creatives can be attached — the backend validates this.
+    // We only preserve existing rawCamp entries for now — adding new ones requires
+    // knowing the exact DTO field name (logged in onMount via rawCamp inspection).
     function mergeMediaSegments(existing = []) {
-      // Log existing format once so we can see the real DTO structure
-      if (existing.length > 0) console.log('[mediaSegments] existing sample:', JSON.stringify(existing[0]))
-
-      // Only include creatives the backend will accept
-      const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-      const selected = (draft.creativeIds ?? []).filter(id => {
-        const st = draft.creativeStatuses?.[id]
-        return APPROVED_STATES.has(st)
-      })
-      // IDs already in the segment's mediaSegments — try common field names
-      const existingIds = new Set(existing.map(m =>
-        m.requestMedia?.id ?? m.requestMediaId ?? m.mediaId ?? m.id ?? null
-      ).filter(Boolean))
-      const toAdd = selected.filter(id => !existingIds.has(id))
-      // Try flat requestMediaId field (most common Spring pattern for FK references)
-      return [
-        ...existing,
-        ...toAdd.map(id => ({ requestMediaId: id })),
-      ]
+      return existing
     }
 
     // If rawCamp already has segments, preserve them (edit flow)
@@ -385,6 +368,13 @@
       try {
         const camp = await api.campaigns.get(campaignId)
         rawCamp = camp
+        // Temporary: log top-level keys + segments[0] structure to understand DTO shape
+        console.log('[rawCamp] keys:', Object.keys(camp))
+        if (camp.segments?.[0]) {
+          const s = camp.segments[0]
+          console.log('[rawCamp] segments[0] keys:', Object.keys(s))
+          console.log('[rawCamp] segments[0].mediaSegments:', JSON.stringify(s.mediaSegments ?? []))
+        }
 
         // ── Budget ─────────────────────────────────────────────────────
         // Real API field is camp.totalBudget (buyer side: camp.budgetBuyer)
