@@ -101,7 +101,6 @@
       const toAdd = (draft.creativeIds ?? []).filter(id =>
         APPROVED_STATES.has(draft.creativeStatuses?.[id]) && !existingIds.has(id)
       )
-      console.log('[buildMediaSegments] existing ids:', [...existingIds], '| toAdd:', toAdd, '| all statuses:', draft.creativeStatuses)
 
       return [
         ...existing,
@@ -233,12 +232,6 @@
     let payload = buildPayload()
     // Coerce to number-or-null so template literals never produce "undefined"
     const existingId = draft.id != null && draft.id !== '' ? Number(draft.id) : null
-    console.log('[doSave] existingId:', existingId, '| draft.id:', draft.id)
-    // Log rawCamp shape so we can see where creatives are stored
-    if (rawCamp) {
-      const seg0 = rawCamp.segments?.[0]
-      if (seg0) console.log('[rawCamp] seg0.medias:', JSON.stringify(seg0.medias ?? []))
-    }
 
     let result
     if (existingId) {
@@ -401,10 +394,6 @@
       try {
         const camp = await api.campaigns.get(campaignId)
         rawCamp = camp
-        if (camp.segments?.[0]) {
-          const s = camp.segments[0]
-          console.log('[rawCamp] segments[0].medias:', JSON.stringify(s.medias ?? []))
-        }
 
         // ── Budget ─────────────────────────────────────────────────────
         // Real API field is camp.totalBudget (buyer side: camp.budgetBuyer)
