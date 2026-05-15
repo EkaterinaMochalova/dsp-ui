@@ -81,20 +81,38 @@
   }
 
   function buildSegments() {
-    // Creatives are attached via segments[].medias in the PUT body.
-    // Only APPROVED/ACTIVE creatives are accepted by the backend.
-    function buildMedias(existing = []) {
+    // GET response uses 'medias' field; PUT request uses 'mediaSegments' (non-nullable).
+    // Response entry: { requestMedia: { id: X }, default, ... }
+    // Request entry:  { id: X (= requestMediaId), default, externalConditionParamsId, ... }
+    function buildMediaSegments(existingMedias = []) {
+      // Transform response format → request format, preserving all targeting fields
+      const existing = existingMedias.map(m => ({
+        id: m.requestMedia?.id ?? m.id ?? 0,
+        default: m.default ?? false,
+        externalConditionParamsId: m.externalConditionParamsId ?? null,
+        weatherParams:             m.weatherParams             ?? null,
+        jamParams:                 m.jamParams                 ?? null,
+        fixedTimeShow:             m.fixedTimeShow             ?? null,
+      }))
+      const existingIds = new Set(existing.map(m => m.id).filter(Boolean))
+
+      // Only APPROVED/ACTIVE creatives accepted by backend
       const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-      const allIds = draft.creativeIds ?? []
-      const allStatuses = Object.fromEntries(allIds.map(id => [id, draft.creativeStatuses?.[id] ?? '?']))
-      console.log('[buildMedias] creativeIds:', allIds, '| statuses:', allStatuses)
-      const selected = allIds.filter(id => APPROVED_STATES.has(draft.creativeStatuses?.[id]))
-      const existingIds = new Set(existing.map(m => m.requestMedia?.id ?? m.id).filter(Boolean))
-      const toAdd = selected.filter(id => !existingIds.has(id))
-      console.log('[buildMedias] approved:', selected, '| toAdd:', toAdd)
+      const toAdd = (draft.creativeIds ?? []).filter(id =>
+        APPROVED_STATES.has(draft.creativeStatuses?.[id]) && !existingIds.has(id)
+      )
+      console.log('[buildMediaSegments] existing ids:', [...existingIds], '| toAdd:', toAdd, '| all statuses:', draft.creativeStatuses)
+
       return [
         ...existing,
-        ...toAdd.map(id => ({ requestMedia: { id } })),
+        ...toAdd.map(id => ({
+          id,
+          default: false,
+          externalConditionParamsId: null,
+          weatherParams: null,
+          jamParams: null,
+          fixedTimeShow: null,
+        })),
       ]
     }
 
@@ -108,7 +126,7 @@
           priority:     inv.priority     ?? 1,
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
-        medias: buildMedias(seg.medias ?? []),
+        mediaSegments: buildMediaSegments(seg.medias ?? []),
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
@@ -138,7 +156,7 @@
         priority: 1,
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
-      medias: buildMedias([]),
+      mediaSegments: buildMediaSegments([]),
       photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
@@ -458,14 +476,18 @@
         }
 
         // ── Creatives ──────────────────────────────────────────────────
-        // Load creative IDs + their approval status for this campaign
+        // Load creative IDs from creative-names OR from segments[].medias (whichever has data)
         try {
           const [creativeNames, creativeLib] = await Promise.allSettled([
             api.creatives.listForCampaign(campaignId),
             api.creatives.list(camp.customer?.id ? { customerId: camp.customer.id } : {}),
           ])
-          const allIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])
-            ?.map?.(c => c.id) ?? []
+          // Prefer creative-names; fall back to IDs embedded in segments[].medias
+          const nameIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])?.map?.(c => c.id) ?? []
+          const mediasIds = [...new Set(
+            (camp.segments ?? []).flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id)).filter(Boolean)
+          )]
+          const allIds = nameIds.length ? nameIds : mediasIds
           if (allIds.length) {
             const libItems = creativeLib.status === 'fulfilled'
               ? (creativeLib.value?.content ?? creativeLib.value ?? [])
