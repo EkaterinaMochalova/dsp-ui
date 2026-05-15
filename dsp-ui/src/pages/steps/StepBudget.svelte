@@ -25,11 +25,11 @@
   $: clientDay  = daysCount ? clientBase / daysCount : 0
   $: clientHour = clientDay / 24
 
-  // Totals incl. VAT 20%
-  $: baerTotal   = baer * 1.20
-  $: baerVat     = baer * 0.20
+  // Totals incl. VAT 22%
+  $: baerTotal   = baer * 1.22
+  $: baerVat     = baer * 0.22
   $: clientTotal = baerTotal + markupAmt
-  $: clientVat   = clientBase * 0.20
+  $: clientVat   = clientBase * 0.22
 
   $: hasData = baer > 0
 
@@ -51,50 +51,55 @@
 <div class="step-content">
   <h1 class="step-title">Бюджет размещения</h1>
 
-  <!-- Надбавка баера -->
-  <div class="step-card">
-    <div class="step-card-title" style="margin-bottom:14px">Надбавка баера</div>
-    <div class="markup-input-wrap">
+  <!-- Надбавка баера + Бюджет — compact inline row -->
+  <div class="step-card budget-top-row">
+    <!-- Надбавка баера -->
+    <div class="budget-field">
+      <div class="budget-field-label">Надбавка баера</div>
+      <div class="markup-input-wrap">
+        <input
+          class="field-input markup-input"
+          type="number"
+          placeholder="0"
+          bind:value={draft.buyerMarkup}
+          min="0"
+          max="100"
+        />
+        <span class="markup-pct-badge">{draft.buyerMarkup ? draft.buyerMarkup + '%' : '%'}</span>
+      </div>
+    </div>
+
+    <div class="budget-divider"></div>
+
+    <!-- Бюджет размещения -->
+    <div class="budget-field budget-field-grow">
+      <div class="budget-field-label">
+        Бюджет размещения, ₽
+        {#if forecastBudget > 0}
+          <span class="forecast-hint-inline">рекомендовано: {forecastBudget.toLocaleString('ru-RU')} ₽</span>
+        {/if}
+      </div>
       <input
-        class="field-input markup-input"
+        class="field-input"
         type="number"
-        placeholder="Введите процент надбавки"
-        bind:value={draft.buyerMarkup}
+        placeholder={forecastBudget > 0 ? forecastBudget.toLocaleString('ru-RU') : 'Введите бюджет'}
+        bind:value={draft.customBudgetTotal}
         min="0"
-        max="100"
       />
-      {#if draft.buyerMarkup}
-        <span class="markup-pct-badge">{draft.buyerMarkup}%</span>
-      {/if}
     </div>
   </div>
 
-  <!-- Manual budget input -->
-  <div class="step-card">
-    <div class="step-card-title" style="margin-bottom:6px">Бюджет размещения, ₽</div>
-    {#if forecastBudget > 0}
-      <div class="forecast-hint">Рекомендованный бюджет: {forecastBudget.toLocaleString('ru-RU')} ₽ — вы можете указать свой</div>
-    {/if}
-    <input
-      class="field-input"
-      type="number"
-      placeholder={forecastBudget > 0 ? forecastBudget.toLocaleString('ru-RU') : 'Введите бюджет'}
-      bind:value={draft.customBudgetTotal}
-      min="0"
-    />
-
-    {#if capacityExceeded}
-      <div class="capacity-warning">
-        <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;margin-top:1px">
-          <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-        </svg>
-        <span>
-          Ёмкость выбранных экранов не позволяет реализовать бюджет {customBudget.toLocaleString('ru-RU')} ₽.
-          Максимальный реализуемый бюджет: <strong>{forecastBudget.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽</strong>.
-        </span>
-      </div>
-    {/if}
-  </div>
+  {#if capacityExceeded}
+    <div class="capacity-warning">
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;margin-top:1px">
+        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+      </svg>
+      <span>
+        Ёмкость выбранных экранов не позволяет реализовать бюджет {customBudget.toLocaleString('ru-RU')} ₽.
+        Максимальный реализуемый бюджет: <strong>{forecastBudget.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽</strong>.
+      </span>
+    </div>
+  {/if}
 
   <!-- Disclaimer -->
   <p class="budget-disclaimer">
@@ -144,7 +149,7 @@
           <td class="bt-val bt-total-val">{hasData ? fmt(clientTotal) : '—'}</td>
         </tr>
         <tr class="bt-row bt-vat-row">
-          <td class="bt-label bt-vat-label">НДС 20%</td>
+          <td class="bt-label bt-vat-label">НДС 22%</td>
           <td class="bt-val bt-vat-val">{hasData ? fmt(baerVat) : '—'}</td>
           <td class="bt-val bt-vat-val">{hasData ? fmt(clientVat) : '—'}</td>
         </tr>
@@ -177,11 +182,57 @@
 </div>
 
 <style>
+  /* ── Compact top row ── */
+  .budget-top-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0;
+    padding: 16px 20px;
+  }
+
+  .budget-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    flex-shrink: 0;
+    width: 200px;
+  }
+
+  .budget-field-grow {
+    flex: 1;
+    width: auto;
+  }
+
+  .budget-field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .forecast-hint-inline {
+    font-size: 11px;
+    font-weight: 400;
+    color: #94A3B8;
+  }
+
+  .budget-divider {
+    width: 1px;
+    background: var(--border);
+    align-self: stretch;
+    margin: 0 20px;
+    flex-shrink: 0;
+  }
+
   .capacity-warning {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    margin-top: 10px;
+    margin-bottom: 16px;
     padding: 10px 14px;
     background: #FEF3C7;
     border: 1px solid #F59E0B;
@@ -196,27 +247,21 @@
     color: #78350F;
   }
 
-  .forecast-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-  }
-
   .markup-input-wrap {
     position: relative;
   }
 
   .markup-input {
     width: 100%;
-    padding-right: 48px;
+    padding-right: 40px;
   }
 
   .markup-pct-badge {
     position: absolute;
-    right: 12px;
+    right: 10px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--navy);
     pointer-events: none;
