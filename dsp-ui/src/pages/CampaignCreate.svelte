@@ -223,23 +223,49 @@
     }
     const savedId = draft.id ?? result?.id
 
-    // Attach selected creatives via the dedicated endpoint.
-    // Exclude only obviously invalid ones (REJECTED, ARCHIVED, ERROR, NEW).
-    // Unknown status (undefined) is included optimistically — backend validates.
-    // If the full set is rejected, retry with only confirmed APPROVED/ACTIVE.
+    // Attach selected creatives — only those approved by a vendor in this campaign.
     try {
+      // Creatives to consider: selected, not obviously invalid
       const EXCLUDE = new Set(['REJECTED', 'DECLINED', 'ARCHIVED', 'ARCHIVE', 'ERROR',
                                'SENDING_ERROR', 'REACTIVATION_ERROR', 'NEW'])
-      const toUpload = (draft.creativeIds ?? []).filter(id => {
+      const candidates = (draft.creativeIds ?? []).filter(id => {
         const st = draft.creativeStatuses?.[id]
-        return !st || !EXCLUDE.has(st)  // include if status unknown or not in exclusion list
+        return !st || !EXCLUDE.has(st)
       })
 
-      if (toUpload.length && savedId) {
+      if (!candidates.length || !savedId) return
+
+      // Campaign vendor IDs from segments
+      const campaignOwnerIds = new Set(
+        payload.segments.map(s => s.displayOwnerId).filter(id => id != null)
+      )
+
+      let toUpload = candidates
+      if (campaignOwnerIds.size > 0) {
+        // Fetch per-vendor segments for all candidates in parallel
+        const segResults = await Promise.allSettled(
+          candidates.map(id => api.creatives.segments(id))
+        )
+        toUpload = candidates.filter((id, i) => {
+          const res = segResults[i]
+          // Fetch failed → include optimistically (don't drop on network error)
+          if (res.status !== 'fulfilled') return true
+          const segs = res.value?.content ?? []
+          // No segments at all → include (newly uploaded, let backend decide)
+          if (segs.length === 0) return true
+          // Has segments → only include if at least one matches a campaign vendor and is approved
+          return segs.some(s =>
+            campaignOwnerIds.has(s.displayOwner?.id) &&
+            (s.state === 'APPROVED' || s.state === 'ACTIVE')
+          )
+        })
+      }
+
+      if (toUpload.length) {
         try {
           await api.campaigns.uploadMedia(savedId, toUpload)
         } catch (e) {
-          // If backend rejects (e.g. unapproved creative), retry with only APPROVED/ACTIVE
+          // Backend rejected — retry with only confirmed APPROVED/ACTIVE
           if (e?.status === 400) {
             const APPROVED = new Set(['APPROVED', 'ACTIVE'])
             const approvedOnly = toUpload.filter(id => APPROVED.has(draft.creativeStatuses?.[id]))
@@ -717,7 +743,8 @@
     {:else if currentStep === 'settings'}
       <StepShowSettings bind:draft {metrics} on:next={() => completeStep('settings')} on:back={() => prevStep('settings')} />
     {:else if currentStep === 'creatives'}
-      <StepCreatives bind:draft {metrics} on:next={() => completeStep('creatives')} on:back={() => prevStep('creatives')} />
+      {@const creativeOwnerIds = new Set((rawCamp?.segments ?? []).map(s => s.displayOwner?.id).filter(Boolean))}
+      <StepCreatives bind:draft {metrics} campaignOwnerIds={creativeOwnerIds} on:next={() => completeStep('creatives')} on:back={() => prevStep('creatives')} />
     {:else if currentStep === 'photos'}
       <StepPhotos bind:draft on:next={() => completeStep('photos')} on:back={() => prevStep('photos')} />
     {:else if currentStep === 'analytics'}

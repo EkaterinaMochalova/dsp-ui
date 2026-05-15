@@ -5,6 +5,7 @@
 
   export let draft
   export let metrics = { impressions: 0, ots: 0, budget: null }
+  export let campaignOwnerIds = new Set()  // display owner IDs in this campaign's segments
 
   if (!draft.creativeIds)        draft.creativeIds = []
   if (!draft.creativeStatuses)   draft.creativeStatuses = {}   // id → statusKey
@@ -569,12 +570,22 @@
             {:else if activeSegments.length === 0}
               <div style="font-size:12.5px;color:#94A3B8">Не отправлен ни одному владельцу</div>
             {:else}
+              {@const matchingSegs = campaignOwnerIds.size > 0
+                ? activeSegments.filter(s => campaignOwnerIds.has(s.displayOwner?.id))
+                : activeSegments}
+              {#if campaignOwnerIds.size > 0 && matchingSegs.length === 0}
+                <div class="cr-no-match-warn">
+                  ⚠️ Ни один из согласованных владельцев не входит в кампанию — креатив не будет прикреплён
+                </div>
+              {/if}
               {#each activeSegments as seg}
                 {@const sk = statusKey(seg.state ?? '')}
                 {@const st = STATUS[seg.state] ?? STATUS[sk] ?? { label: seg.state ?? '—', cls: '' }}
-                <div class="cr-vendor-row">
+                {@const inCampaign = campaignOwnerIds.size === 0 || campaignOwnerIds.has(seg.displayOwner?.id)}
+                <div class="cr-vendor-row" class:cr-vendor-row-dim={!inCampaign}>
                   <div class="cr-vendor-name">{seg.displayOwner?.name ?? `Владелец ${seg.id}`}</div>
                   <span class="cr-status-badge {st.cls}" style="font-size:10.5px">{st.label}</span>
+                  {#if !inCampaign}<span style="font-size:10px;color:#94A3B8;flex-shrink:0">не в кампании</span>{/if}
                 </div>
               {/each}
             {/if}
@@ -892,7 +903,9 @@
   /* Vendor approval */
   .cr-vendor-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid #F1F5F9; gap:10px; }
   .cr-vendor-row:last-child { border-bottom:none; }
+  .cr-vendor-row-dim { opacity:.45; }
   .cr-vendor-name { font-size:12.5px; color:#334155; font-weight:500; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cr-no-match-warn { font-size:12px; color:#B45309; background:#FFFBEB; border:1px solid #FDE68A; border-radius:6px; padding:8px 10px; margin-bottom:10px; line-height:1.4; }
 
   /* Chips */
   .cr-chip-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:0; }
