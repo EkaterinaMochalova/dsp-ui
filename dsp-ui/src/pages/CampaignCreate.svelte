@@ -277,7 +277,15 @@
 
   // Core save — returns the saved campaign id (number), throws on failure
   async function doSave() {
-    let payload = buildPayload()
+    // Build the PUT payload with ONLY already-persisted creatives (those already in rawCamp.segments[].medias).
+    // New creatives are attached separately via uploadMedia after a successful PUT, which avoids
+    // the backend rejecting the whole PUT when a creative isn't yet vendor-approved for a segment.
+    const persistedCreativeIds = new Set(
+      (rawCamp?.segments ?? [])
+        .flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id))
+        .filter(Boolean)
+    )
+    let payload = buildPayload(persistedCreativeIds)
     // Coerce to number-or-null so template literals never produce "undefined"
     const existingId = draft.id != null && draft.id !== '' ? Number(draft.id) : null
 
@@ -288,25 +296,9 @@
       } catch (e) {
         if (e?.status === 400) {
           const invalidIds = extractInvalidInventoryIds(e)
-          const creativeErr = hasCreativeErrors(e)
-          if (invalidIds.size > 0 || creativeErr) {
-            if (invalidIds.size > 0) {
-              console.warn(`[save] Removing ${invalidIds.size} deleted inventories`)
-              payload = stripInvalidInventories(payload, invalidIds)
-            }
-            if (creativeErr) {
-              const errFields = e?.data?.errors?.field ?? []
-              console.warn('[save] Creative error fields:', errFields.map(f => `${f.field}: ${f.message}`))
-              const badSegs = extractCreativeErrorSegmentIndices(e)
-              // If we couldn't parse specific indices, strip all segments (safe fallback)
-              const allSegIndices = new Set(
-                Array.from({ length: (rawCamp?.segments ?? []).length || payload.segments.length }, (_, i) => i)
-              )
-              const stripIndices = badSegs.size > 0 ? badSegs : allSegIndices
-              console.warn('[save] Stripping new creatives from segment indices:', [...stripIndices])
-              const fallbackPayload = buildPayloadStrippingBadSegments(stripIndices)
-              payload = invalidIds.size > 0 ? stripInvalidInventories(fallbackPayload, invalidIds) : fallbackPayload
-            }
+          if (invalidIds.size > 0) {
+            console.warn(`[save] Removing ${invalidIds.size} deleted inventories`)
+            payload = stripInvalidInventories(payload, invalidIds)
             result = await api.campaigns.update(existingId, payload)
           } else {
             throw e
@@ -326,8 +318,21 @@
     console.log('[doSave] savedId:', savedId, '| rawId:', rawId)
     if (!savedId) throw new Error('Не удалось получить ID кампании после сохранения')
 
-    // Creatives are embedded in segments[].mediaSegments in the PUT payload (built in buildSegments).
-    // No separate upload step needed.
+    // Attach newly selected creatives via the upload-media endpoint.
+    // This endpoint handles per-vendor approval and is designed for creative attachment.
+    const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
+    const newCreativeIds = (draft.creativeIds ?? []).filter(id =>
+      !persistedCreativeIds.has(id) && APPROVED_STATES.has(draft.creativeStatuses?.[id])
+    )
+    if (newCreativeIds.length > 0) {
+      console.log('[doSave] Attaching new creatives via uploadMedia:', newCreativeIds)
+      try {
+        await api.campaigns.uploadMedia(savedId, newCreativeIds)
+      } catch (e) {
+        // Non-fatal: campaign structure was saved successfully; log but don't fail the whole save
+        console.warn('[doSave] uploadMedia failed (non-fatal):', e?.data ?? e?.message ?? e)
+      }
+    }
 
     return savedId
   }
