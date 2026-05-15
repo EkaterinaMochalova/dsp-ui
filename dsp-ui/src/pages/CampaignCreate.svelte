@@ -80,45 +80,12 @@
     saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
   }
 
-  function buildSegments(overrideCreativeIds = null) {
-    // GET response uses 'medias' field; PUT request uses 'mediaSegments' (non-nullable).
-    // Response entry: { requestMedia: { id: X }, default, ... }
-    // Request entry:  { id: X (= requestMediaId), default, externalConditionParamsId, ... }
-    function buildMediaSegments(existingMedias = []) {
-      // Transform response format → request format, preserving all targeting fields
-      const existing = existingMedias.map(m => ({
-        id: m.requestMedia?.id ?? m.id ?? 0,
-        default: m.default ?? false,
-        externalConditionParamsId: m.externalConditionParamsId ?? null,
-        weatherParams:             m.weatherParams             ?? null,
-        jamParams:                 m.jamParams                 ?? null,
-        fixedTimeShow:             m.fixedTimeShow             ?? null,
-      }))
-      const existingIds = new Set(existing.map(m => m.id).filter(Boolean))
-
-      // overrideCreativeIds = null → use all approved; Set → restrict to those IDs only
-      const creativePool = overrideCreativeIds != null
-        ? (draft.creativeIds ?? []).filter(id => overrideCreativeIds.has(id))
-        : (draft.creativeIds ?? [])
-
-      const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-      const toAdd = creativePool.filter(id => {
-        if (!APPROVED_STATES.has(draft.creativeStatuses?.[id])) return false
-        if (existingIds.has(id)) return false
-        return true
-      })
-
-      return [
-        ...existing,
-        ...toAdd.map(id => ({
-          id,
-          default: false,
-          externalConditionParamsId: null,
-          weatherParams: null,
-          jamParams: null,
-          fixedTimeShow: null,
-        })),
-      ]
+  function buildSegments() {
+    // Creatives are managed entirely via POST /upload-media after a successful PUT.
+    // The PUT endpoint rejects mediaSegments entries that haven't completed the
+    // per-campaign vendor approval workflow, so we always send an empty array here.
+    function buildMediaSegments() {
+      return []
     }
 
     // If rawCamp already has segments, preserve them (edit flow)
@@ -131,7 +98,7 @@
           priority:     inv.priority     ?? 1,
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
-        mediaSegments: buildMediaSegments(seg.medias ?? []),
+        mediaSegments: buildMediaSegments(),
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
@@ -161,19 +128,19 @@
         priority: 1,
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
-      mediaSegments: buildMediaSegments([]),
+      mediaSegments: buildMediaSegments(),
       photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
 
-  function buildPayload(overrideCreativeIds = null) {
+  function buildPayload() {
     const budgetBuyer = Number(draft.customBudgetTotal) || 0
     const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
     const additionalChargePct = markup ?? rawCamp?.additionalCharge ?? 0
     // budget = client-facing price (buyer price + markup); budgetBuyer = base buyer price
     const budget = Math.round(budgetBuyer * (1 + additionalChargePct / 100) * 100) / 100
 
-    const segments = buildSegments(overrideCreativeIds)
+    const segments = buildSegments()
     console.log('[buildSegments] rawCamp.segments:', rawCamp?.segments?.length, '| draft.screenIds:', draft.screenIds?.length, '| result:', segments.length)
 
     return {
@@ -220,48 +187,6 @@
     )
   }
 
-  // Detect if a 400 error is about creative/media validation
-  function hasCreativeErrors(err) {
-    const fields = err?.data?.errors?.field ?? []
-    const CREATIVE_MSGS = ['медиафайл', 'Креатив', 'mediaSegments', 'креатив']
-    return fields.some(f =>
-      CREATIVE_MSGS.some(kw => f.message?.includes(kw) || f.field?.includes('mediaSegments'))
-    )
-  }
-
-  // Parse which segment indices had creative validation errors (e.g. "segments[1].mediaSegments")
-  function extractCreativeErrorSegmentIndices(err) {
-    const fields = err?.data?.errors?.field ?? []
-    const indices = new Set()
-    for (const f of fields) {
-      if (!f.field?.includes('mediaSegments')) continue
-      const m = f.field.match(/^segments\[(\d+)\]/)
-      if (m) indices.add(Number(m[1]))
-    }
-    return indices
-  }
-
-  // Rebuild payload with creatives stripped only from the segments that the backend rejected.
-  // Segments not in badSegmentIndices keep all approved creatives.
-  function buildPayloadStrippingBadSegments(badSegmentIndices) {
-    const base = buildPayload(null)
-    const segments = base.segments.map((seg, i) => {
-      if (!badSegmentIndices.has(i)) return seg
-      // For this segment, keep only what was already persisted (no new additions)
-      const rawSeg = rawCamp?.segments?.[i]
-      const existingOnly = (rawSeg?.medias ?? []).map(m => ({
-        id: m.requestMedia?.id ?? m.id ?? 0,
-        default: m.default ?? false,
-        externalConditionParamsId: m.externalConditionParamsId ?? null,
-        weatherParams:             m.weatherParams             ?? null,
-        jamParams:                 m.jamParams                 ?? null,
-        fixedTimeShow:             m.fixedTimeShow             ?? null,
-      }))
-      return { ...seg, mediaSegments: existingOnly }
-    })
-    return { ...base, segments }
-  }
-
   // Strip known-invalid inventory IDs from a payload's segments
   function stripInvalidInventories(payload, invalidIds) {
     return {
@@ -277,15 +202,11 @@
 
   // Core save — returns the saved campaign id (number), throws on failure
   async function doSave() {
-    // Build the PUT payload with ONLY already-persisted creatives (those already in rawCamp.segments[].medias).
-    // New creatives are attached separately via uploadMedia after a successful PUT, which avoids
-    // the backend rejecting the whole PUT when a creative isn't yet vendor-approved for a segment.
-    const persistedCreativeIds = new Set(
-      (rawCamp?.segments ?? [])
-        .flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id))
-        .filter(Boolean)
-    )
-    let payload = buildPayload(persistedCreativeIds)
+    // PUT payload always has mediaSegments:[] for all segments.
+    // Creatives are managed entirely via POST /upload-media (below) — the PUT endpoint
+    // rejects mediaSegments entries that haven't completed the per-campaign vendor
+    // approval workflow, so we never include them in the PUT body.
+    let payload = buildPayload()
     // Coerce to number-or-null so template literals never produce "undefined"
     const existingId = draft.id != null && draft.id !== '' ? Number(draft.id) : null
 
@@ -318,18 +239,18 @@
     console.log('[doSave] savedId:', savedId, '| rawId:', rawId)
     if (!savedId) throw new Error('Не удалось получить ID кампании после сохранения')
 
-    // Attach newly selected creatives via the upload-media endpoint.
-    // This endpoint handles per-vendor approval and is designed for creative attachment.
+    // Attach ALL currently selected approved creatives via the upload-media endpoint.
+    // This is idempotent for already-attached creatives and handles per-vendor approval.
     const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-    const newCreativeIds = (draft.creativeIds ?? []).filter(id =>
-      !persistedCreativeIds.has(id) && APPROVED_STATES.has(draft.creativeStatuses?.[id])
+    const approvedIds = (draft.creativeIds ?? []).filter(id =>
+      APPROVED_STATES.has(draft.creativeStatuses?.[id])
     )
-    if (newCreativeIds.length > 0) {
-      console.log('[doSave] Attaching new creatives via uploadMedia:', newCreativeIds)
+    if (approvedIds.length > 0) {
+      console.log('[doSave] Attaching creatives via uploadMedia:', approvedIds)
       try {
-        await api.campaigns.uploadMedia(savedId, newCreativeIds)
+        await api.campaigns.uploadMedia(savedId, approvedIds)
       } catch (e) {
-        // Non-fatal: campaign structure was saved successfully; log but don't fail the whole save
+        // Non-fatal: campaign structure was saved; log but don't fail the whole save
         console.warn('[doSave] uploadMedia failed (non-fatal):', e?.data ?? e?.message ?? e)
       }
     }
