@@ -223,38 +223,29 @@
     }
     const savedId = draft.id ?? result?.id
 
-    // Attach creatives that have been sent to owners and approved by at least one
-    // display owner who is part of this campaign's segments.
+    // Attach selected creatives via the dedicated endpoint.
+    // Exclude only obviously invalid ones (REJECTED, ARCHIVED, ERROR, NEW).
+    // Unknown status (undefined) is included optimistically — backend validates.
+    // If the full set is rejected, retry with only confirmed APPROVED/ACTIVE.
     try {
-      // 1. Campaign vendor IDs (from the payload we already built)
-      const campaignOwnerIds = new Set(
-        payload.segments.map(s => s.displayOwnerId).filter(id => id != null)
-      )
-
-      // 2. Candidate creatives: sent to owners (not NEW/ARCHIVED/ERROR)
-      const SENT_TO_OWNERS = new Set(['APPROVED', 'ACTIVE', 'PENDING', 'MODERATION', 'PREMODERATION'])
-      const candidates = (draft.creativeIds ?? []).filter(id => SENT_TO_OWNERS.has(draft.creativeStatuses?.[id]))
-
-      let toUpload = candidates
-      if (campaignOwnerIds.size > 0 && candidates.length > 0) {
-        // 3. Fetch per-vendor segments for all candidates in parallel
-        const segResults = await Promise.allSettled(
-          candidates.map(id => api.creatives.segments(id))
-        )
-        toUpload = candidates.filter((id, i) => {
-          const res = segResults[i]
-          if (res.status !== 'fulfilled') return false
-          const segs = res.value?.content ?? []
-          // Keep if any segment belongs to a campaign vendor and is APPROVED/ACTIVE
-          return segs.some(s =>
-            campaignOwnerIds.has(s.displayOwner?.id) &&
-            (s.state === 'APPROVED' || s.state === 'ACTIVE')
-          )
-        })
-      }
+      const EXCLUDE = new Set(['REJECTED', 'DECLINED', 'ARCHIVED', 'ARCHIVE', 'ERROR',
+                               'SENDING_ERROR', 'REACTIVATION_ERROR', 'NEW'])
+      const toUpload = (draft.creativeIds ?? []).filter(id => {
+        const st = draft.creativeStatuses?.[id]
+        return !st || !EXCLUDE.has(st)  // include if status unknown or not in exclusion list
+      })
 
       if (toUpload.length && savedId) {
-        await api.campaigns.uploadMedia(savedId, toUpload)
+        try {
+          await api.campaigns.uploadMedia(savedId, toUpload)
+        } catch (e) {
+          // If backend rejects (e.g. unapproved creative), retry with only APPROVED/ACTIVE
+          if (e?.status === 400) {
+            const APPROVED = new Set(['APPROVED', 'ACTIVE'])
+            const approvedOnly = toUpload.filter(id => APPROVED.has(draft.creativeStatuses?.[id]))
+            if (approvedOnly.length) await api.campaigns.uploadMedia(savedId, approvedOnly)
+          }
+        }
       }
     } catch { /* non-fatal — creative attachment never blocks save */ }
 
