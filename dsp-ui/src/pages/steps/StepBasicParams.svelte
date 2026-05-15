@@ -81,6 +81,11 @@
     cityDropdownOpen = false
   }
 
+  function selectAllCities() {
+    for (const { name } of allCities) addCity(name)
+    cityDropdownOpen = false
+  }
+
   function onCityKeydown(e) {
     if (e.key === 'Enter' && citySuggestions.length > 0) addCity(citySuggestions[0])
     if (e.key === 'Escape') cityDropdownOpen = false
@@ -180,7 +185,14 @@
 
   <!-- City selection -->
   <div class="step-card">
-    <div class="step-card-title" style="margin-bottom:6px">В каких городах запустить кампанию?</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="step-card-title">В каких городах запустить кампанию?</div>
+      {#if !citiesLoading && allCities.length > 0}
+        <button class="select-all-btn" on:click={selectAllCities} disabled={draft.cities.length === allCities.length}>
+          Выбрать все
+        </button>
+      {/if}
+    </div>
     <div class="field-desc" style="margin-bottom:14px">Добавьте одну или несколько локаций для кампании.</div>
 
     <!-- Selected cities -->
@@ -249,6 +261,28 @@
 <style>
   .field-required { color: var(--danger, #EF4444); margin-left: 2px; }
   .input-error { border-color: var(--danger, #EF4444) !important; }
+
+  .select-all-btn {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--navy, #112853);
+    background: none;
+    border: 1px solid var(--navy, #112853);
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+  }
+  .select-all-btn:hover:not(:disabled) {
+    background: var(--navy, #112853);
+    color: #fff;
+  }
+  .select-all-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
 
   .date-range-row {
     display: flex;
