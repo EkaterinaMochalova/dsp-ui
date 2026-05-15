@@ -223,9 +223,10 @@
     }
     const savedId = draft.id ?? result?.id
 
-    // Attach approved creatives via the dedicated endpoint (non-fatal)
-    const APPROVED = new Set(['APPROVED', 'ACTIVE'])
-    const approvedIds = (draft.creativeIds ?? []).filter(id => APPROVED.has(draft.creativeStatuses?.[id]))
+    // Attach creatives that have been sent to owners (APPROVED/ACTIVE or PENDING/MODERATION).
+    // Excludes NEW creatives (just uploaded, not yet submitted to any owner).
+    const SENT_TO_OWNERS = new Set(['APPROVED', 'ACTIVE', 'PENDING', 'MODERATION', 'PREMODERATION'])
+    const approvedIds = (draft.creativeIds ?? []).filter(id => SENT_TO_OWNERS.has(draft.creativeStatuses?.[id]))
     if (approvedIds.length && savedId) {
       try { await api.campaigns.uploadMedia(savedId, approvedIds) } catch { /* non-fatal */ }
     }
