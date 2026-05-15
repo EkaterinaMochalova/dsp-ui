@@ -123,6 +123,13 @@ export const api = {
     segments(creativeId) {
       return request(`/clients/request-medias/${creativeId}/segments?page=0&size=100`)
     },
+    // GET /clients/request-media-segments — creatives approved by a specific vendor (displayOwner)
+    // Used by the production app to load per-vendor creative lists in the campaign creatives step.
+    // Returns only creatives that are APPROVED for the given displayOwnerIds.
+    listForVendor(displayOwnerIds, sellingType = 'RTB') {
+      const q = new URLSearchParams({ displayOwnerIds, sellingType, mediasForAllOwners: false, page: 0, size: 200 })
+      return request(`/clients/request-media-segments?${q}`)
+    },
     // POST /clients/request-medias — create a new creative record (then attach media files separately)
     create(data) {
       return request('/clients/request-medias', { method: 'POST', body: JSON.stringify(data) })

@@ -81,11 +81,48 @@
   }
 
   function buildSegments() {
-    // Creatives are managed entirely via POST /upload-media after a successful PUT.
-    // The PUT endpoint rejects mediaSegments entries that haven't completed the
-    // per-campaign vendor approval workflow, so we always send an empty array here.
-    function buildMediaSegments() {
-      return []
+    // The PUT endpoint only accepts creatives that are APPROVED by the segment's vendor
+    // (displayOwner). We get this per-vendor approval data from request-media-segments
+    // (loaded in reloadCampaign as draft.vendorApprovedIds = { [vendorId]: Set<creativeId> }).
+    //
+    // For each segment:
+    //   existing medias (state=APPROVED from rawCamp) + newly selected creatives approved by vendor
+    //
+    // Creatives not approved by the segment's vendor are silently excluded — the backend
+    // would reject them with 400 "медиафайл needs to be approved for this segment".
+    function buildMediaSegments(rawSegMedias = [], displayOwnerId = null) {
+      // Already-persisted medias from rawCamp — only include state=APPROVED ones
+      const existing = (rawSegMedias ?? [])
+        .filter(m => m.state === 'APPROVED')
+        .map(m => ({
+          id:                        m.id,
+          default:                   m.default ?? false,
+          externalConditionParamsId: m.externalConditionParamsId ?? null,
+          weatherParams:             m.weatherParams ?? null,
+          jamParams:                 m.jamParams     ?? null,
+          fixedTimeShow:             m.fixedTimeShow ?? null,
+        }))
+      const existingIds = new Set(existing.map(m => m.id))
+
+      // Newly selected creatives: only add if vendor-approved for this segment
+      const vendorApproved = draft.vendorApprovedIds?.[displayOwnerId] ?? new Set()
+      const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
+      const toAdd = (draft.creativeIds ?? []).filter(id =>
+        !existingIds.has(id) &&
+        APPROVED_STATES.has(draft.creativeStatuses?.[id]) &&
+        vendorApproved.has(id)
+      ).map(id => ({
+        id,
+        default:                   false,
+        externalConditionParamsId: null,
+        weatherParams:             null,
+        jamParams:                 null,
+        fixedTimeShow:             null,
+      }))
+
+      const result = [...existing, ...toAdd]
+      if (toAdd.length) console.log(`[buildMediaSegments] vendor=${displayOwnerId} adding ${toAdd.length} new creatives:`, toAdd.map(m => m.id))
+      return result
     }
 
     // If rawCamp already has segments, preserve them (edit flow)
@@ -98,7 +135,7 @@
           priority:     inv.priority     ?? 1,
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
-        mediaSegments: buildMediaSegments(),
+        mediaSegments: buildMediaSegments(seg.medias, seg.displayOwner?.id ?? null),
         photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
@@ -128,7 +165,7 @@
         priority: 1,
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
-      mediaSegments: buildMediaSegments(),
+      mediaSegments: buildMediaSegments([], ownerId),
       photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
@@ -202,12 +239,10 @@
 
   // Core save — returns the saved campaign id (number), throws on failure
   async function doSave() {
-    // PUT payload always has mediaSegments:[] for all segments.
-    // Creatives are managed entirely via POST /upload-media (below) — the PUT endpoint
-    // rejects mediaSegments entries that haven't completed the per-campaign vendor
-    // approval workflow, so we never include them in the PUT body.
+    // Per-vendor filtering in buildSegments() ensures that only creatives APPROVED by
+    // each segment's vendor appear in that segment's mediaSegments. This prevents the
+    // backend 400 "media file must be approved for the segment" error.
     let payload = buildPayload()
-    // Coerce to number-or-null so template literals never produce "undefined"
     const existingId = draft.id != null && draft.id !== '' ? Number(draft.id) : null
 
     let result
@@ -239,46 +274,49 @@
     console.log('[doSave] savedId:', savedId, '| rawId:', rawId)
     if (!savedId) throw new Error('Не удалось получить ID кампании после сохранения')
 
-    // Attach ALL currently selected approved creatives via the upload-media endpoint.
-    // This is idempotent for already-attached creatives and handles per-vendor approval.
-    const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
-    const approvedIds = (draft.creativeIds ?? []).filter(id =>
-      APPROVED_STATES.has(draft.creativeStatuses?.[id])
-    )
-    if (approvedIds.length > 0) {
-      console.log('[doSave] Attaching creatives via uploadMedia:', approvedIds)
-      try {
-        await api.campaigns.uploadMedia(savedId, approvedIds)
-      } catch (e) {
-        // Non-fatal: campaign structure was saved; log but don't fail the whole save
-        console.warn('[doSave] uploadMedia failed (non-fatal):', e?.data ?? e?.message ?? e)
-      }
-    }
-
     return savedId
   }
 
-  // Reload rawCamp + draft.creativeIds from the API after a successful save.
+  // Reload rawCamp + draft.creativeIds + draft.vendorApprovedIds from the API after a save.
   // Called in-place so we don't depend on hash-router remounting the component.
   // Pass preloadedCamp to reuse an already-fetched campaign response (avoids double GET).
   async function reloadCampaign(id, preloadedCamp = null) {
     const camp = preloadedCamp ?? await api.campaigns.get(id)
     rawCamp = camp
-    // Only update draft id/state when fetching fresh (onMount sets the full draft separately)
     if (!preloadedCamp) {
       draft = { ...draft, id: camp.id ?? id, state: camp.state ?? draft.state }
     }
 
-    const [creativeNames, creativeLib] = await Promise.allSettled([
+    // Unique displayOwner IDs across all segments — needed for per-vendor creative filtering
+    const displayOwnerIds = [...new Set(
+      (camp.segments ?? []).map(s => s.displayOwner?.id ?? s.displayOwner).filter(Boolean)
+    )]
+
+    const [creativeNames, creativeLib, ...vendorResults] = await Promise.allSettled([
       api.creatives.listForCampaign(id),
       api.creatives.list(camp.customer?.id ? { customerId: camp.customer.id } : {}),
+      // Load vendor-approved creative IDs per displayOwner for per-segment filtering in buildSegments
+      ...displayOwnerIds.map(vid => api.creatives.listForVendor(vid)),
     ])
+
+    // Build vendorApprovedIds: { [vendorId]: Set<creativeId> }
+    const vendorApprovedIds = {}
+    displayOwnerIds.forEach((vid, i) => {
+      const res = vendorResults[i]
+      const items = res?.status === 'fulfilled' ? (res.value?.content ?? res.value ?? []) : []
+      vendorApprovedIds[vid] = new Set(items.map(c => c.id).filter(Boolean))
+    })
+
+    // Creatives currently in the campaign: prefer creative-names, fall back to segments[].medias
+    // Note: seg.medias[].id IS the creative ID (no requestMedia wrapper in the GET response)
     const nameIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])?.map?.(c => c.id) ?? []
     const mediasIds = [...new Set(
-      (camp.segments ?? []).flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id)).filter(Boolean)
+      (camp.segments ?? []).flatMap(s => (s.medias ?? []).map(m => m.id)).filter(Boolean)
     )]
-    console.log('[reload] creative-names:', nameIds, '| segments[].medias IDs:', mediasIds)
+    console.log('[reload] creative-names:', nameIds, '| segments[].medias IDs:', mediasIds,
+      '| vendorApproved:', Object.fromEntries(Object.entries(vendorApprovedIds).map(([k,v]) => [k, v.size])))
     const allIds = nameIds.length ? nameIds : mediasIds
+
     if (allIds.length) {
       const libItems = creativeLib.status === 'fulfilled'
         ? (creativeLib.value?.content ?? creativeLib.value ?? [])
@@ -293,10 +331,9 @@
       }
       const ARCHIVED = new Set(['ARCHIVED', 'ARCHIVE'])
       const ids = allIds.filter(id => !ARCHIVED.has(statusMap[id]))
-      draft = { ...draft, creativeIds: ids, creativeStatuses: statusMap }
+      draft = { ...draft, creativeIds: ids, creativeStatuses: statusMap, vendorApprovedIds }
     } else {
-      // Nothing persisted — clear selection so user sees the real server state
-      draft = { ...draft, creativeIds: [], creativeStatuses: {} }
+      draft = { ...draft, creativeIds: [], creativeStatuses: {}, vendorApprovedIds }
     }
   }
 
