@@ -236,7 +236,13 @@
   }
 
   function thumbUrl(c) {
-    // mediaContents[].mediaContent.file may carry a url/previewUrl
+    // Primary: layout.media.preview.url (actual API shape from /clients/request-medias)
+    const layoutPreview = c.layout?.media?.preview?.url
+    if (layoutPreview) return layoutPreview
+    // Fallback: layout.media.file url (for static images)
+    const layoutFile = c.layout?.media?.file?.url
+    if (layoutFile) return layoutFile
+    // Legacy/other shapes
     const first = c.mediaContents?.[0] ?? c.files?.[0]
     const firstFile = first?.mediaContent?.file ?? first
     return (
