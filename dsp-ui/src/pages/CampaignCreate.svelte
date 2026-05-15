@@ -81,24 +81,27 @@
   }
 
   function buildSegments() {
-    // Creatives are linked through segments[].mediaSegments in the PUT body.
-    // Each entry is { requestMedia: { id: <requestMediaId> } }.
-    // We merge: preserve whatever is already on rawCamp, then add any newly
-    // selected creatives that aren't already present.
+    // Creatives are attached via segments[].mediaSegments in the PUT body.
+    // Only APPROVED/ACTIVE creatives can be attached — the backend validates this.
     function mergeMediaSegments(existing = []) {
-      const EXCLUDE = new Set(['REJECTED', 'DECLINED', 'ARCHIVED', 'ARCHIVE', 'ERROR',
-                               'SENDING_ERROR', 'REACTIVATION_ERROR', 'NEW'])
+      // Log existing format once so we can see the real DTO structure
+      if (existing.length > 0) console.log('[mediaSegments] existing sample:', JSON.stringify(existing[0]))
+
+      // Only include creatives the backend will accept
+      const APPROVED_STATES = new Set(['APPROVED', 'ACTIVE'])
       const selected = (draft.creativeIds ?? []).filter(id => {
         const st = draft.creativeStatuses?.[id]
-        return !st || !EXCLUDE.has(st)
+        return APPROVED_STATES.has(st)
       })
-      // IDs already in the segment's mediaSegments list
-      const existingIds = new Set(existing.map(m => m.requestMedia?.id ?? m.id))
-      // Newly selected IDs that aren't already present
+      // IDs already in the segment's mediaSegments — try common field names
+      const existingIds = new Set(existing.map(m =>
+        m.requestMedia?.id ?? m.requestMediaId ?? m.mediaId ?? m.id ?? null
+      ).filter(Boolean))
       const toAdd = selected.filter(id => !existingIds.has(id))
+      // Try flat requestMediaId field (most common Spring pattern for FK references)
       return [
         ...existing,
-        ...toAdd.map(id => ({ requestMedia: { id } })),
+        ...toAdd.map(id => ({ requestMediaId: id })),
       ]
     }
 
