@@ -67,7 +67,7 @@
         sort: sortBy + ',' + sortDir,
         ...(filterType      ? { type: filterType }            : {}),
         ...(filterState     ? { state: filterState }          : {}),
-        ...(filterSearch    ? { search: filterSearch }        : {}),
+        ...(filterSearch    ? { name: filterSearch }           : {}),
         ...(filterDateFrom  ? { startDate: filterDateFrom }   : {}),
         ...(filterDateTo    ? { endDate: filterDateTo }       : {}),
         ...(filterBudgetMin ? { budgetFrom: filterBudgetMin } : {}),
