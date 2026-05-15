@@ -221,7 +221,6 @@
   }
 
   // Detect if a 400 error is about creative/media validation
-  // Returns true if any field error mentions creatives or media approval
   function hasCreativeErrors(err) {
     const fields = err?.data?.errors?.field ?? []
     const CREATIVE_MSGS = ['медиафайл', 'Креатив', 'mediaSegments', 'креатив']
@@ -230,18 +229,37 @@
     )
   }
 
-  // Build a payload where segments with creative errors fall back to existing-only mediaSegments.
-  // We don't know which segment indices failed, so we retry with ONLY the creatives that were
-  // already saved in rawCamp (seg.medias). New selections are dropped for this save.
-  function buildPayloadWithoutNewCreatives() {
-    // Collect IDs that were already persisted in rawCamp segments
-    const persistedIds = new Set(
-      (rawCamp?.segments ?? [])
-        .flatMap(s => (s.medias ?? []).map(m => m.requestMedia?.id ?? m.id))
-        .filter(Boolean)
-    )
-    console.log('[retry] Falling back to persisted creative IDs only:', [...persistedIds])
-    return buildPayload(persistedIds)
+  // Parse which segment indices had creative validation errors (e.g. "segments[1].mediaSegments")
+  function extractCreativeErrorSegmentIndices(err) {
+    const fields = err?.data?.errors?.field ?? []
+    const indices = new Set()
+    for (const f of fields) {
+      if (!f.field?.includes('mediaSegments')) continue
+      const m = f.field.match(/^segments\[(\d+)\]/)
+      if (m) indices.add(Number(m[1]))
+    }
+    return indices
+  }
+
+  // Rebuild payload with creatives stripped only from the segments that the backend rejected.
+  // Segments not in badSegmentIndices keep all approved creatives.
+  function buildPayloadStrippingBadSegments(badSegmentIndices) {
+    const base = buildPayload(null)
+    const segments = base.segments.map((seg, i) => {
+      if (!badSegmentIndices.has(i)) return seg
+      // For this segment, keep only what was already persisted (no new additions)
+      const rawSeg = rawCamp?.segments?.[i]
+      const existingOnly = (rawSeg?.medias ?? []).map(m => ({
+        id: m.requestMedia?.id ?? m.id ?? 0,
+        default: m.default ?? false,
+        externalConditionParamsId: m.externalConditionParamsId ?? null,
+        weatherParams:             m.weatherParams             ?? null,
+        jamParams:                 m.jamParams                 ?? null,
+        fixedTimeShow:             m.fixedTimeShow             ?? null,
+      }))
+      return { ...seg, mediaSegments: existingOnly }
+    })
+    return { ...base, segments }
   }
 
   // Strip known-invalid inventory IDs from a payload's segments
@@ -277,8 +295,9 @@
               payload = stripInvalidInventories(payload, invalidIds)
             }
             if (creativeErr) {
-              console.warn('[save] Creative validation errors — retrying with persisted creatives only')
-              const fallbackPayload = buildPayloadWithoutNewCreatives()
+              const badSegs = extractCreativeErrorSegmentIndices(e)
+              console.warn('[save] Creative errors on segment indices:', [...badSegs], '— stripping new creatives from those segments only')
+              const fallbackPayload = buildPayloadStrippingBadSegments(badSegs)
               payload = invalidIds.size > 0 ? stripInvalidInventories(fallbackPayload, invalidIds) : fallbackPayload
             }
             result = await api.campaigns.update(existingId, payload)
