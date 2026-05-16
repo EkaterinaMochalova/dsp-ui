@@ -260,6 +260,24 @@
     window.removeEventListener('mouseup',   onColResizeEnd)
   })
 
+  const SCREENS_SESSION_KEY = 'dsp_screens_all_cache'
+  const SCREENS_TTL = 30 * 60 * 1000 // 30 minutes
+
+  function saveScreensToSession(mapped) {
+    try {
+      sessionStorage.setItem(SCREENS_SESSION_KEY, JSON.stringify({ ts: Date.now(), data: mapped }))
+    } catch {}
+  }
+  function loadScreensFromSession() {
+    try {
+      const raw = sessionStorage.getItem(SCREENS_SESSION_KEY)
+      if (!raw) return null
+      const { ts, data } = JSON.parse(raw)
+      if (Date.now() - ts > SCREENS_TTL) return null
+      return data
+    } catch { return null }
+  }
+
   async function loadScreens() {
     loading = true; loadingProgress = 0; error = ''
     const PAGE_SIZE = 500
@@ -269,7 +287,7 @@
       ? [...selectedCities].sort().join('|')
       : '__all__'
 
-    // Return from cache if available
+    // 1. In-memory cache (instant)
     if (window._dspScreensCache[cacheKey]) {
       screens = window._dspScreensCache[cacheKey]
       totalLoaded = screens.length
@@ -278,6 +296,22 @@
       return
     }
 
+    // 2. sessionStorage cache — restore __all__ then filter
+    const sessionAll = loadScreensFromSession()
+    if (sessionAll) {
+      if (!window._dspScreensCache['__all__']) window._dspScreensCache['__all__'] = sessionAll
+      const filtered = selectedCities.length > 0
+        ? sessionAll.filter(s => selectedCities.includes(s.city))
+        : sessionAll
+      screens = filtered
+      window._dspScreensCache[cacheKey] = filtered
+      totalLoaded = screens.length
+      loading = false
+      loadingProgress = 100
+      return
+    }
+
+    // 3. Fetch from API
     try {
       const first = await api.inventories.list({ page: 0, size: PAGE_SIZE })
       const totalPages = first.totalPages ?? 1
@@ -301,6 +335,11 @@
       const mapped = allItems.map(mapInventory).filter(
         s => Number.isFinite(s.lat) && Number.isFinite(s.lon)
       )
+
+      // Store full list in sessionStorage for future page loads
+      window._dspScreensCache['__all__'] = mapped
+      saveScreensToSession(mapped)
+
       screens = selectedCities.length > 0
         ? mapped.filter(s => selectedCities.includes(s.city))
         : mapped
