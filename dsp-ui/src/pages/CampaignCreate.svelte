@@ -481,8 +481,51 @@
   let screensView = 'selection'  // 'selection' | 'bids' | 'schedule'
 
   onMount(async () => {
-    // Kick off city prefetch immediately so cache is warm by the time user reaches StepBasicParams
+    // Prefetch cities so cache is warm by the time user reaches StepBasicParams
     api.inventories.cities().catch(() => {})
+
+    // Prefetch all screens into sessionStorage so StepScreens loads instantly
+    const SCREENS_SESSION_KEY = 'dsp_screens_all_cache'
+    const SCREENS_TTL = 30 * 60 * 1000
+    const CACHE_VER = 3  // must match StepScreens CACHE_VER
+    if (!window._dspScreensCache || window._dspScreensCache._ver !== CACHE_VER) {
+      window._dspScreensCache = { _ver: CACHE_VER }
+    }
+    if (!window._dspScreensCache['__all__']) {
+      try {
+        const raw = sessionStorage.getItem(SCREENS_SESSION_KEY)
+        if (raw) {
+          const { ts, data } = JSON.parse(raw)
+          if (Date.now() - ts < SCREENS_TTL) {
+            window._dspScreensCache['__all__'] = data
+          }
+        }
+      } catch {}
+      // If still not in memory, kick off background fetch
+      if (!window._dspScreensCache['__all__']) {
+        const PAGE = 500
+        api.inventories.list({ page: 0, size: PAGE }).then(async first => {
+          const totalPages = first.totalPages ?? 1
+          const allItems = [...(first.content ?? [])]
+          const extra = Math.min(totalPages - 1, 19)
+          if (extra > 0) {
+            const rest = await Promise.allSettled(
+              Array.from({ length: extra }, (_, i) =>
+                api.inventories.list({ page: i + 1, size: PAGE })
+              )
+            )
+            rest.forEach(r => {
+              if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
+            })
+          }
+          // Map to the same shape StepScreens uses (basic fields only for the cache)
+          window._dspScreensCache['__all__'] = allItems
+          try {
+            sessionStorage.setItem(SCREENS_SESSION_KEY, JSON.stringify({ ts: Date.now(), data: allItems }))
+          } catch {}
+        }).catch(() => {})
+      }
+    }
 
     if (campaignId) {
       try {
