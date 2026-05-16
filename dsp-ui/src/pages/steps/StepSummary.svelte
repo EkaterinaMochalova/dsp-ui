@@ -364,11 +364,13 @@
 
   /* ── Cards ──────────────────────────────────────────────────────────────── */
   .sv-card {
-    background: var(--card-bg, #fff);
-    border: 1px solid var(--border, #e5e7eb);
-    border-radius: 12px;
-    padding: 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
     margin-bottom: 14px;
+    width: 100%;
+    max-width: 600px;
   }
   .sv-card-top {
     display: flex;
