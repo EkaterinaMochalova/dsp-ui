@@ -184,62 +184,74 @@ export const api = {
       return request(`/clients/inventories?${q}`)
     },
     // Fetch ALL inventories, map them, and cache in window + sessionStorage.
-    // This is the single source of truth used by both CampaignCreate (prefetch)
-    // and StepScreens (load). Both caches use SCREENS_CACHE_VER so they never
-    // go out of sync.
-    async allMapped() {
+    // Single source of truth for CampaignCreate (prefetch) and StepScreens (load).
+    // In-flight deduplication: if a fetch is already running, callers share the
+    // same Promise instead of firing duplicate requests.
+    allMapped() {
       const SESSION_KEY = 'dsp_screens_all_cache'
       const TTL = 30 * 60 * 1000
 
-      // Ensure in-memory cache has correct version
+      // Ensure in-memory cache object exists with the right version
       if (!window._dspScreensCache || window._dspScreensCache._ver !== SCREENS_CACHE_VER) {
         window._dspScreensCache = { _ver: SCREENS_CACHE_VER }
       }
 
       // 1. In-memory (instant)
-      if (window._dspScreensCache['__all__']) return window._dspScreensCache['__all__']
+      if (window._dspScreensCache['__all__']) {
+        return Promise.resolve(window._dspScreensCache['__all__'])
+      }
 
-      // 2. sessionStorage (survives F5, expires after TTL)
+      // 2. sessionStorage (survives F5, 30-min TTL)
       try {
         const raw = sessionStorage.getItem(SESSION_KEY)
         if (raw) {
           const { ts, ver, data } = JSON.parse(raw)
           if (ver === SCREENS_CACHE_VER && Date.now() - ts < TTL) {
             window._dspScreensCache['__all__'] = data
-            return data
+            return Promise.resolve(data)
           }
         }
       } catch {}
 
-      // 3. Fetch all pages in parallel batches
-      const PAGE = 500
-      const BATCH = 10
-      const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
-      const totalPages = first.totalPages ?? 1
-      const allItems = [...(first.content ?? [])]
-
-      for (let start = 1; start < totalPages; start += BATCH) {
-        const end = Math.min(start + BATCH, totalPages)
-        const batch = await Promise.allSettled(
-          Array.from({ length: end - start }, (_, i) =>
-            request(`/clients/inventories?enabled=true&page=${start + i}&size=${PAGE}`)
-          )
-        )
-        batch.forEach(r => {
-          if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
-        })
+      // 3. De-duplicate in-flight fetch — return the same Promise to all callers
+      if (window._dspScreensCache['__inflight__']) {
+        return window._dspScreensCache['__inflight__']
       }
 
-      const mapped = allItems
-        .map(mapInventory)
-        .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+      const fetchPromise = (async () => {
+        const PAGE = 500
+        const BATCH = 10
+        const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
+        const totalPages = first.totalPages ?? 1
+        const allItems = [...(first.content ?? [])]
 
-      window._dspScreensCache['__all__'] = mapped
-      try {
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ts: Date.now(), ver: SCREENS_CACHE_VER, data: mapped }))
-      } catch {}
+        for (let start = 1; start < totalPages; start += BATCH) {
+          const end = Math.min(start + BATCH, totalPages)
+          const batch = await Promise.allSettled(
+            Array.from({ length: end - start }, (_, i) =>
+              request(`/clients/inventories?enabled=true&page=${start + i}&size=${PAGE}`)
+            )
+          )
+          batch.forEach(r => {
+            if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
+          })
+        }
 
-      return mapped
+        const mapped = allItems
+          .map(mapInventory)
+          .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+
+        window._dspScreensCache['__all__'] = mapped
+        delete window._dspScreensCache['__inflight__']
+        try {
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ts: Date.now(), ver: SCREENS_CACHE_VER, data: mapped }))
+        } catch {}
+
+        return mapped
+      })()
+
+      window._dspScreensCache['__inflight__'] = fetchPromise
+      return fetchPromise
     },
 
     parsePoi(file) {
