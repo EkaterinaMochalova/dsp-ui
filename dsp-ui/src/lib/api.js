@@ -37,7 +37,18 @@ async function request(path, options = {}) {
 
 export const api = {
   login(email, password) {
-    return request('/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    // Login endpoint is at /api/login (no version prefix)
+    return fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    }).then(async res => {
+      const text = await res.text()
+      let data = null
+      try { data = text ? JSON.parse(text) : null } catch { data = text }
+      if (!res.ok) throw { status: res.status, data }
+      return data
+    })
   },
 
   me() {
