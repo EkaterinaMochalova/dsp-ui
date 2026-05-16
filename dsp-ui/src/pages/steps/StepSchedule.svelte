@@ -27,7 +27,6 @@
   // ── Modal state ───────────────────────────────────────────────────────
   let globalModalOpen = false
   let editingId       = null   // null = no per-screen modal open
-  let applyModalOpen  = false  // bulk-apply modal for checked screens
 
   function openGlobal()  { globalModalOpen = true }
   function openScreen(id) { editingId = id }
@@ -138,14 +137,8 @@
         {/if}
       </button>
 
-      <!-- Apply checked (shown when something is checked) -->
+      <!-- Reset overrides for checked screens -->
       {#if someChecked}
-        <button class="btn-apply-checked" on:click={() => {
-          // open a temporary modal to pick schedule for selected screens
-          applyModalOpen = true
-        }}>
-          Применить к выбранным ({[...checkedIds].length})
-        </button>
         <button class="btn-reset-checked" on:click={() => {
           for (const id of checkedIds) clearScreenOverride(id)
         }}>
@@ -280,13 +273,6 @@
   />
 {/if}
 
-{#if applyModalOpen}
-  <ScheduleModal
-    schedule={draft.schedule}
-    on:save={(e) => { applyToChecked(e.detail); applyModalOpen = false }}
-    on:cancel={() => applyModalOpen = false}
-  />
-{/if}
 
 <style>
   .sched-shell {
@@ -320,15 +306,6 @@
     color: var(--text-muted); font-weight: 400;
     max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-
-  .btn-apply-checked {
-    height: 32px; padding: 0 14px;
-    background: var(--navy); color: white;
-    border: none; border-radius: 8px;
-    font-size: 12.5px; font-family: inherit; font-weight: 600;
-    cursor: pointer; transition: background .15s;
-  }
-  .btn-apply-checked:hover { background: #1e3a6e; }
 
   .btn-reset-checked {
     height: 32px; padding: 0 14px;
