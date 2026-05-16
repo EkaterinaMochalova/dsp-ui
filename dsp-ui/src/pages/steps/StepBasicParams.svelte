@@ -29,6 +29,16 @@
         api.customers.list({ size: 100 }),
       ])
       customers = customersData.content ?? []
+
+      // When editing an existing campaign, draft.customerId is already set but
+      // onCustomerChange (which fires only on user interaction) was never called.
+      // Pre-load brands without clearing the existing brandId selection.
+      if (draft.customerId) {
+        try {
+          const data = await api.customers.brands(draft.customerId)
+          brands = data.content ?? []
+        } catch {}
+      }
     } catch {}
     loading = false
 
@@ -47,7 +57,8 @@
     draft.brandName = null
     brands = []
     if (!draft.customerId) { draft.customerName = null; return }
-    // Store name for summary display
+    // Coerce to number — select bind:value returns strings
+    draft.customerId = Number(draft.customerId)
     const found = customers.find(c => c.id === draft.customerId)
     draft.customerName = found?.name ?? null
     try {
@@ -57,6 +68,7 @@
   }
 
   function onBrandChange() {
+    draft.brandId = Number(draft.brandId)
     const found = brands.find(b => b.id === draft.brandId)
     draft.brandName = found?.name ?? null
   }
