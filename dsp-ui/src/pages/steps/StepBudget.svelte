@@ -10,7 +10,10 @@
   $: baer = customBudget || forecastBudget
 
   // Warn when user's budget exceeds what the selected screens can deliver
-  $: capacityExceeded = customBudget > 0 && forecastBudget > 0 && customBudget > forecastBudget
+  // Only warn if the entered budget meaningfully exceeds forecast (>1% or >1₽ difference)
+  // Avoids "55 > 54.93 → max is 55" nonsense due to rounding in the message
+  $: capacityExceeded = customBudget > 0 && forecastBudget > 0
+    && customBudget > Math.ceil(forecastBudget)
   $: markupPct = Number(draft.buyerMarkup) || 0
   $: markupAmt = baer * (markupPct / 100)
   $: clientBase = baer + markupAmt
