@@ -30,7 +30,7 @@
   <h1 class="step-title">Фотоотчёты</h1>
 
   <!-- Card 1: Save all photo reports -->
-  <div class="ph-card">
+  <div class="step-card">
     <div class="ph-card-header">
       <div class="ph-card-info">
         <span class="ph-card-title">Сохранить все фотоотчёты</span>
@@ -49,7 +49,7 @@
   </div>
 
   <!-- Card 2: Select photos by country -->
-  <div class="ph-card {draft.photoReports.selectByCountry ? 'ph-card--expanded' : ''}">
+  <div class="step-card">
     <div class="ph-card-header">
       <div class="ph-card-info">
         <span class="ph-card-title">Выбрать фото для страны</span>
@@ -148,17 +148,6 @@
 </div>
 
 <style>
-  .ph-card {
-    background: var(--card-bg, #fff);
-    border: 1px solid var(--border, #e5e7eb);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 16px;
-    transition: box-shadow 0.15s;
-  }
-  .ph-card--expanded {
-    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
-  }
   .ph-card-header {
     display: flex;
     align-items: flex-start;
