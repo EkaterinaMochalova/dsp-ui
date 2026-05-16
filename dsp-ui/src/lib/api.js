@@ -201,7 +201,25 @@ export const api = {
       })
     },
     async cities() {
-      // Fetch several pages and extract unique city names + IDs from inventory data
+      const CACHE_KEY = 'dsp_cities_cache'
+      const CACHE_TTL = 30 * 60 * 1000 // 30 minutes
+
+      // 1. In-memory cache (instant, survives navigations within the tab)
+      if (window._dspCitiesCache) return window._dspCitiesCache
+
+      // 2. sessionStorage cache (survives F5, expires after TTL)
+      try {
+        const raw = sessionStorage.getItem(CACHE_KEY)
+        if (raw) {
+          const { ts, data } = JSON.parse(raw)
+          if (Date.now() - ts < CACHE_TTL) {
+            window._dspCitiesCache = data
+            return data
+          }
+        }
+      } catch {}
+
+      // 3. Fetch from API
       const PAGE = 500
       const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
       const items = first.content ?? []
@@ -219,15 +237,20 @@ export const api = {
       }
       const seen = new Map()
       for (const inv of items) {
-        // prefer inv.city.name (direct object), fallback to inventoryTypeAndCity.cityName
         const cityName = inv.city?.name || inv.inventoryTypeAndCity?.cityName
         const cityId   = inv.city?.id   || inv.inventoryTypeAndCity?.cityId
         if (!cityName) continue
         if (!seen.has(cityName)) seen.set(cityName, cityId ?? null)
       }
-      return [...seen.entries()]
+      const result = [...seen.entries()]
         .map(([name, id]) => ({ name, id }))
         .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+
+      // Store in both caches
+      window._dspCitiesCache = result
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: result })) } catch {}
+
+      return result
     },
   },
 }

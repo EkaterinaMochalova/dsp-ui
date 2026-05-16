@@ -481,6 +481,9 @@
   let screensView = 'selection'  // 'selection' | 'bids' | 'schedule'
 
   onMount(async () => {
+    // Kick off city prefetch immediately so cache is warm by the time user reaches StepBasicParams
+    api.inventories.cities().catch(() => {})
+
     if (campaignId) {
       try {
         const camp = await api.campaigns.get(campaignId)
