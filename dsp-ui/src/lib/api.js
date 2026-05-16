@@ -1,3 +1,5 @@
+import { mapInventory, SCREENS_CACHE_VER } from './utils.js'
+
 const BASE = '/api/v1.0'
 
 function getToken() {
@@ -181,6 +183,65 @@ export const api = {
       const q = new URLSearchParams({ enabled: 'true', ...params })
       return request(`/clients/inventories?${q}`)
     },
+    // Fetch ALL inventories, map them, and cache in window + sessionStorage.
+    // This is the single source of truth used by both CampaignCreate (prefetch)
+    // and StepScreens (load). Both caches use SCREENS_CACHE_VER so they never
+    // go out of sync.
+    async allMapped() {
+      const SESSION_KEY = 'dsp_screens_all_cache'
+      const TTL = 30 * 60 * 1000
+
+      // Ensure in-memory cache has correct version
+      if (!window._dspScreensCache || window._dspScreensCache._ver !== SCREENS_CACHE_VER) {
+        window._dspScreensCache = { _ver: SCREENS_CACHE_VER }
+      }
+
+      // 1. In-memory (instant)
+      if (window._dspScreensCache['__all__']) return window._dspScreensCache['__all__']
+
+      // 2. sessionStorage (survives F5, expires after TTL)
+      try {
+        const raw = sessionStorage.getItem(SESSION_KEY)
+        if (raw) {
+          const { ts, ver, data } = JSON.parse(raw)
+          if (ver === SCREENS_CACHE_VER && Date.now() - ts < TTL) {
+            window._dspScreensCache['__all__'] = data
+            return data
+          }
+        }
+      } catch {}
+
+      // 3. Fetch all pages in parallel batches
+      const PAGE = 500
+      const BATCH = 10
+      const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
+      const totalPages = first.totalPages ?? 1
+      const allItems = [...(first.content ?? [])]
+
+      for (let start = 1; start < totalPages; start += BATCH) {
+        const end = Math.min(start + BATCH, totalPages)
+        const batch = await Promise.allSettled(
+          Array.from({ length: end - start }, (_, i) =>
+            request(`/clients/inventories?enabled=true&page=${start + i}&size=${PAGE}`)
+          )
+        )
+        batch.forEach(r => {
+          if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
+        })
+      }
+
+      const mapped = allItems
+        .map(mapInventory)
+        .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+
+      window._dspScreensCache['__all__'] = mapped
+      try {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ts: Date.now(), ver: SCREENS_CACHE_VER, data: mapped }))
+      } catch {}
+
+      return mapped
+    },
+
     parsePoi(file) {
       const fd = new FormData()
       fd.append('file', file)

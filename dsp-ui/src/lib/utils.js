@@ -64,3 +64,53 @@ export const TYPE_LABEL = {
   FLEX_GUARANTEED: 'Flex',
   OPEN_RTB: 'Open RTB',
 }
+
+// ── Screen/inventory mapping ──────────────────────────────────────────────────
+// Shared between StepScreens and the api cache layer so both use identical
+// mapped objects and the same cache version.
+export const SCREENS_CACHE_VER = 'v4'
+
+export function formatScreenSize(inv, fmt) {
+  if (fmt === 'PVZ_SCREEN') return '0,54×0,95м'
+  const d = inv.surfaceDimensionMM
+  if (d?.width && d?.height) {
+    const w = d.width  < 3000 ? 6 : d.width  / 1000
+    const h = d.height < 3000 ? 3 : d.height / 1000
+    const f = v => v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+    return `${f(w)}×${f(h)}м`
+  }
+  return ''
+}
+
+export function mapInventory(inv) {
+  const loc = inv.location ?? {}
+  const itc = inv.inventoryTypeAndCity ?? {}
+  const fmt = inv.type || itc.type || ''
+  return {
+    id:               inv.id,
+    gid:              inv.gid || inv.name || '',
+    city:             inv.city?.name || itc.cityName || '',
+    format:           fmt,
+    side:             inv.side || '',
+    size:             formatScreenSize(inv, fmt),
+    address:          inv.address || loc.address || inv.name || '',
+    lat:              inv.latitude ?? loc.latitude ?? NaN,
+    lon:              inv.longitude ?? loc.longitude ?? NaN,
+    minBid:           inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? null,
+    ots:              inv.minBidInfo?.ots ?? inv.metadata?.ots ?? null,
+    owner:            inv.displayOwner?.name || '',
+    ownerId:          inv.displayOwner?.id ?? null,
+    photo:            inv.images?.[0]?.preview ?? null,
+    active:           inv.enabled !== false,
+    hasCamera:        inv.photoReportOption != null && inv.photoReportOption !== 'NO',
+    duration:         inv.duration ?? null,
+    grp:              inv.metadata?.grp ?? null,
+    requestHourlyAvg: inv.requestHourlyAvg ?? null,
+    resolution:       inv.screenResolutionPx?.width
+      ? `${inv.screenResolutionPx.width}×${inv.screenResolutionPx.height}`
+      : '',
+    photoReport:      inv.photoReportOption ?? '',
+    description:      inv.description ?? '',
+    lastShot:         inv.lastShotTime ?? null,
+  }
+}

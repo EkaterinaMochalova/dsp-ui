@@ -3,13 +3,14 @@
   import L from 'leaflet'
   import 'leaflet/dist/leaflet.css'
   import { api } from '../../lib/api.js'
-  import { formatMoney } from '../../lib/utils.js'
+  import { formatMoney, SCREENS_CACHE_VER } from '../../lib/utils.js'
   import ScheduleModal from '../../components/ScheduleModal.svelte'
 
-  // Persist cache on window so it survives HMR reloads and component re-mounts.
-  // Version bump forces cache invalidation when mapInventory fields change.
-  const CACHE_VER = 'v4'
-  if (window._dspScreensCache?._ver !== CACHE_VER) window._dspScreensCache = { _ver: CACHE_VER }
+  // Ensure in-memory cache has correct version (api.allMapped manages this too,
+  // but guard here as well for HMR/fast navigation cases).
+  if (window._dspScreensCache?._ver !== SCREENS_CACHE_VER) {
+    window._dspScreensCache = { _ver: SCREENS_CACHE_VER }
+  }
 
   const dispatch = createEventDispatcher()
   export let draft
@@ -260,34 +261,15 @@
     window.removeEventListener('mouseup',   onColResizeEnd)
   })
 
-  const SCREENS_SESSION_KEY = 'dsp_screens_all_cache'
-  const SCREENS_TTL = 30 * 60 * 1000 // 30 minutes
-
-  function saveScreensToSession(mapped) {
-    try {
-      sessionStorage.setItem(SCREENS_SESSION_KEY, JSON.stringify({ ts: Date.now(), data: mapped }))
-    } catch {}
-  }
-  function loadScreensFromSession() {
-    try {
-      const raw = sessionStorage.getItem(SCREENS_SESSION_KEY)
-      if (!raw) return null
-      const { ts, data } = JSON.parse(raw)
-      if (Date.now() - ts > SCREENS_TTL) return null
-      return data
-    } catch { return null }
-  }
-
   async function loadScreens() {
     loading = true; loadingProgress = 0; error = ''
-    const PAGE_SIZE = 500
-    const BATCH = 10
+
     const selectedCities = draft.cities ?? []
     const cacheKey = selectedCities.length > 0
       ? [...selectedCities].sort().join('|')
       : '__all__'
 
-    // 1. In-memory cache (instant)
+    // 1. In-memory city-filtered cache (instant on revisit)
     if (window._dspScreensCache[cacheKey]) {
       screens = window._dspScreensCache[cacheKey]
       totalLoaded = screens.length
@@ -296,108 +278,23 @@
       return
     }
 
-    // 2. sessionStorage cache — restore __all__ then filter
-    const sessionAll = loadScreensFromSession()
-    if (sessionAll) {
-      if (!window._dspScreensCache['__all__']) window._dspScreensCache['__all__'] = sessionAll
-      const filtered = selectedCities.length > 0
-        ? sessionAll.filter(s => selectedCities.includes(s.city))
-        : sessionAll
-      screens = filtered
-      window._dspScreensCache[cacheKey] = filtered
-      totalLoaded = screens.length
-      loading = false
-      loadingProgress = 100
-      return
-    }
-
-    // 3. Fetch from API
+    // 2 + 3: api.inventories.allMapped() handles sessionStorage + API fetch
     try {
-      const first = await api.inventories.list({ page: 0, size: PAGE_SIZE })
-      const totalPages = first.totalPages ?? 1
-      loadingProgress = Math.round(100 / totalPages)
+      const all = await api.inventories.allMapped()
+      loadingProgress = 100
 
-      const allItems = [...(first.content ?? [])]
-
-      for (let start = 1; start < totalPages; start += BATCH) {
-        const end = Math.min(start + BATCH, totalPages)
-        const batch = await Promise.allSettled(
-          Array.from({ length: end - start }, (_, i) =>
-            api.inventories.list({ page: start + i, size: PAGE_SIZE })
-          )
-        )
-        batch.forEach(r => {
-          if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
-        })
-        loadingProgress = Math.round((end / totalPages) * 100)
-      }
-
-      const mapped = allItems.map(mapInventory).filter(
-        s => Number.isFinite(s.lat) && Number.isFinite(s.lon)
-      )
-
-      // Store full list in sessionStorage for future page loads
-      window._dspScreensCache['__all__'] = mapped
-      saveScreensToSession(mapped)
-
-      screens = selectedCities.length > 0
-        ? mapped.filter(s => selectedCities.includes(s.city))
-        : mapped
+      const view = selectedCities.length > 0
+        ? all.filter(s => selectedCities.includes(s.city))
+        : all
+      screens = view
       totalLoaded = screens.length
-      window._dspScreensCache[cacheKey] = screens
+      window._dspScreensCache[cacheKey] = view
     } catch (e) {
       error = 'Не удалось загрузить экраны'
       console.error(e)
     } finally {
       loading = false
     }
-  }
-
-  function mapInventory(inv) {
-    const loc = inv.location ?? {}
-    const itc = inv.inventoryTypeAndCity ?? {}
-    const fmt = inv.type || itc.type || ''
-    return {
-      id: inv.id,
-      gid: inv.gid || inv.name || '',
-      city: inv.city?.name || itc.cityName || '',
-      format: fmt,
-      side: inv.side || '',
-      size: formatScreenSize(inv, fmt),
-      address: inv.address || loc.address || inv.name || '',
-      lat: inv.latitude ?? loc.latitude ?? NaN,
-      lon: inv.longitude ?? loc.longitude ?? NaN,
-      minBid: inv.minBidInfo?.minBidCharged ?? inv.minBidInfo?.minBid ?? null,
-      ots: inv.minBidInfo?.ots ?? inv.metadata?.ots ?? null,
-      owner: inv.displayOwner?.name || '',
-      ownerId: inv.displayOwner?.id ?? null,
-      photo: inv.images?.[0]?.preview ?? null,
-      active: inv.enabled !== false,
-      hasCamera: inv.photoReportOption != null && inv.photoReportOption !== 'NO',
-      duration: inv.duration ?? null,
-      grp: inv.metadata?.grp ?? null,
-      requestHourlyAvg: inv.requestHourlyAvg ?? null,
-      resolution: inv.screenResolutionPx?.width
-        ? `${inv.screenResolutionPx.width}×${inv.screenResolutionPx.height}`
-        : '',
-      photoReport: inv.photoReportOption ?? '',
-      description: inv.description ?? '',
-      lastShot: inv.lastShotTime ?? null,
-    }
-  }
-
-  function formatScreenSize(inv, fmt) {
-    // PVZ screens are small indoor displays with a fixed size
-    if (fmt === 'PVZ_SCREEN') return '0,54×0,95м'
-    const d = inv.surfaceDimensionMM
-    if (d?.width && d?.height) {
-      // Values < 3000 are pixel resolutions mislabeled as MM — fall back to standard size
-      const w = d.width  < 3000 ? 6 : d.width  / 1000
-      const h = d.height < 3000 ? 3 : d.height / 1000
-      const f = v => v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
-      return `${f(w)}×${f(h)}м`
-    }
-    return ''
   }
 
   function initMap() {
