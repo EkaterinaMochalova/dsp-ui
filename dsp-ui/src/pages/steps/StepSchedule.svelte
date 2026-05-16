@@ -39,6 +39,12 @@
     draft.screenSchedules = { ...draft.screenSchedules, [editingId]: e.detail }
     editingId = null
   }
+  // 24/7 schedule: all 7 days, all 24 hours enabled
+  const SCHEDULE_247 = Array.from({ length: 7 }, () => Array(24).fill(true))
+
+  function resetTo247(id) {
+    draft.screenSchedules = { ...draft.screenSchedules, [id]: SCHEDULE_247 }
+  }
   function clearScreenOverride(id) {
     const { [id]: _, ...rest } = draft.screenSchedules
     draft.screenSchedules = rest
@@ -137,10 +143,10 @@
         {/if}
       </button>
 
-      <!-- Reset overrides for checked screens -->
+      <!-- Reset checked screens to 24/7 -->
       {#if someChecked}
         <button class="btn-reset-checked" on:click={() => {
-          for (const id of checkedIds) clearScreenOverride(id)
+          for (const id of checkedIds) resetTo247(id)
         }}>
           Сбросить выбранные
         </button>
@@ -224,11 +230,11 @@
                 </div>
               </td>
 
-              <!-- Clear override -->
+              <!-- Reset to 24/7 -->
               <td class="td-act" on:click|stopPropagation>
                 {#if override}
-                  <button class="btn-clear-override" title="Сбросить до общего графика"
-                    on:click={() => clearScreenOverride(s.id)}>
+                  <button class="btn-clear-override" title="Сбросить до 24/7"
+                    on:click={() => resetTo247(s.id)}>
                     <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
                       <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
                     </svg>
