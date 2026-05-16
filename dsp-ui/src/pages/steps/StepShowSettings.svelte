@@ -274,10 +274,10 @@
 
   /* ── Section card ── */
   .section-card {
-    background: white;
-    border: 1.5px solid #E2E8F0;
-    border-radius: 12px;
-    padding: 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
   }
 
   .section-title {

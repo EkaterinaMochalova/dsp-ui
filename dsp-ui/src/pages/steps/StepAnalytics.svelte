@@ -77,7 +77,7 @@
   <h1 class="step-title">Аналитика</h1>
 
   <!-- ── Counters / Pixels ─────────────────────────────────────────────────── -->
-  <div class="an-card">
+  <div class="step-card">
     <div class="an-card-header">
       <div class="an-card-info">
         <span class="an-card-title">Счётчики</span>
@@ -153,7 +153,7 @@
   </div>
 
   <!-- ── Offline blocks ────────────────────────────────────────────────────── -->
-  <div class="an-card">
+  <div class="step-card">
     <div class="an-card-header">
       <div class="an-card-info">
         <span class="an-card-title">Офлайн-блоки</span>
@@ -232,13 +232,6 @@
 
 <style>
   /* ── Cards ──────────────────────────────────────────────────────────────── */
-  .an-card {
-    background: var(--card-bg, #fff);
-    border: 1px solid var(--border, #e5e7eb);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 16px;
-  }
   .an-card-header {
     display: flex;
     align-items: flex-start;
