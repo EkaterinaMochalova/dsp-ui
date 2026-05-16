@@ -65,7 +65,7 @@
           min="0"
           max="100"
         />
-        <span class="markup-pct-badge">{draft.buyerMarkup ? draft.buyerMarkup + '%' : '%'}</span>
+        <span class="markup-pct-badge">%</span>
       </div>
     </div>
 
