@@ -255,7 +255,7 @@
       <button class="nav-pill nav-pill-blue" on:click={() => dispatch('back')}>← График показов</button>
       <button class="nav-pill nav-pill-blue" on:click={() => dispatch('next')}>Рекламные материалы и таргетинг →</button>
     </div>
-    <button class="nav-link nav-link-next" on:click={() => dispatch('next')}>Дальше</button>
+    <button class="btn-next" on:click={() => dispatch('next')}>Дальше</button>
   </div>
 
 </div>

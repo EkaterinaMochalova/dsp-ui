@@ -745,7 +745,7 @@
   <!-- ── Bottom nav ───────────────────────────────────────────────────── -->
   <div class="cr-nav">
     <button class="nav-link" on:click={() => dispatch('back')}>Назад</button>
-    <button class="nav-link nav-link-next" on:click={() => dispatch('next')}>Дальше</button>
+    <button class="btn-next" on:click={() => dispatch('next')}>Дальше</button>
   </div>
 
 </div><!-- cr-wrap -->

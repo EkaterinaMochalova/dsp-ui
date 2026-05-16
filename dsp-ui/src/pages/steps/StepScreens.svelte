@@ -1220,7 +1220,7 @@
       </button>
 
     </div>
-    <button class="btn-text-nav btn-text-nav-next" on:click={() => dispatch('bids')}>Дальше</button>
+    <button class="btn-next" on:click={() => dispatch('bids')}>Дальше</button>
   </div>
 </div>
 
