@@ -4,6 +4,7 @@
   import { chat } from '../lib/aiChat.js'
 
   const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
+  const OPENAI_KEY = import.meta.env.VITE_OPENAI_API_KEY
 
   let isOpen = false
   let inputText = ''
@@ -31,6 +32,7 @@
     try {
       const { answer, history } = await chat(apiHistory, {
         anthropicKey: API_KEY,
+        openaiKey: OPENAI_KEY,
         apiToken: $token,
         onStatus: (s) => { statusText = s }
       })

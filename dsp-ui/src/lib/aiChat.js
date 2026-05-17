@@ -1,5 +1,7 @@
-const MODEL = 'claude-sonnet-4-6'
+const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+const OPENAI_MODEL = 'gpt-4o'
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
+const OPENAI_API = 'https://api.openai.com/v1/chat/completions'
 
 const SYSTEM_PROMPT = `Ты — ИИ-ассистент для DSP-платформы (DOOH — наружная реклама).
 Помогаешь анализировать рекламные кампании, бюджеты и статистику.
@@ -47,14 +49,19 @@ const TOOLS = [
   }
 ]
 
+// OpenAI tool format (wraps the same definitions)
+const OPENAI_TOOLS = TOOLS.map(t => ({
+  type: 'function',
+  function: { name: t.name, description: t.description, parameters: t.input_schema }
+}))
+
 const BASE = '/api/v1.0'
 
 function authHeaders(apiToken) {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiToken}`
-  }
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken}` }
 }
+
+// ── Tool implementations ──────────────────────────────────────────────────────
 
 async function getAllBrands(apiToken) {
   const res = await fetch(`${BASE}/clients/customers?page=0&size=500`, { headers: authHeaders(apiToken) })
@@ -73,12 +80,9 @@ async function getAllBrands(apiToken) {
           brandId: String(brand.id),
           brandName: brand.name
         }))
-      } catch {
-        return []
-      }
+      } catch { return [] }
     })
   )
-
   return nested.flat()
 }
 
@@ -107,7 +111,6 @@ async function listCampaigns(input, apiToken) {
 async function getCampaignStats(campaignIds, apiToken) {
   const BATCH = 20
   const allStats = []
-
   for (let i = 0; i < campaignIds.length; i += BATCH) {
     const batch = campaignIds.slice(i, i + BATCH)
     const res = await fetch(
@@ -116,11 +119,15 @@ async function getCampaignStats(campaignIds, apiToken) {
     )
     const data = await res.json()
     const items = Array.isArray(data) ? data : (data.content ?? [])
-    // Items without inventory field are campaign-level aggregates
     allStats.push(...items.filter(item => !item.inventory))
   }
-
   return allStats
+}
+
+const TOOL_STATUS = {
+  get_all_brands: 'Загружаю бренды...',
+  list_campaigns: 'Ищу кампании...',
+  get_campaign_stats: 'Получаю статистику...'
 }
 
 async function executeTool(name, input, apiToken) {
@@ -132,19 +139,9 @@ async function executeTool(name, input, apiToken) {
   }
 }
 
-const TOOL_STATUS = {
-  get_all_brands: 'Загружаю бренды...',
-  list_campaigns: 'Ищу кампании...',
-  get_campaign_stats: 'Получаю статистику...'
-}
+// ── Anthropic provider ────────────────────────────────────────────────────────
 
-/**
- * Send a message to Claude with tool use support.
- * @param {Array} history - Full Claude API message history (includes prior tool use/result blocks)
- * @param {{ anthropicKey: string, apiToken: string, onStatus?: (s: string) => void }} options
- * @returns {{ answer: string, history: Array }} Updated history including tool calls
- */
-export async function chat(history, { anthropicKey, apiToken, onStatus }) {
+async function chatWithAnthropic(history, { anthropicKey, apiToken, onStatus }) {
   const MAX_TURNS = 6
   let messages = [...history]
 
@@ -157,18 +154,13 @@ export async function chat(history, { anthropicKey, apiToken, onStatus }) {
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        tools: TOOLS,
-        messages
-      })
+      body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 1024, system: SYSTEM_PROMPT, tools: TOOLS, messages })
     })
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      throw new Error(err.error?.message ?? `Ошибка API: ${res.status}`)
+      const msg = err.error?.message ?? `Ошибка API: ${res.status}`
+      throw Object.assign(new Error(msg), { status: res.status, errorType: err.error?.type })
     }
 
     const response = await res.json()
@@ -191,9 +183,137 @@ export async function chat(history, { anthropicKey, apiToken, onStatus }) {
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, is_error: true, content: err.message })
       }
     }
-
     messages = [...messages, { role: 'user', content: toolResults }]
   }
 
   throw new Error('Превышен лимит итераций')
+}
+
+// ── OpenAI provider ───────────────────────────────────────────────────────────
+
+// Convert Anthropic-format history to OpenAI messages array
+function toOpenAIMessages(anthropicMessages) {
+  const result = [{ role: 'system', content: SYSTEM_PROMPT }]
+
+  for (const msg of anthropicMessages) {
+    if (msg.role === 'user') {
+      if (typeof msg.content === 'string') {
+        result.push({ role: 'user', content: msg.content })
+      } else {
+        // Tool results
+        for (const block of msg.content) {
+          if (block.type === 'tool_result') {
+            result.push({ role: 'tool', tool_call_id: block.tool_use_id, content: block.content ?? '' })
+          }
+        }
+      }
+    } else if (msg.role === 'assistant') {
+      if (typeof msg.content === 'string') {
+        result.push({ role: 'assistant', content: msg.content })
+      } else {
+        const textBlock = msg.content.find(b => b.type === 'text')
+        const toolUse = msg.content.filter(b => b.type === 'tool_use')
+        const openAIMsg = { role: 'assistant', content: textBlock?.text ?? null }
+        if (toolUse.length) {
+          openAIMsg.tool_calls = toolUse.map(b => ({
+            id: b.id,
+            type: 'function',
+            function: { name: b.name, arguments: JSON.stringify(b.input) }
+          }))
+        }
+        result.push(openAIMsg)
+      }
+    }
+  }
+  return result
+}
+
+async function chatWithOpenAI(history, { openaiKey, apiToken, onStatus }) {
+  const MAX_TURNS = 6
+  let openaiMessages = toOpenAIMessages(history)
+  let anthropicHistory = [...history]
+
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const res = await fetch(OPENAI_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
+      body: JSON.stringify({ model: OPENAI_MODEL, messages: openaiMessages, tools: OPENAI_TOOLS, max_tokens: 1024 })
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error?.message ?? `OpenAI API error: ${res.status}`)
+    }
+
+    const response = await res.json()
+    const choice = response.choices[0]
+    const msg = choice.message
+
+    if (choice.finish_reason === 'stop' || !msg.tool_calls?.length) {
+      const answer = msg.content ?? ''
+      anthropicHistory = [...anthropicHistory, { role: 'assistant', content: [{ type: 'text', text: answer }] }]
+      return { answer, history: anthropicHistory }
+    }
+
+    // Add assistant message and track in both formats
+    openaiMessages = [...openaiMessages, msg]
+    const anthropicContent = []
+    if (msg.content) anthropicContent.push({ type: 'text', text: msg.content })
+    for (const tc of msg.tool_calls) {
+      anthropicContent.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input: JSON.parse(tc.function.arguments) })
+    }
+    anthropicHistory = [...anthropicHistory, { role: 'assistant', content: anthropicContent }]
+
+    // Execute tools
+    const openaiResults = []
+    const anthropicResults = []
+
+    for (const tc of msg.tool_calls) {
+      onStatus?.(TOOL_STATUS[tc.function.name] ?? 'Загружаю данные...')
+      try {
+        const input = JSON.parse(tc.function.arguments)
+        const result = await executeTool(tc.function.name, input, apiToken)
+        const content = JSON.stringify(result)
+        openaiResults.push({ role: 'tool', tool_call_id: tc.id, content })
+        anthropicResults.push({ type: 'tool_result', tool_use_id: tc.id, content })
+      } catch (err) {
+        openaiResults.push({ role: 'tool', tool_call_id: tc.id, content: err.message })
+        anthropicResults.push({ type: 'tool_result', tool_use_id: tc.id, is_error: true, content: err.message })
+      }
+    }
+
+    openaiMessages = [...openaiMessages, ...openaiResults]
+    anthropicHistory = [...anthropicHistory, { role: 'user', content: anthropicResults }]
+  }
+
+  throw new Error('Превышен лимит итераций')
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+function isCreditsError(err) {
+  return (
+    err.status === 402 ||
+    err.status === 529 ||
+    /credit|billing|balance|quota/i.test(err.message ?? '') ||
+    /credit|billing|balance/i.test(err.errorType ?? '')
+  )
+}
+
+/**
+ * Send a message. Tries Anthropic first; falls back to OpenAI on credit/billing errors.
+ * @param {Array} history - Claude API-format conversation history
+ * @param {{ anthropicKey: string, openaiKey?: string, apiToken: string, onStatus?: Function }} options
+ * @returns {{ answer: string, history: Array }}
+ */
+export async function chat(history, { anthropicKey, openaiKey, apiToken, onStatus }) {
+  try {
+    return await chatWithAnthropic(history, { anthropicKey, apiToken, onStatus })
+  } catch (err) {
+    if (openaiKey && isCreditsError(err)) {
+      onStatus?.('Переключаюсь на резервный провайдер...')
+      return await chatWithOpenAI(history, { openaiKey, apiToken, onStatus })
+    }
+    throw err
+  }
 }
