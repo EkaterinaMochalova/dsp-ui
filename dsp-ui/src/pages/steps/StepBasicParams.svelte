@@ -187,11 +187,12 @@
 
     <!-- Date range -->
     <div class="field-group">
-      <div class="field-label">Период</div>
+      <div class="field-label">Период <span class="field-required">*</span></div>
       <div class="date-range-row">
         <div class="date-field">
           <input
             class="field-input"
+            class:input-error={!draft.startDate}
             type="date"
             bind:value={draft.startDate}
             placeholder="Начало"
@@ -201,6 +202,7 @@
         <div class="date-field">
           <input
             class="field-input"
+            class:input-error={!draft.endDate}
             type="date"
             bind:value={draft.endDate}
             min={draft.startDate}
@@ -292,7 +294,7 @@
 
   <div class="step-nav">
     <button class="btn-back" on:click={() => dispatch('back')}>Назад</button>
-    <button class="btn-next" on:click={() => dispatch('next')} disabled={!draft.customerId || !draft.name?.trim()}>Дальше</button>
+    <button class="btn-next" on:click={() => dispatch('next')} disabled={!draft.customerId || !draft.name?.trim() || !draft.startDate || !draft.endDate}>Дальше</button>
   </div>
 </div>
 
