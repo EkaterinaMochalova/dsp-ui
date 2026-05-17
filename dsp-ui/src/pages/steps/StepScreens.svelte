@@ -3,14 +3,12 @@
   import L from 'leaflet'
   import 'leaflet/dist/leaflet.css'
   import { api } from '../../lib/api.js'
-  import { formatMoney, SCREENS_CACHE_VER } from '../../lib/utils.js'
+  import { formatMoney } from '../../lib/utils.js'
   import ScheduleModal from '../../components/ScheduleModal.svelte'
 
-  // Ensure in-memory cache has correct version (api.allMapped manages this too,
-  // but guard here as well for HMR/fast navigation cases).
-  if (window._dspScreensCache?._ver !== SCREENS_CACHE_VER) {
-    window._dspScreensCache = { _ver: SCREENS_CACHE_VER }
-  }
+  // Cache version management is owned entirely by api.inventories.allMapped().
+  // Do NOT reset window._dspScreensCache here — that would wipe __inflight__
+  // and cause duplicate fetches even when a prefetch is already running.
 
   const dispatch = createEventDispatcher()
   export let draft
@@ -270,7 +268,7 @@
       : '__all__'
 
     // 1. In-memory city-filtered cache (instant on revisit)
-    if (window._dspScreensCache[cacheKey]) {
+    if (window._dspScreensCache?.[cacheKey]) {
       screens = window._dspScreensCache[cacheKey]
       totalLoaded = screens.length
       loading = false
@@ -288,7 +286,7 @@
         : all
       screens = view
       totalLoaded = screens.length
-      window._dspScreensCache[cacheKey] = view
+      if (window._dspScreensCache) window._dspScreensCache[cacheKey] = view
     } catch (e) {
       error = 'Не удалось загрузить экраны'
       console.error(e)
