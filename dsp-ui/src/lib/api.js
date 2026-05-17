@@ -273,22 +273,34 @@ export const api = {
         return data
       })
     },
-    // Derives city list from allMapped() — no separate API calls.
-    // allMapped() is already being fetched; this just piggybacks on it.
     async cities() {
       if (window._dspCitiesCache) return window._dspCitiesCache
 
-      const all = await this.allMapped()
-      const seen = new Map()
-      for (const s of all) {
-        if (s.city && !seen.has(s.city)) seen.set(s.city, s.cityId ?? null)
+      // Derive from screens cache if already populated (zero extra requests)
+      const derive = (mapped) => {
+        const seen = new Map()
+        for (const s of mapped) {
+          if (s.city && !seen.has(s.city)) seen.set(s.city, s.cityId ?? null)
+        }
+        const result = [...seen.entries()]
+          .map(([name, id]) => ({ name, id }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+        window._dspCitiesCache = result
+        return result
       }
-      const result = [...seen.entries()]
-        .map(([name, id]) => ({ name, id }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 
-      window._dspCitiesCache = result
-      return result
+      if (window._dspScreensCache?.['__all__']) {
+        return derive(window._dspScreensCache['__all__'])
+      }
+
+      // allMapped() already running — piggyback, no extra request
+      if (window._dspScreensCache?.['__inflight__']) {
+        return derive(await window._dspScreensCache['__inflight__'])
+      }
+
+      // Nothing in flight — fast single-page fetch (covers all cities in practice)
+      const first = await request(`/clients/inventories?enabled=true&page=0&size=500`)
+      return derive((first.content ?? []).map(mapInventory))
     },
   },
 }

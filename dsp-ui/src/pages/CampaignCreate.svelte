@@ -483,8 +483,9 @@
   onMount(async () => {
     // Prefetch cities + screens in background so caches are warm before the user
     // reaches those steps. Both use the shared two-level cache in api.js.
-    api.inventories.cities().catch(() => {})
+    // allMapped() first so __inflight__ is set before cities() checks for it
     api.inventories.allMapped().catch(() => {})
+    api.inventories.cities().catch(() => {})
 
     if (campaignId) {
       try {
