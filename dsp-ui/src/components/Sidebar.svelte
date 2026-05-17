@@ -1,0 +1,147 @@
+<script>
+  import { page, logout, currentUser } from '../lib/stores.js'
+
+  function nav(target) { window.location.hash = `#/${target}` }
+
+  function initials(name) {
+    if (!name) return '?'
+    return name.split(/[\s@]/).filter(Boolean).map(p => p[0]).join('').slice(0,2).toUpperCase()
+  }
+</script>
+
+<aside class="sidebar">
+
+  <!-- Logo -->
+  <div class="sidebar-logo">
+    <div class="logo-box">
+      <span>Omni</span><span>360</span>
+    </div>
+  </div>
+
+  <!-- Billing widget -->
+  <div class="billing-widget">
+    <div class="billing-amount">1.000.000,00 ₽</div>
+    <button class="billing-btn">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      Пополнить
+    </button>
+  </div>
+
+  <!-- Nav -->
+  <nav class="sidebar-nav">
+
+    <button class="nav-item" class:active={$page === 'overview'} on:click={() => nav('overview')}>
+      <!-- Grid / overview icon -->
+      <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+      </svg>
+      Обзор
+    </button>
+
+    <button class="nav-item" class:active={$page === 'campaigns' || $page === ''} on:click={() => nav('campaigns')}>
+      <!-- Play / campaigns icon -->
+      <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+      </svg>
+      Кампании
+      <span class="nav-dot"></span>
+    </button>
+
+    <button class="nav-item" class:active={$page === 'medias'} on:click={() => nav('medias')}>
+      <!-- Image icon -->
+      <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
+      </svg>
+      Рекламные
+      <span class="nav-dot"></span>
+    </button>
+
+    <button class="nav-item" class:active={$page === 'analytics'} on:click={() => nav('analytics')}>
+      <!-- Chart icon -->
+      <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+      </svg>
+      Аналитика
+    </button>
+
+    <button class="nav-item" class:active={$page === 'users'} on:click={() => nav('users')}>
+      <!-- Users icon -->
+      <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+      </svg>
+      Сотрудники
+    </button>
+
+  </nav>
+
+  <!-- User avatar + logout -->
+  <div class="sidebar-footer">
+    <div class="user-avatar">{initials($currentUser?.name || $currentUser?.email || '')}</div>
+    <div class="user-info">
+      <div class="user-name">{$currentUser?.name || $currentUser?.email || 'Профиль'}</div>
+    </div>
+    <button class="logout-btn" on:click={logout} title="Выйти">
+      <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+        <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h7a1 1 0 000-2H4V5h6a1 1 0 000-2H3zm11.293 4.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L15.586 11H9a1 1 0 010-2h6.586l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
+      </svg>
+    </button>
+  </div>
+</aside>
+
+<style>
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 12px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .user-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .user-name {
+    font-size: 11px;
+    color: rgba(255,255,255,0.7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .logout-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .logout-btn:hover {
+    color: #fff;
+    background: rgba(255,255,255,0.1);
+  }
+</style>
