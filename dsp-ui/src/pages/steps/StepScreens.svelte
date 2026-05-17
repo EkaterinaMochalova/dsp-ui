@@ -276,8 +276,8 @@
       ? [...selectedCities].sort().join('|')
       : '__all__'
 
-    // In-memory cache hit — instant
-    if (window._dspScreensCache?.[cacheKey]) {
+    // In-memory cache hit — instant (guard length > 0: empty [] is truthy but stale)
+    if (window._dspScreensCache?.[cacheKey]?.length > 0) {
       screens = window._dspScreensCache[cacheKey]
       totalLoaded = screens.length
       return
@@ -303,7 +303,7 @@
 
         const mapped = items.map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
         screens = mapped; totalLoaded = mapped.length
-        if (window._dspScreensCache) window._dspScreensCache[cacheKey] = mapped
+        if (window._dspScreensCache && mapped.length > 0) window._dspScreensCache[cacheKey] = mapped
 
       } else {
         // ── No filter: stream all pages, show each batch on map ─────────
@@ -322,7 +322,7 @@
           fetchedPages = p + 1
         }
         totalLoaded = screens.length
-        if (window._dspScreensCache) window._dspScreensCache[cacheKey] = screens
+        if (window._dspScreensCache && screens.length > 0) window._dspScreensCache[cacheKey] = screens
       }
     } catch (e) {
       if (screens.length === 0) error = 'Не удалось загрузить экраны'

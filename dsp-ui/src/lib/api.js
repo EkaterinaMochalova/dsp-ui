@@ -200,8 +200,8 @@ export const api = {
         window._dspScreensCache = { _ver: SCREENS_CACHE_VER }
       }
 
-      // 1. In-memory (instant)
-      if (window._dspScreensCache['__all__']) {
+      // 1. In-memory (instant) — guard length > 0: empty [] is truthy but stale
+      if (window._dspScreensCache['__all__']?.length > 0) {
         return Promise.resolve(window._dspScreensCache['__all__'])
       }
 
