@@ -303,7 +303,10 @@
 
         const mapped = items.map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
         screens = mapped; totalLoaded = mapped.length
-        if (window._dspScreensCache && mapped.length > 0) window._dspScreensCache[cacheKey] = mapped
+        if (mapped.length > 0) {
+          if (!window._dspScreensCache) window._dspScreensCache = {}
+          window._dspScreensCache[cacheKey] = mapped
+        }
 
       } else {
         // ── No filter: stream all pages, show each batch on map ─────────
@@ -322,7 +325,10 @@
           fetchedPages = p + 1
         }
         totalLoaded = screens.length
-        if (window._dspScreensCache && screens.length > 0) window._dspScreensCache[cacheKey] = screens
+        if (screens.length > 0) {
+          if (!window._dspScreensCache) window._dspScreensCache = {}
+          window._dspScreensCache[cacheKey] = screens
+        }
       }
     } catch (e) {
       if (screens.length === 0) error = 'Не удалось загрузить экраны'
