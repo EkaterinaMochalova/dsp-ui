@@ -224,22 +224,17 @@ export const api = {
 
       const fetchPromise = (async () => {
         const PAGE = 500
-        const BATCH = 3  // conservative — avoids hammering the server with 10 concurrent requests
         try {
           const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
           const totalPages = first.totalPages ?? 1
           const allItems = [...(first.content ?? [])]
 
-          for (let start = 1; start < totalPages; start += BATCH) {
-            const end = Math.min(start + BATCH, totalPages)
-            const batch = await Promise.allSettled(
-              Array.from({ length: end - start }, (_, i) =>
-                request(`/clients/inventories?enabled=true&page=${start + i}&size=${PAGE}`)
-              )
-            )
-            batch.forEach(r => {
-              if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
-            })
+          // Sequential page fetching — avoids concurrent request overload on the server
+          for (let p = 1; p < totalPages; p++) {
+            try {
+              const page = await request(`/clients/inventories?enabled=true&page=${p}&size=${PAGE}`)
+              allItems.push(...(page.content ?? []))
+            } catch {}
           }
 
           const mapped = allItems
@@ -307,9 +302,18 @@ export const api = {
         } catch {}
       }
 
-      // Fallback: fast single-page fetch (page 0 of 500 covers all cities in practice)
-      const first = await request(`/clients/inventories?enabled=true&page=0&size=500`)
-      return derive((first.content ?? []).map(mapInventory))
+      // Fallback: fetch all pages sequentially to ensure no cities are missed
+      const PAGE = 500
+      const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
+      const allItems = [...(first.content ?? [])]
+      const totalPages = first.totalPages ?? 1
+      for (let p = 1; p < totalPages; p++) {
+        try {
+          const page = await request(`/clients/inventories?enabled=true&page=${p}&size=${PAGE}`)
+          allItems.push(...(page.content ?? []))
+        } catch {}
+      }
+      return derive(allItems.map(mapInventory))
     },
   },
 }

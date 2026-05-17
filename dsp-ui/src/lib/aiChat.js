@@ -68,22 +68,19 @@ async function getAllBrands(apiToken) {
   const data = await res.json()
   const customers = data.content ?? (Array.isArray(data) ? data : [])
 
-  const nested = await Promise.all(
-    customers.map(async (customer) => {
-      try {
-        const bRes = await fetch(`${BASE}/clients/customers/${customer.id}/brands`, { headers: authHeaders(apiToken) })
-        const brands = await bRes.json()
-        const list = Array.isArray(brands) ? brands : (brands.content ?? [])
-        return list.map(brand => ({
-          customerId: String(customer.id),
-          customerName: customer.name,
-          brandId: String(brand.id),
-          brandName: brand.name
-        }))
-      } catch { return [] }
-    })
-  )
-  return nested.flat()
+  // Sequential — not Promise.all — to avoid hammering the server
+  const result = []
+  for (const customer of customers) {
+    try {
+      const bRes = await fetch(`${BASE}/clients/customers/${customer.id}/brands`, { headers: authHeaders(apiToken) })
+      const brands = await bRes.json()
+      const list = Array.isArray(brands) ? brands : (brands.content ?? [])
+      for (const brand of list) {
+        result.push({ customerId: String(customer.id), customerName: customer.name, brandId: String(brand.id), brandName: brand.name })
+      }
+    } catch {}
+  }
+  return result
 }
 
 async function listCampaigns(input, apiToken) {

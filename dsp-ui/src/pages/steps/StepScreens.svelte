@@ -295,10 +295,7 @@
         const allItems = [...(first.content ?? [])]
 
         for (let p = 1; p < totalPages; p++) {
-          try {
-            const page = await api.inventories.listRaw(buildQ(p))
-            allItems.push(...(page.content ?? []))
-          } catch {}
+          try { allItems.push(...((await api.inventories.listRaw(buildQ(p))).content ?? [])) } catch {}
         }
 
         const mapped = allItems.map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
