@@ -273,56 +273,21 @@ export const api = {
         return data
       })
     },
+    // Derives city list from allMapped() — no separate API calls.
+    // allMapped() is already being fetched; this just piggybacks on it.
     async cities() {
-      const CACHE_KEY = 'dsp_cities_cache'
-      const CACHE_TTL = 30 * 60 * 1000 // 30 minutes
-
-      // 1. In-memory cache (instant, survives navigations within the tab)
       if (window._dspCitiesCache) return window._dspCitiesCache
 
-      // 2. sessionStorage cache (survives F5, expires after TTL)
-      try {
-        const raw = sessionStorage.getItem(CACHE_KEY)
-        if (raw) {
-          const { ts, data } = JSON.parse(raw)
-          if (Date.now() - ts < CACHE_TTL) {
-            window._dspCitiesCache = data
-            return data
-          }
-        }
-      } catch {}
-
-      // 3. Fetch from API
-      const PAGE = 500
-      const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
-      const items = first.content ?? []
-      const totalPages = first.totalPages ?? 1
-      const extra = Math.min(totalPages - 1, 9) // up to 10 pages = 5000 items
-      if (extra > 0) {
-        const rest = await Promise.allSettled(
-          Array.from({ length: extra }, (_, i) =>
-            request(`/clients/inventories?enabled=true&page=${i + 1}&size=${PAGE}`)
-          )
-        )
-        rest.forEach(r => {
-          if (r.status === 'fulfilled') items.push(...(r.value?.content ?? []))
-        })
-      }
+      const all = await this.allMapped()
       const seen = new Map()
-      for (const inv of items) {
-        const cityName = inv.city?.name || inv.inventoryTypeAndCity?.cityName
-        const cityId   = inv.city?.id   || inv.inventoryTypeAndCity?.cityId
-        if (!cityName) continue
-        if (!seen.has(cityName)) seen.set(cityName, cityId ?? null)
+      for (const s of all) {
+        if (s.city && !seen.has(s.city)) seen.set(s.city, s.cityId ?? null)
       }
       const result = [...seen.entries()]
         .map(([name, id]) => ({ name, id }))
         .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 
-      // Store in both caches
       window._dspCitiesCache = result
-      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: result })) } catch {}
-
       return result
     },
   },

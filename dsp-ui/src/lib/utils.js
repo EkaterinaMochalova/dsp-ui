@@ -90,6 +90,7 @@ export function mapInventory(inv) {
     id:               inv.id,
     gid:              inv.gid || inv.name || '',
     city:             inv.city?.name || itc.cityName || '',
+    cityId:           inv.city?.id ?? itc.cityId ?? null,
     format:           fmt,
     side:             inv.side || '',
     size:             formatScreenSize(inv, fmt),
