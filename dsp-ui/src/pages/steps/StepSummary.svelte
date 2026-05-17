@@ -242,22 +242,7 @@
 
   <!-- ── Bottom action bar ─────────────────────────────────────────────── -->
   <div class="sv-bar">
-    <div class="sv-bar-left">
-      <button class="sv-btn-save" on:click={() => dispatch('save')}>Сохранить</button>
-      {#if launched}
-        <button class="sv-btn-stop" on:click={handleStop}>Остановить</button>
-      {:else}
-        <button class="sv-btn-launch" class:sv-loading={launching} on:click={handleLaunch} disabled={launching}>
-          {#if launching}
-            <span class="sv-spinner" />
-          {/if}
-          Запустить
-        </button>
-      {/if}
-    </div>
-    <div class="sv-bar-center">
-      <button class="btn-back" on:click={() => dispatch('back')}>Назад</button>
-    </div>
+    <button class="btn-back" on:click={() => dispatch('back')}>Назад</button>
     <div class="sv-bar-right">
       <button class="sv-dl-btn" title="Скачать ТТ">
         <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
@@ -469,54 +454,7 @@
     gap: 12px;
     z-index: 10;
   }
-  .sv-bar-left  { display: flex; gap: 8px; align-items: center; }
-  .sv-bar-center { flex: 1; display: flex; justify-content: center; }
   .sv-bar-right { display: flex; gap: 8px; align-items: center; }
-
-  .sv-btn-save {
-    padding: 8px 18px;
-    border-radius: 8px;
-    border: 1px solid var(--border, #e5e7eb);
-    background: transparent;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text, #111827);
-    cursor: pointer;
-  }
-  .sv-btn-launch {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 18px;
-    border-radius: 8px;
-    border: none;
-    background: var(--accent, #6366f1);
-    color: #fff;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-  .sv-btn-launch:disabled { opacity: 0.7; cursor: not-allowed; }
-  .sv-btn-stop {
-    padding: 8px 18px;
-    border-radius: 8px;
-    border: none;
-    background: #ef4444;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-  }
-  .sv-spinner {
-    width: 14px; height: 14px;
-    border: 2px solid rgba(255,255,255,0.4);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    flex-shrink: 0;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
 
   .sv-dl-btn {
     display: flex;
