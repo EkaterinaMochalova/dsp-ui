@@ -8,6 +8,7 @@
   import CampaignsList    from './pages/CampaignsList.svelte'
   import CampaignTypeSelect from './pages/CampaignTypeSelect.svelte'
   import CampaignCreate   from './pages/CampaignCreate.svelte'
+  import ChatPanel from './components/ChatPanel.svelte'
 
   onMount(async () => {
     if ($token) {
@@ -54,4 +55,8 @@
     </div>
     <RightBar />
   </div>
+{/if}
+
+{#if $isAuthenticated}
+  <ChatPanel />
 {/if}
