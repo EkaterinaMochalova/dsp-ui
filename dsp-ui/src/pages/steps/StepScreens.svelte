@@ -285,19 +285,24 @@
     }
 
     try {
-      // Fast path: show first 500 screens immediately so the map isn't blank
-      // while the full ~54-page load runs in background.
-      const firstPage = await api.inventories.list({ page: 0, size: 500 })
-      const totalPages = firstPage.totalPages ?? 1
-      const partial = (firstPage.content ?? [])
-        .map(mapInventory)
-        .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
-      applyView(partial)
-      totalLoaded = firstPage.totalElements ?? partial.length
-      loadingProgress = Math.max(2, Math.round(100 / totalPages))
-      loading = false   // reveal map with first-page data right away
+      // If allMapped() is already fetching (inflight from prefetch or previous call),
+      // don't fire an extra page-0 request — just wait for it.
+      // Otherwise do a quick page-0 fetch so the map isn't blank for 30+ seconds.
+      const alreadyFetching = !!window._dspScreensCache?.['__inflight__']
 
-      // Load all pages in background — allMapped() deduplicates the inflight
+      if (!alreadyFetching) {
+        const firstPage = await api.inventories.list({ page: 0, size: 500 })
+        const totalPages = firstPage.totalPages ?? 1
+        const partial = (firstPage.content ?? [])
+          .map(mapInventory)
+          .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+        applyView(partial)
+        totalLoaded = firstPage.totalElements ?? partial.length
+        loadingProgress = Math.max(2, Math.round(100 / totalPages))
+        loading = false   // reveal map with first-page data right away
+      }
+
+      // Full load — sequential, deduplicates inflight
       const all = await api.inventories.allMapped()
       const fullView = applyView(all)
       loadingProgress = 100
