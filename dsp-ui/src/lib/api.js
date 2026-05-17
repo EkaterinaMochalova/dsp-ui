@@ -183,6 +183,10 @@ export const api = {
       const q = new URLSearchParams({ enabled: 'true', ...params })
       return request(`/clients/inventories?${q}`)
     },
+    // Accepts a pre-built query string (supports repeated params like cityIds=1&cityIds=2)
+    listRaw(qs) {
+      return request(`/clients/inventories?${qs}`)
+    },
     // Fetch ALL inventories, map them, and cache in window + sessionStorage.
     // Single source of truth for CampaignCreate (prefetch) and StepScreens (load).
     // In-flight deduplication: if a fetch is already running, callers share the
@@ -220,34 +224,37 @@ export const api = {
 
       const fetchPromise = (async () => {
         const PAGE = 500
-        const BATCH = 10
-        const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
-        const totalPages = first.totalPages ?? 1
-        const allItems = [...(first.content ?? [])]
-
-        for (let start = 1; start < totalPages; start += BATCH) {
-          const end = Math.min(start + BATCH, totalPages)
-          const batch = await Promise.allSettled(
-            Array.from({ length: end - start }, (_, i) =>
-              request(`/clients/inventories?enabled=true&page=${start + i}&size=${PAGE}`)
-            )
-          )
-          batch.forEach(r => {
-            if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
-          })
-        }
-
-        const mapped = allItems
-          .map(mapInventory)
-          .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
-
-        window._dspScreensCache['__all__'] = mapped
-        delete window._dspScreensCache['__inflight__']
+        const BATCH = 3  // conservative — avoids hammering the server with 10 concurrent requests
         try {
-          sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ts: Date.now(), ver: SCREENS_CACHE_VER, data: mapped }))
-        } catch {}
+          const first = await request(`/clients/inventories?enabled=true&page=0&size=${PAGE}`)
+          const totalPages = first.totalPages ?? 1
+          const allItems = [...(first.content ?? [])]
 
-        return mapped
+          for (let start = 1; start < totalPages; start += BATCH) {
+            const end = Math.min(start + BATCH, totalPages)
+            const batch = await Promise.allSettled(
+              Array.from({ length: end - start }, (_, i) =>
+                request(`/clients/inventories?enabled=true&page=${start + i}&size=${PAGE}`)
+              )
+            )
+            batch.forEach(r => {
+              if (r.status === 'fulfilled') allItems.push(...(r.value?.content ?? []))
+            })
+          }
+
+          const mapped = allItems
+            .map(mapInventory)
+            .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+
+          window._dspScreensCache['__all__'] = mapped
+          try {
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ts: Date.now(), ver: SCREENS_CACHE_VER, data: mapped }))
+          } catch {}
+          return mapped
+        } finally {
+          // Always clean up __inflight__ so retries can start a fresh fetch
+          delete window._dspScreensCache['__inflight__']
+        }
       })()
 
       window._dspScreensCache['__inflight__'] = fetchPromise
@@ -293,12 +300,14 @@ export const api = {
         return derive(window._dspScreensCache['__all__'])
       }
 
-      // allMapped() already running — piggyback, no extra request
+      // allMapped() already running — piggyback on it; if it fails fall through
       if (window._dspScreensCache?.['__inflight__']) {
-        return derive(await window._dspScreensCache['__inflight__'])
+        try {
+          return derive(await window._dspScreensCache['__inflight__'])
+        } catch {}
       }
 
-      // Nothing in flight — fast single-page fetch (covers all cities in practice)
+      // Fallback: fast single-page fetch (page 0 of 500 covers all cities in practice)
       const first = await request(`/clients/inventories?enabled=true&page=0&size=500`)
       return derive((first.content ?? []).map(mapInventory))
     },

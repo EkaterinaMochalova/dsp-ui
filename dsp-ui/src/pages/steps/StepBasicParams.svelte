@@ -25,20 +25,20 @@
 
   onMount(async () => {
     try {
-      const [customersData] = await Promise.all([
+      // Load customers and brands in parallel so the brand select is never
+      // rendered with empty options while draft.brandId is already set.
+      // If bind:value has no matching option Svelte resets the value to null,
+      // which would silently wipe the selected brand.
+      const brandsPromise = draft.customerId
+        ? api.customers.brands(draft.customerId).catch(() => null)
+        : Promise.resolve(null)
+
+      const [customersData, brandsData] = await Promise.all([
         api.customers.list({ size: 100 }),
+        brandsPromise,
       ])
       customers = customersData.content ?? []
-
-      // When editing an existing campaign, draft.customerId is already set but
-      // onCustomerChange (which fires only on user interaction) was never called.
-      // Pre-load brands without clearing the existing brandId selection.
-      if (draft.customerId) {
-        try {
-          const data = await api.customers.brands(draft.customerId)
-          brands = data.content ?? []
-        } catch {}
-      }
+      if (brandsData) brands = brandsData.content ?? []
     } catch {}
     loading = false
 

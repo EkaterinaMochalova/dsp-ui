@@ -3,7 +3,7 @@
   import L from 'leaflet'
   import 'leaflet/dist/leaflet.css'
   import { api } from '../../lib/api.js'
-  import { formatMoney } from '../../lib/utils.js'
+  import { formatMoney, mapInventory } from '../../lib/utils.js'
   import ScheduleModal from '../../components/ScheduleModal.svelte'
 
   // Cache version management is owned entirely by api.inventories.allMapped().
@@ -263,6 +263,7 @@
     loading = true; loadingProgress = 0; error = ''
 
     const selectedCities = draft.cities ?? []
+    const selectedCityIds = (draft.cityIds ?? []).filter(id => id != null)
     const cacheKey = selectedCities.length > 0
       ? [...selectedCities].sort().join('|')
       : '__all__'
@@ -276,14 +277,42 @@
       return
     }
 
-    // 2 + 3: api.inventories.allMapped() handles sessionStorage + API fetch
     try {
-      const all = await api.inventories.allMapped()
-      loadingProgress = 100
+      let view
 
-      const view = selectedCities.length > 0
-        ? all.filter(s => selectedCities.includes(s.city))
-        : all
+      if (selectedCityIds.length > 0 && !window._dspScreensCache?.['__all__']) {
+        // 2. City-filtered API fetch — much faster than loading all screens.
+        // Pass cityIds as repeated params: ?cityIds=1&cityIds=2
+        // If the backend ignores the param we fall back to client-side filter.
+        const PAGE = 500
+        const buildQ = (page) => {
+          const q = new URLSearchParams({ enabled: 'true', page, size: PAGE })
+          selectedCityIds.forEach(id => q.append('cityIds', id))
+          return q.toString()
+        }
+        const first = await api.inventories.listRaw(buildQ(0))
+        const totalPages = first.totalPages ?? 1
+        const allItems = [...(first.content ?? [])]
+
+        for (let p = 1; p < totalPages; p++) {
+          try {
+            const page = await api.inventories.listRaw(buildQ(p))
+            allItems.push(...(page.content ?? []))
+          } catch {}
+        }
+
+        const mapped = allItems.map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+        // Client-side re-filter as safety net (if backend ignored cityIds)
+        view = mapped.filter(s => selectedCities.includes(s.city))
+      } else {
+        // 3. Full fetch via allMapped() (handles sessionStorage + API)
+        const all = await api.inventories.allMapped()
+        view = selectedCities.length > 0
+          ? all.filter(s => selectedCities.includes(s.city))
+          : all
+      }
+
+      loadingProgress = 100
       screens = view
       totalLoaded = screens.length
       if (window._dspScreensCache) window._dspScreensCache[cacheKey] = view
