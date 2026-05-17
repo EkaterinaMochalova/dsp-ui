@@ -250,8 +250,8 @@
     loadScreens()
   })
 
-  // Init map as soon as we have any screens to display (may be partial)
-  $: if (!map && mapEl && !loading) initMap()
+  // Init map on mount (loading is always false now — progress shown via badge)
+  $: if (!map && mapEl) initMap()
 
   onDestroy(() => {
     if (map) { map.remove(); map = null }
@@ -261,8 +261,14 @@
     window.removeEventListener('mouseup',   onColResizeEnd)
   })
 
+  // Progress state shown as a floating badge while screens stream in
+  let fetchedPages = 0
+  let totalPages = 0
+
   async function loadScreens() {
-    loading = true; loadingProgress = 0; error = ''
+    loading = false   // show the map container immediately — progress shown via badge
+    loadingProgress = 0; error = ''
+    fetchedPages = 0; totalPages = 0
 
     const selectedCityIds = draft.cityIds ?? []
     const selectedCities  = draft.cities  ?? []
@@ -274,17 +280,17 @@
     if (window._dspScreensCache?.[cacheKey]) {
       screens = window._dspScreensCache[cacheKey]
       totalLoaded = screens.length
-      loading = false; loadingProgress = 100; return
+      return
     }
+
+    const PAGE = 500
 
     try {
       if (selectedCityIds.length > 0) {
-        // ── City-filtered path ──────────────────────────────────────────
-        // Use server-side ?cityIds= filter: only 1–few pages instead of 54.
-        const PAGE = 500
+        // ── City-filtered: server-side filter, 1–few pages ──────────────
         const qs = selectedCityIds.map(id => `cityIds=${id}`).join('&')
         const first = await api.inventories.listRaw(`enabled=true&${qs}&page=0&size=${PAGE}`)
-        const totalPages = first.totalPages ?? 1
+        totalPages = first.totalPages ?? 1; fetchedPages = 1
         let items = [...(first.content ?? [])]
 
         for (let p = 1; p < totalPages; p++) {
@@ -292,43 +298,35 @@
             const r = await api.inventories.listRaw(`enabled=true&${qs}&page=${p}&size=${PAGE}`)
             items.push(...(r?.content ?? []))
           } catch {}
+          fetchedPages = p + 1
         }
 
         const mapped = items.map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
-        screens = mapped
-        totalLoaded = mapped.length
+        screens = mapped; totalLoaded = mapped.length
         if (window._dspScreensCache) window._dspScreensCache[cacheKey] = mapped
 
       } else {
-        // ── No city filter — show page 0 instantly, load rest in background ──
-        const PAGE = 500
-        const first = await api.inventories.list({ page: 0, size: 500 })
-        const totalPages = first.totalPages ?? 1
+        // ── No filter: stream all pages, show each batch on map ─────────
+        const first = await api.inventories.list({ page: 0, size: PAGE })
+        totalPages = first.totalPages ?? 1; fetchedPages = 1
         const partial = (first.content ?? []).map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
         screens = partial
         totalLoaded = first.totalElements ?? partial.length
-        loadingProgress = Math.max(2, Math.round(100 / totalPages))
-        loading = false  // show map with first page right away
 
-        // Load remaining pages sequentially in background
         for (let p = 1; p < totalPages; p++) {
           try {
             const r = await api.inventories.list({ page: p, size: PAGE })
             const more = (r?.content ?? []).map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
             screens = [...screens, ...more]
-            loadingProgress = Math.round((p + 1) / totalPages * 100)
           } catch {}
+          fetchedPages = p + 1
         }
         totalLoaded = screens.length
         if (window._dspScreensCache) window._dspScreensCache[cacheKey] = screens
       }
-
-      loadingProgress = 100
     } catch (e) {
       if (screens.length === 0) error = 'Не удалось загрузить экраны'
       console.error('[loadScreens]', e)
-    } finally {
-      loading = false
     }
   }
 
@@ -732,18 +730,24 @@
 <div class="screens-shell">
   <!-- Map fills all remaining space -->
   <div class="map-area">
-    {#if loading}
-      <div class="map-overlay">
-        <div class="spinner"></div>
-        <span>Загружаю экраны… {loadingProgress > 0 ? `${loadingProgress}%` : ''}</span>
-        {#if loadingProgress > 0}
-          <div class="load-bar-track">
-            <div class="load-bar-fill" style="width:{loadingProgress}%"></div>
-          </div>
-        {/if}
+    <div bind:this={mapEl} class="screens-map" class:draw-cursor={drawMode}></div>
+
+    <!-- Floating progress badge — shown while screens are streaming in -->
+    {#if totalPages > 0 && fetchedPages < totalPages}
+      <div class="fetch-progress-badge">
+        <div class="fetch-spinner"></div>
+        <span>Загружаю экраны {fetchedPages} / {totalPages}</span>
+        <div class="fetch-bar-track">
+          <div class="fetch-bar-fill" style="width:{Math.round(fetchedPages/totalPages*100)}%"></div>
+        </div>
       </div>
     {/if}
-    <div bind:this={mapEl} class="screens-map" class:draw-cursor={drawMode}></div>
+
+    {#if error && screens.length === 0}
+      <div class="map-overlay">
+        <span style="color:#EF4444">{error}</span>
+      </div>
+    {/if}
 
     <!-- Floating: Pre-campaign targeting -->
     <div class="map-float-top-left">
@@ -1110,9 +1114,9 @@
           </tr>
         </thead>
         <tbody>
-          {#if loading}
+          {#if totalPages > 0 && fetchedPages < totalPages && tabRows.length === 0}
             <tr><td colspan={colSpan} class="table-state-cell">
-              <div class="spinner"></div> Загрузка…
+              <div class="spinner"></div> Загрузка страницы {fetchedPages} из {totalPages}…
             </td></tr>
           {:else if error}
             <tr><td colspan={colSpan} class="table-state-cell" style="color:#EF4444">{error}</td></tr>
@@ -1227,6 +1231,49 @@
   }
   .screens-map.draw-cursor { cursor: crosshair; }
   :global(.screens-map.draw-cursor .leaflet-interactive) { cursor: crosshair !important; }
+
+  /* Floating progress badge — non-blocking, shows while pages stream */
+  .fetch-progress-badge {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(17,40,83,.88);
+    color: #fff;
+    border-radius: 20px;
+    padding: 6px 14px 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 600;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .fetch-spinner {
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  .fetch-bar-track {
+    width: 80px; height: 3px;
+    background: rgba(255,255,255,.25);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .fetch-bar-fill {
+    height: 100%;
+    background: #55C1FA;
+    border-radius: 2px;
+    transition: width .3s ease;
+  }
 
   .map-overlay {
     position: absolute;
