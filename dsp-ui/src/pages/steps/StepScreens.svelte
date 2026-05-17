@@ -264,49 +264,66 @@
   async function loadScreens() {
     loading = true; loadingProgress = 0; error = ''
 
-    const selectedCities = draft.cities ?? []
+    const selectedCityIds = draft.cityIds ?? []
+    const selectedCities  = draft.cities  ?? []
     const cacheKey = selectedCities.length > 0
       ? [...selectedCities].sort().join('|')
       : '__all__'
 
-    const applyView = (all) => {
-      const view = selectedCities.length > 0
-        ? all.filter(s => selectedCities.includes(s.city))
-        : all
-      screens = view
-      totalLoaded = view.length
-      return view
-    }
-
-    // 1. In-memory city-filtered cache (instant on revisit)
+    // In-memory cache hit — instant
     if (window._dspScreensCache?.[cacheKey]) {
-      applyView(window._dspScreensCache[cacheKey])
+      screens = window._dspScreensCache[cacheKey]
+      totalLoaded = screens.length
       loading = false; loadingProgress = 100; return
     }
 
     try {
-      // If allMapped() is already fetching (inflight from prefetch or previous call),
-      // don't fire an extra page-0 request — just wait for it.
-      // Otherwise do a quick page-0 fetch so the map isn't blank for 30+ seconds.
-      const alreadyFetching = !!window._dspScreensCache?.['__inflight__']
+      if (selectedCityIds.length > 0) {
+        // ── City-filtered path ──────────────────────────────────────────
+        // Use server-side ?cityIds= filter: only 1–few pages instead of 54.
+        const PAGE = 500
+        const qs = selectedCityIds.map(id => `cityIds=${id}`).join('&')
+        const first = await api.inventories.listRaw(`enabled=true&${qs}&page=0&size=${PAGE}`)
+        const totalPages = first.totalPages ?? 1
+        let items = [...(first.content ?? [])]
 
-      if (!alreadyFetching) {
-        const firstPage = await api.inventories.list({ page: 0, size: 500 })
-        const totalPages = firstPage.totalPages ?? 1
-        const partial = (firstPage.content ?? [])
-          .map(mapInventory)
-          .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
-        applyView(partial)
-        totalLoaded = firstPage.totalElements ?? partial.length
+        for (let p = 1; p < totalPages; p++) {
+          try {
+            const r = await api.inventories.listRaw(`enabled=true&${qs}&page=${p}&size=${PAGE}`)
+            items.push(...(r?.content ?? []))
+          } catch {}
+        }
+
+        const mapped = items.map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+        screens = mapped
+        totalLoaded = mapped.length
+        if (window._dspScreensCache) window._dspScreensCache[cacheKey] = mapped
+
+      } else {
+        // ── No city filter — show page 0 instantly, load rest in background ──
+        const PAGE = 500
+        const first = await api.inventories.list({ page: 0, size: 500 })
+        const totalPages = first.totalPages ?? 1
+        const partial = (first.content ?? []).map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+        screens = partial
+        totalLoaded = first.totalElements ?? partial.length
         loadingProgress = Math.max(2, Math.round(100 / totalPages))
-        loading = false   // reveal map with first-page data right away
+        loading = false  // show map with first page right away
+
+        // Load remaining pages sequentially in background
+        for (let p = 1; p < totalPages; p++) {
+          try {
+            const r = await api.inventories.list({ page: p, size: PAGE })
+            const more = (r?.content ?? []).map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+            screens = [...screens, ...more]
+            loadingProgress = Math.round((p + 1) / totalPages * 100)
+          } catch {}
+        }
+        totalLoaded = screens.length
+        if (window._dspScreensCache) window._dspScreensCache[cacheKey] = screens
       }
 
-      // Full load — sequential, deduplicates inflight
-      const all = await api.inventories.allMapped()
-      const fullView = applyView(all)
       loadingProgress = 100
-      if (window._dspScreensCache) window._dspScreensCache[cacheKey] = fullView
     } catch (e) {
       if (screens.length === 0) error = 'Не удалось загрузить экраны'
       console.error('[loadScreens]', e)

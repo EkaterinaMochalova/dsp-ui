@@ -42,14 +42,45 @@
     } catch {}
     loading = false
 
-    // Load cities in background — not blocking
-    try {
-      allCities = await api.inventories.cities()
-    } catch {
-      allCities = []
-    } finally {
-      citiesLoading = false
-    }
+    // Load cities progressively — show cities from each page as it arrives
+    // so the dropdown is usable within 1 request (~300ms) instead of 54 requests (~16s).
+    ;(async () => {
+      try {
+        const PAGE = 500
+        const cityMap = new Map()   // name → id, for dedup
+
+        const addItems = (items) => {
+          let changed = false
+          for (const inv of items) {
+            const itc = inv.inventoryTypeAndCity ?? {}
+            const name = (inv.city && inv.city.name) || itc.cityName || ''
+            const id   = (inv.city && inv.city.id  != null) ? inv.city.id : (itc.cityId ?? null)
+            if (name && !cityMap.has(name)) { cityMap.set(name, id); changed = true }
+          }
+          if (changed) {
+            allCities = [...cityMap.entries()]
+              .map(([name, id]) => ({ name, id }))
+              .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+          }
+        }
+
+        const first = await api.inventories.list({ page: 0, size: PAGE })
+        addItems(first.content ?? [])
+        citiesLoading = false   // dropdown usable now with first-page cities
+
+        const totalPages = first.totalPages ?? 1
+        for (let p = 1; p < totalPages; p++) {
+          try {
+            const r = await api.inventories.list({ page: p, size: PAGE })
+            addItems(r?.content ?? [])
+          } catch {}
+        }
+        // Persist to shared cache so StepScreens/cities() can reuse it
+        window._dspCitiesCache = allCities
+      } catch {
+        citiesLoading = false
+      }
+    })()
   })
 
   async function onCustomerChange() {
