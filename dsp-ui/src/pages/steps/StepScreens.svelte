@@ -3,7 +3,7 @@
   import L from 'leaflet'
   import 'leaflet/dist/leaflet.css'
   import { api } from '../../lib/api.js'
-  import { formatMoney } from '../../lib/utils.js'
+  import { formatMoney, mapInventory } from '../../lib/utils.js'
   import ScheduleModal from '../../components/ScheduleModal.svelte'
 
   // Cache version management is owned entirely by api.inventories.allMapped().
@@ -246,10 +246,12 @@
   $: allVisible = tabRows.length > 0 && tabRows.every(s => draft.screenIds.includes(s.id))
   $: someVisible = tabRows.some(s => draft.screenIds.includes(s.id))
 
-  onMount(async () => {
-    await loadScreens()
-    initMap()
+  onMount(() => {
+    loadScreens()
   })
+
+  // Init map as soon as we have any screens to display (may be partial)
+  $: if (!map && mapEl && !loading) initMap()
 
   onDestroy(() => {
     if (map) { map.remove(); map = null }
@@ -267,30 +269,42 @@
       ? [...selectedCities].sort().join('|')
       : '__all__'
 
-    // 1. In-memory city-filtered cache (instant on revisit)
-    if (window._dspScreensCache?.[cacheKey]) {
-      screens = window._dspScreensCache[cacheKey]
-      totalLoaded = screens.length
-      loading = false
-      loadingProgress = 100
-      return
-    }
-
-    try {
-      loadingProgress = 10
-      const all = await api.inventories.allMapped()
-      loadingProgress = 100
-
+    const applyView = (all) => {
       const view = selectedCities.length > 0
         ? all.filter(s => selectedCities.includes(s.city))
         : all
-
       screens = view
-      totalLoaded = screens.length
-      if (window._dspScreensCache) window._dspScreensCache[cacheKey] = view
+      totalLoaded = view.length
+      return view
+    }
+
+    // 1. In-memory city-filtered cache (instant on revisit)
+    if (window._dspScreensCache?.[cacheKey]) {
+      applyView(window._dspScreensCache[cacheKey])
+      loading = false; loadingProgress = 100; return
+    }
+
+    try {
+      // Fast path: show first 500 screens immediately so the map isn't blank
+      // while the full ~54-page load runs in background.
+      const firstPage = await api.inventories.list({ page: 0, size: 500 })
+      const totalPages = firstPage.totalPages ?? 1
+      const partial = (firstPage.content ?? [])
+        .map(mapInventory)
+        .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+      applyView(partial)
+      totalLoaded = firstPage.totalElements ?? partial.length
+      loadingProgress = Math.max(2, Math.round(100 / totalPages))
+      loading = false   // reveal map with first-page data right away
+
+      // Load all pages in background — allMapped() deduplicates the inflight
+      const all = await api.inventories.allMapped()
+      const fullView = applyView(all)
+      loadingProgress = 100
+      if (window._dspScreensCache) window._dspScreensCache[cacheKey] = fullView
     } catch (e) {
-      error = 'Не удалось загрузить экраны'
-      console.error(e)
+      if (screens.length === 0) error = 'Не удалось загрузить экраны'
+      console.error('[loadScreens]', e)
     } finally {
       loading = false
     }
