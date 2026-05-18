@@ -104,6 +104,30 @@
 </script>
 
 <div class="step-content sv-summary">
+
+  <!-- ── Top action bar ────────────────────────────────────────────────── -->
+  <div class="sv-bar sv-bar-top">
+    <button class="btn-back" on:click={() => dispatch('back')}>Назад</button>
+    <div class="sv-bar-right">
+      <button class="sv-dl-btn" title="Скачать ТТ">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        Скачать ТТ
+      </button>
+      <button class="sv-dl-btn" title="Скачать АП">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        Скачать АП
+      </button>
+      <button class="sv-dl-btn" title="Скачать МП">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        Скачать МП
+      </button>
+      <button class="sv-share-btn" on:click={() => showSharePanel = !showSharePanel}>
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z"/></svg>
+        Поделиться кампанией
+      </button>
+    </div>
+  </div>
+
   <h1 class="step-title">Сводка</h1>
 
   <!-- ── Основные параметры ─────────────────────────────────────────────── -->
@@ -240,28 +264,6 @@
     </div>
   </div>
 
-  <!-- ── Bottom action bar ─────────────────────────────────────────────── -->
-  <div class="sv-bar">
-    <button class="btn-back" on:click={() => dispatch('back')}>Назад</button>
-    <div class="sv-bar-right">
-      <button class="sv-dl-btn" title="Скачать ТТ">
-        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-        Скачать ТТ
-      </button>
-      <button class="sv-dl-btn" title="Скачать АП">
-        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-        Скачать АП
-      </button>
-      <button class="sv-dl-btn" title="Скачать МП">
-        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-        Скачать МП
-      </button>
-      <button class="sv-share-btn" on:click={() => showSharePanel = !showSharePanel}>
-        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z"/></svg>
-        Поделиться кампанией
-      </button>
-    </div>
-  </div>
 </div>
 
 <!-- ── Share panel ────────────────────────────────────────────────────────── -->
@@ -345,8 +347,6 @@
 {/if}
 
 <style>
-  .sv-summary { padding-bottom: 80px; }
-
   /* ── Cards ──────────────────────────────────────────────────────────────── */
   .sv-card {
     background: var(--surface);
@@ -440,14 +440,14 @@
     padding-top: 10px;
   }
 
-  /* ── Bottom bar ──────────────────────────────────────────────────────── */
+  /* ── Top bar ─────────────────────────────────────────────────────────── */
   .sv-bar {
     position: sticky;
-    bottom: 0;
-    margin: 0 -28px -28px;
-    padding: 12px 24px;
+    top: 0;
+    margin: -28px -28px 20px;
+    padding: 10px 24px;
     background: var(--card-bg, #fff);
-    border-top: 1px solid var(--border, #e5e7eb);
+    border-bottom: 1px solid var(--border, #e5e7eb);
     display: flex;
     align-items: center;
     justify-content: space-between;
