@@ -405,8 +405,8 @@
     try {
       const id = draft.id != null ? Number(draft.id) : null
       if (!id) { saveError = 'Сохраните кампанию перед паузой'; return }
-      await api.campaigns.setState(id, 'PAUSED')
-      draft = { ...draft, state: 'PAUSED' }
+      await api.campaigns.setState(id, 'STOPPED')
+      draft = { ...draft, state: 'STOPPED' }
     } catch (e) {
       console.warn('[pause] error:', JSON.stringify(e))
       saveError = e?.status === 403
@@ -803,7 +803,7 @@
       <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing}>
         {#if saving}Сохранение…{:else}Сохранить{/if}
       </button>
-      {#if ['ACTIVE','ACTIVATED','RESERVED','BOOKED'].includes(draft.state)}
+      {#if ['ACTIVE','ACTIVATED','ON_TARGETING_CREATION','ON_TARGETING_UPDATE','RESERVED','BOOKED'].includes(draft.state)}
         <button class="btn-pause" on:click={pauseCampaign} disabled={pausing || saving}>
           {#if pausing}Пауза…{:else}Пауза{/if}
         </button>
