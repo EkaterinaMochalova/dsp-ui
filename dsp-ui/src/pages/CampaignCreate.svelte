@@ -464,7 +464,8 @@
     try {
       const id = await doSave()
       await api.campaigns.setState(id, 'ACTIVE')
-      window.location.hash = '#/campaigns'
+      await reloadCampaign(id)
+      goToStep('summary')
     } catch (e) {
       console.warn('[launch] error:', JSON.stringify(e))
       saveError = e?.status === 403
