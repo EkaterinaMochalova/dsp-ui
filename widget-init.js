@@ -1157,6 +1157,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <div class="str-chip-desc">Задам нужный охват — подберёте бюджет</div>
     </div>
   </label>
+  <label class="str-chip">
+    <input type="radio" name="budget_mode" value="goal_plays">
+    <div class="str-chip-body">
+      <div class="str-chip-title">📊 Цель по показам</div>
+      <div class="str-chip-desc">Задам кол-во показов — подберём бюджет</div>
+    </div>
+  </label>
 </div>
 <!-- fixed -->
 <div id="budget-input-wrap" style="margin-top:10px;">
@@ -1207,6 +1214,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <div class="planner-note" style="margin-top:6px;">
     Подберём экраны и бюджет так, чтобы получить нужный охват (если физически возможно).
   </div>
+</div>
+<!-- goal_plays -->
+<div id="goal-plays-wrap" style="margin-top:10px; display:none;">
+  <input id="goal-plays" type="number" class="ux-input" placeholder="Введите целевое кол-во показов" min="0" step="10000">
 </div>
 <!-- goal_reco -->
 <div id="budget-reco-hint" style="margin-top:6px; color:#667085;">
@@ -1997,11 +2008,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const budgetMode = getBudgetMode();
     const budgetVal = Number(el("budget-input")?.value || 0);
     const goalVal   = Number(el("goal-ots")?.value || 0);
+    const goalPlaysVal = Number(el("goal-plays")?.value || 0);
 
     const budgetOk =
       (budgetMode === "recommendation") ||
       (budgetMode === "fixed"    && budgetVal > 0) ||
-      (budgetMode === "goal_ots" && goalVal > 0);
+      (budgetMode === "goal_ots" && goalVal > 0) ||
+      (budgetMode === "goal_plays" && goalPlaysVal > 0);
 
     const step1 = !!regionsLabel;
     const step2 = !!(dates.start && dates.end);
@@ -2045,7 +2058,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const steps = [
         { label: "Регион",    ok: !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length) },
         { label: "Даты",      ok: !!(p.dates.start && p.dates.end) },
-        { label: "Бюджет/цель", ok: p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })() },
+        { label: "Бюджет/цель", ok: p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); const gpv = Number(el("goal-plays")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0)||(bm==="goal_plays"&&gpv>0); })() },
         { label: "Форматы",   ok: true }, // опциональны — нет выбора = все форматы
       ];
       chkEl.innerHTML = steps.map(s => \`
@@ -2329,6 +2342,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const mode = getBudgetMode();
       const bval = (mode === "goal_ots")
         ? (el("goal-ots")?.value || "")
+        : (mode === "goal_plays")
+        ? (el("goal-plays")?.value || "")
         : (el("budget-input")?.value || "");
 
       const sig = regions.slice().sort().join("||") + "##" + fmt + "##" + mode + "##" + bval + "##" + getScheduleType();
@@ -4201,6 +4216,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (goalWrap) goalWrap.style.display = (mode === "goal_ots") ? "block" : "none";
     if (recoHint) recoHint.style.display = (mode === "recommendation") ? "block" : "none";
 
+    const playsWrap = el("goal-plays-wrap");
+    if (playsWrap) playsWrap.style.display = (mode === "goal_plays") ? "block" : "none";
+
     if (mode === "goal_ots") {
       const inp = el("goal-ots");
       if (inp) setTimeout(() => inp.focus(), 50);
@@ -4682,8 +4700,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   function getActiveBudget(){
     const mode = document.querySelector('input[name="budget_mode"]:checked')?.value || "fixed";
-    if(mode === "fixed")    return Number(el("budget-input")?.value  || 0);
-    if(mode === "goal_ots") return Number(el("goal-ots")?.value      || 0);
+    if(mode === "fixed")      return Number(el("budget-input")?.value  || 0);
+    if(mode === "goal_ots")   return Number(el("goal-ots")?.value      || 0);
+    if(mode === "goal_plays") return Number(el("goal-plays")?.value    || 0);
     return 0;
   }
 

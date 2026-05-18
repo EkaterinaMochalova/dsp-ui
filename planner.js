@@ -1358,6 +1358,7 @@ function buildBrief() {
 
   const budgetVal = Number(el("budget-input")?.value || 0);
   const goalOtsVal = Number(el("goal-ots")?.value || 0);
+  const goalPlaysVal = Number(el("goal-plays")?.value || 0);
 
   const commEnabled = !!el("commission-enabled")?.checked;
   const commRate    = commEnabled ? Math.max(0, Number(el("commission-rate")?.value || 0)) : 0;
@@ -1368,7 +1369,8 @@ function buildBrief() {
   const budgetOk =
     (budgetMode === "recommendation") ||
     (budgetMode === "fixed" && budgetVal > 0) ||
-    (budgetMode === "goal_ots" && goalOtsVal > 0);
+    (budgetMode === "goal_ots" && goalOtsVal > 0) ||
+    (budgetMode === "goal_plays" && goalPlaysVal > 0);
 
   const scheduleType = getScheduleType(); // all_day | peak | custom | weekly
   const timeFrom = el("time-from")?.value;
@@ -1483,6 +1485,11 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
     goal: {
       ots: (() => {
         const v = el("goal-ots")?.value;
+        const n = toNumber(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      })(),
+      plays: (() => {
+        const v = el("goal-plays")?.value;
         const n = toNumber(v);
         return Number.isFinite(n) && n > 0 ? n : null;
       })()
@@ -2406,6 +2413,8 @@ async function buildMediaPlanBlob() {
     { h: "Формат экрана",      w: 18, fn: s => s.format     ?? "" },
     { h: "Вид. разрешение",    w: 20, fn: s => s.resolution ?? "" },
     { h: "Соотношение сторон", w: 20, fn: s => s.aspectRatio ?? "" },
+    { h: "Широта",             w: 14, fn: s => Number.isFinite(s.lat) ? s.lat : "" },
+    { h: "Долгота",            w: 14, fn: s => Number.isFinite(s.lon) ? s.lon : "" },
     { h: "Фото",               w: 40, fn: s => s.image_url  ?? "" },
   ];
   AP_COLS.forEach((col, i) => {
@@ -3272,6 +3281,13 @@ async function onCalcClick() {
     }
   }
 
+  if (brief.budget.mode === "goal_plays") {
+    if (!brief.goal?.plays || brief.goal.plays <= 0) {
+      alert("Введите целевое количество показов.");
+      return;
+    }
+  }
+
   const days = daysInclusive(brief.dates.start, brief.dates.end);
   if (!Number.isFinite(days) || days <= 0) {
     alert("Выберите корректные даты начала и окончания.");
@@ -3759,6 +3775,26 @@ async function onCalcClick() {
       );
     }
 
+  } else if (brief.budget.mode === "goal_plays") {
+    const totalPlaysGoal = Number(brief.goal?.plays || 0);
+    if (!Number.isFinite(totalPlaysGoal) || totalPlaysGoal <= 0) {
+      alert("Введите корректное количество показов.");
+      setStatus("");
+      return;
+    }
+    // Distribute plays across regions proportionally to pool capacity
+    const totalCapPlays = prepared.reduce((s, r) => s + Math.floor(SC_MAX * RECO_HOURS_PER_DAY * r.pool.length * days), 0);
+    for (const r of prepared) {
+      const capPlays = Math.floor(SC_MAX * RECO_HOURS_PER_DAY * r.pool.length * days);
+      const share = totalCapPlays > 0 ? capPlays / totalCapPlays : 1 / prepared.length;
+      const regionPlays = Math.floor(totalPlaysGoal * share);
+      const avgBid = avgEffectiveBid(r.pool, brief.bidMode, 1);
+      budgets[r.region] = Math.ceil(regionPlays * avgBid);
+      // Store planned plays for use in region loop
+      if (!goalPlan) goalPlan = {};
+      goalPlan[r.region] = { playsPlanned: regionPlays, budgetPlanned: budgets[r.region] };
+    }
+
   } else {
     // Recommendation mode
     if (brief.constructions?.enabled && brief.constructions.count > 0) {
@@ -3867,7 +3903,7 @@ async function onCalcClick() {
   }
 
   let leftoverUnspent = 0;
-  if (brief.budget.mode !== "goal_ots") {
+  if (brief.budget.mode !== "goal_ots" && brief.budget.mode !== "goal_plays") {
     leftoverUnspent = redistributeByCapacity(prepared, budgets);
     if (leftoverUnspent > 0) {
       warnings.push(
@@ -3973,7 +4009,7 @@ async function onCalcClick() {
     budget = Math.min(budget, effectiveCapBudget);
 
     let totalPlaysTheory = 0;
-    if (brief.budget.mode === "goal_ots" && goalPlan && goalPlan[region]) {
+    if ((brief.budget.mode === "goal_ots" || brief.budget.mode === "goal_plays") && goalPlan && goalPlan[region]) {
       totalPlaysTheory = Math.ceil(Number(goalPlan[region].playsPlanned || 0));
       if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory < 0) totalPlaysTheory = 0;
     } else {
@@ -4070,7 +4106,7 @@ async function onCalcClick() {
     // раздутие, которое возникает в attempt-loop когда выбираются самые дешёвые экраны:
     // дешёвые → низкий effectiveChosenBid → большой totalPlaysTheoryByChosen → while-loop
     // добирает весь пул. Теперь после финального выбора пересчитываем строго по chosen-ставке.
-    if (brief.budget.mode !== "goal_ots" && Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0) {
+    if (brief.budget.mode !== "goal_ots" && brief.budget.mode !== "goal_plays" && Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0) {
       totalPlaysTheory = Math.floor(budget / effectiveChosenBid);
     }
 
@@ -4144,7 +4180,7 @@ async function onCalcClick() {
       : Math.ceil(totalPlaysEffective * effectiveChosenBid);
     totalBudgetFinal += actualBudget;
 
-    if (brief.budget.mode !== "goal_ots") {
+    if (brief.budget.mode !== "goal_ots" && brief.budget.mode !== "goal_plays") {
       const playsPerHourPerScreen = (totalPlaysEffective / days / hpd) / Math.max(1, chosen.length);
       if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
         warnings.push(`⚠️ Регион «${region}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
@@ -4285,7 +4321,7 @@ async function onCalcClick() {
 — Бюджет: ${totalBudgetFinal.toLocaleString("ru-RU")} ₽ ${
       brief.budget.mode === "fixed"
         ? "(распределён по регионам)"
-        : (brief.budget.mode === "goal_ots" ? "(под цель OTS)" : "(сумма рекомендаций)")
+        : (brief.budget.mode === "goal_ots" ? "(под цель OTS)" : brief.budget.mode === "goal_plays" ? "(под цель показов)" : "(сумма рекомендаций)")
     }
 — Даты: ${brief.dates.start} → ${brief.dates.end} (дней: ${days})
 — Расписание: ${brief.schedule.type} (часов/день: ${hpd.toFixed(2)})
@@ -4377,11 +4413,13 @@ if (brief.schedule?.type === "weekly") {
   const mode = brief?.budget?.mode || "recommendation";
   const budgetVal = Number(brief?.budget?.amount || 0);
   const goalOtsVal = Number(brief?.goal?.ots || 0);
+  const goalPlaysVal2 = Number(brief?.goal?.plays || 0);
 
   const step3 =
     (mode === "recommendation") ||
     (mode === "fixed" && Number.isFinite(budgetVal) && budgetVal > 0) ||
-    (mode === "goal_ots" && Number.isFinite(goalOtsVal) && goalOtsVal > 0);
+    (mode === "goal_ots" && Number.isFinite(goalOtsVal) && goalOtsVal > 0) ||
+    (mode === "goal_plays" && Number.isFinite(goalPlaysVal2) && goalPlaysVal2 > 0);
 
   // Форматы опциональны: если ничего не выбрано — берём все
   const step4 = true;
@@ -5288,6 +5326,7 @@ function restoreBriefToUI(brief) {
   if (bmRadio) { bmRadio.checked = true; bmRadio.dispatchEvent(new Event("change", { bubbles: true })); }
   if (el("budget-input") && brief.budget?.amount != null) el("budget-input").value = brief.budget.amount;
   if (el("goal-ots") && brief.goal?.ots != null) el("goal-ots").value = brief.goal.ots;
+  if (el("goal-plays") && brief.goal?.plays != null) el("goal-plays").value = brief.goal.plays;
 
   // 5. Formats
   const fmtAutoEl = el("formats-auto");
