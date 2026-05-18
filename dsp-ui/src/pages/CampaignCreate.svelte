@@ -320,34 +320,40 @@
     // Creatives currently in the campaign.
     // seg.medias[] items: { id: <approvalRecordId>, adLayout: { id: <creativeId> }, state, ... }
     // We need creative IDs (adLayout.id) for draft.creativeIds, not approval record IDs.
+    // NOTE: the backend may omit non-APPROVED medias from the GET response (SENT/PENDING drop
+    // adLayout or the whole item), so fall back to multiple field names.
     const nameIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])?.map?.(c => c.id) ?? []
     const mediasIds = [...new Set(
       (camp.segments ?? []).flatMap(s =>
-        (s.medias ?? []).map(m => m.adLayout?.id ?? m.id)
+        (s.medias ?? []).map(m =>
+          m.adLayout?.id ?? m.adLayoutId ?? m.requestMediaId ?? m.requestMedia?.id ?? m.mediaId
+        )
       ).filter(Boolean)
     )]
     console.log('[reload] creative-names:', nameIds, '| segments[].medias IDs:', mediasIds,
       '| vendorApproved:', Object.fromEntries(Object.entries(vendorApprovedIds).map(([k,v]) => [k, v.size])))
     const allIds = nameIds.length ? nameIds : mediasIds
 
-    if (allIds.length) {
-      const libItems = creativeLib.status === 'fulfilled'
-        ? (creativeLib.value?.content ?? creativeLib.value ?? [])
-        : []
-      const statusMap = {}
-      for (const c of libItems) {
-        const raw = c?.state ?? c?.status ?? ''
-        if (raw === 'ACTIVE') statusMap[c.id] = 'APPROVED'
-        else if (raw === 'MODERATION' || raw === 'PREMODERATION') statusMap[c.id] = 'PENDING'
-        else if (raw === 'DECLINED' || raw === 'REJECTED') statusMap[c.id] = 'REJECTED'
-        else if (raw) statusMap[c.id] = raw
-      }
-      const ARCHIVED = new Set(['ARCHIVED', 'ARCHIVE'])
-      const ids = allIds.filter(id => !ARCHIVED.has(statusMap[id]))
-      draft = { ...draft, creativeIds: ids, creativeStatuses: statusMap, vendorApprovedIds }
-    } else {
-      draft = { ...draft, creativeIds: [], creativeStatuses: {}, vendorApprovedIds }
+    const libItems = creativeLib.status === 'fulfilled'
+      ? (creativeLib.value?.content ?? creativeLib.value ?? [])
+      : []
+    const statusMap = {}
+    for (const c of libItems) {
+      const raw = c?.state ?? c?.status ?? ''
+      if (raw === 'ACTIVE') statusMap[c.id] = 'APPROVED'
+      else if (raw === 'MODERATION' || raw === 'PREMODERATION') statusMap[c.id] = 'PENDING'
+      else if (raw === 'DECLINED' || raw === 'REJECTED') statusMap[c.id] = 'REJECTED'
+      else if (raw) statusMap[c.id] = raw
     }
+    const ARCHIVED = new Set(['ARCHIVED', 'ARCHIVE'])
+    const ids = allIds.filter(id => !ARCHIVED.has(statusMap[id]))
+
+    // If the API returned no IDs (backend omits non-approved mediaSegments), preserve
+    // whatever creativeIds are already in the draft.  This prevents a reload after save
+    // from wiping creatives that the backend hasn't yet moved to APPROVED state.
+    const finalCreativeIds = ids.length > 0 ? ids : (draft.creativeIds ?? [])
+
+    draft = { ...draft, creativeIds: finalCreativeIds, creativeStatuses: statusMap, vendorApprovedIds }
   }
 
   // Extract the most human-readable error message from an API error.
