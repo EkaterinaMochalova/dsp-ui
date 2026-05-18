@@ -264,8 +264,10 @@
   // Progress state shown as a floating badge while screens stream in
   let fetchedPages = 0
   let totalPages = 0
+  let screensLoading = false   // true from loadScreens() start until first page (or cache hit)
 
   async function loadScreens() {
+    screensLoading = true
     loading = false   // show the map container immediately — progress shown via badge
     loadingProgress = 0; error = ''
     fetchedPages = 0; totalPages = 0
@@ -280,6 +282,7 @@
     if (window._dspScreensCache?.[cacheKey]?.length > 0) {
       screens = window._dspScreensCache[cacheKey]
       totalLoaded = screens.length
+      screensLoading = false
       return
     }
 
@@ -291,6 +294,7 @@
         const qs = selectedCityIds.map(id => `cityIds=${id}`).join('&')
         const first = await api.inventories.listRaw(`enabled=true&${qs}&page=0&size=${PAGE}`)
         totalPages = first.totalPages ?? 1; fetchedPages = 1
+        screensLoading = false
         let items = [...(first.content ?? [])]
 
         for (let p = 1; p < totalPages; p++) {
@@ -312,6 +316,7 @@
         // ── No filter: stream all pages, show each batch on map ─────────
         const first = await api.inventories.list({ page: 0, size: PAGE })
         totalPages = first.totalPages ?? 1; fetchedPages = 1
+        screensLoading = false
         const partial = (first.content ?? []).map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
         screens = partial
         totalLoaded = first.totalElements ?? partial.length
@@ -331,6 +336,7 @@
         }
       }
     } catch (e) {
+      screensLoading = false
       if (screens.length === 0) error = 'Не удалось загрузить экраны'
       console.error('[loadScreens]', e)
     }
@@ -1120,7 +1126,11 @@
           </tr>
         </thead>
         <tbody>
-          {#if totalPages > 0 && fetchedPages < totalPages && tabRows.length === 0}
+          {#if screensLoading && tabRows.length === 0}
+            <tr><td colspan={colSpan} class="table-state-cell">
+              <div class="spinner"></div> Загрузка экранов…
+            </td></tr>
+          {:else if totalPages > 0 && fetchedPages < totalPages && tabRows.length === 0}
             <tr><td colspan={colSpan} class="table-state-cell">
               <div class="spinner"></div> Загрузка страницы {fetchedPages} из {totalPages}…
             </td></tr>
