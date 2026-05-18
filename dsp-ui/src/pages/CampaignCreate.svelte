@@ -350,6 +350,21 @@
     }
   }
 
+  // Extract the most human-readable error message from an API error.
+  // Prefers field-level messages, then global messages, then top-level message.
+  function extractApiError(e, fallback) {
+    if (!e) return fallback
+    if (e?.status === 403) return null  // caller handles 403 separately
+
+    const fieldMsgs  = (e?.data?.errors?.field  ?? []).map(f => f.message).filter(Boolean)
+    const globalMsgs = (e?.data?.errors?.global ?? []).map(g => g.message).filter(Boolean)
+    const allMsgs    = [...fieldMsgs, ...globalMsgs]
+
+    return allMsgs.length > 0
+      ? allMsgs.join(' ')
+      : e?.data?.message ?? e?.data?.error ?? (typeof e?.data === 'string' ? e.data : null) ?? e?.message ?? fallback
+  }
+
   async function saveCampaign() {
     if (saving) return
     if (!draft.name?.trim()) { saveError = 'Укажите название кампании'; return }
@@ -366,15 +381,9 @@
       goToStep('summary')
     } catch (e) {
       console.warn('[save] error:', JSON.stringify(e))
-      const status = e?.status
-      const msg = status === 403
+      saveError = e?.status === 403
         ? 'Нет прав для сохранения кампании (403). Проверьте права доступа.'
-        : e?.data?.message
-          ?? e?.data?.error
-          ?? (typeof e?.data === 'string' ? e.data : null)
-          ?? e?.message
-          ?? 'Не удалось сохранить кампанию'
-      saveError = msg
+        : extractApiError(e, 'Не удалось сохранить кампанию')
     } finally {
       saving = false
     }
@@ -415,18 +424,9 @@
       window.location.hash = '#/campaigns'
     } catch (e) {
       console.warn('[launch] error:', JSON.stringify(e))
-      const status = e?.status
-      // Extract the most useful message: prefer errors.global[0].message, then top-level message
-      const globalMsg = e?.data?.errors?.global?.[0]?.message
-      const msg = status === 403
+      saveError = e?.status === 403
         ? 'Нет прав для запуска кампании (403).'
-        : globalMsg
-          ?? e?.data?.message
-          ?? e?.data?.error
-          ?? (typeof e?.data === 'string' ? e.data : null)
-          ?? e?.message
-          ?? 'Не удалось запустить кампанию'
-      saveError = msg
+        : extractApiError(e, 'Не удалось запустить кампанию')
     } finally {
       launching = false
     }
