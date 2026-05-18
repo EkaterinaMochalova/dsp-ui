@@ -630,6 +630,22 @@ tbody td {
   flex: 1;
 }
 
+.creation-title-input {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  border: none;
+  background: none;
+  outline: none;
+  padding: 4px 6px;
+  border-radius: 5px;
+  min-width: 0;
+  transition: background .15s;
+}
+.creation-title-input:hover { background: var(--chip-bg); }
+.creation-title-input:focus { background: var(--chip-bg); box-shadow: 0 0 0 2px var(--accent-light, #DBEAFE); }
+
 .creation-topbar-action {
   display: flex;
   align-items: center;
@@ -896,6 +912,22 @@ tbody td {
 }
 .btn-launch.ready { opacity: 1; cursor: pointer; }
 .btn-launch.ready:hover { background: #1a3a6b; }
+
+.btn-pause {
+  flex: 1;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: #D97706;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .1s;
+}
+.btn-pause:hover:not(:disabled) { background: #B45309; }
+.btn-pause:disabled { opacity: .6; cursor: default; }
 
 /* Step content area */
 .step-content {

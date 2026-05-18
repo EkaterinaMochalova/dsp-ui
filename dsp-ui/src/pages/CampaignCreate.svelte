@@ -396,6 +396,26 @@
   }
 
   let launching = false
+  let pausing   = false
+
+  async function pauseCampaign() {
+    if (pausing || saving) return
+    pausing = true
+    saveError = ''
+    try {
+      const id = draft.id != null ? Number(draft.id) : null
+      if (!id) { saveError = 'Сохраните кампанию перед паузой'; return }
+      await api.campaigns.setState(id, 'PAUSED')
+      draft = { ...draft, state: 'PAUSED' }
+    } catch (e) {
+      console.warn('[pause] error:', JSON.stringify(e))
+      saveError = e?.status === 403
+        ? 'Нет прав для паузы кампании (403).'
+        : extractApiError(e, 'Не удалось приостановить кампанию')
+    } finally {
+      pausing = false
+    }
+  }
 
   async function launchCampaign() {
     if (saving || launching) return
@@ -776,12 +796,18 @@
       <div class="save-error">{saveError}</div>
     {/if}
     <div class="wizard-actions">
-      <button class="btn-save" on:click={saveCampaign} disabled={saving}>
+      <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing}>
         {#if saving}Сохранение…{:else}Сохранить{/if}
       </button>
-      <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1} on:click={launchCampaign} disabled={saving || launching}>
-        {#if launching}Запуск…{:else}Запустить{/if}
-      </button>
+      {#if draft.state === 'ACTIVE'}
+        <button class="btn-pause" on:click={pauseCampaign} disabled={pausing || saving}>
+          {#if pausing}Пауза…{:else}Пауза{/if}
+        </button>
+      {:else}
+        <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1} on:click={launchCampaign} disabled={saving || launching || pausing}>
+          {#if launching}Запуск…{:else}Запустить{/if}
+        </button>
+      {/if}
     </div>
   </div>
 
