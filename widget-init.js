@@ -2170,11 +2170,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     });
 
     // Per-city budget
-    let _perCityMode = "abs"; // "abs" | "pct"
+    let _perCityMode = window._perCityMode || "abs"; // "abs" | "pct"
     let _lastPerCityRegionsSig = "";
 
     function setPerCityMode(mode) {
       _perCityMode = mode;
+      window._perCityMode = mode;
       const btnAbs = el("per-city-mode-abs");
       const btnPct = el("per-city-mode-pct");
       if (btnAbs) {
