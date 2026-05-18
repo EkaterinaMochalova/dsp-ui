@@ -402,17 +402,34 @@
       return
     }
     const statuses = draft.creativeStatuses ?? {}
-    const hasActive = creativeIds.some(id => statuses[id] === 'APPROVED')
+
+    // Immediately block only if every creative is rejected
+    const allRejected = creativeIds.every(id => statuses[id] === 'REJECTED')
+    if (allRejected) {
+      saveError = 'Все рекламные материалы отклонены. Загрузите новые перед запуском.'
+      return
+    }
+
+    // A campaign can launch if at least one vendor has approved any creative.
+    // Check vendorApprovedIds first (already loaded for existing campaigns).
+    // For new campaigns where it isn't populated yet, fetch segments on-demand.
+    const vendorMaps = Object.values(draft.vendorApprovedIds ?? {})
+    let hasVendorApproval = vendorMaps.some(m => creativeIds.some(id => m.has(id)))
+
+    if (!hasVendorApproval) {
+      // Either no vendor data (new campaign) or truly none approved — fetch segments to confirm
+      try {
+        const segResults = await Promise.allSettled(creativeIds.map(id => api.creatives.segments(id)))
+        hasVendorApproval = segResults.some(r =>
+          r.status === 'fulfilled' &&
+          (r.value?.content ?? []).some(s => s.state === 'APPROVED')
+        )
+      } catch { /* non-fatal — let the API decide */ }
+    }
+
+    const hasActive = creativeIds.some(id => statuses[id] === 'APPROVED') || hasVendorApproval
     if (!hasActive) {
-      const allPending  = creativeIds.every(id => statuses[id] === 'PENDING')
-      const allRejected = creativeIds.every(id => statuses[id] === 'REJECTED')
-      if (allRejected) {
-        saveError = 'Все рекламные материалы отклонены. Загрузите новые перед запуском.'
-      } else if (allPending) {
-        saveError = 'Рекламные материалы ещё на модерации. Дождитесь активации и попробуйте снова.'
-      } else {
-        saveError = 'Нет ни одного активного рекламного материала. Дождитесь модерации или добавьте согласованный креатив.'
-      }
+      saveError = 'Рекламные материалы ещё на модерации. Дождитесь согласования хотя бы одним площадочником и попробуйте снова.'
       return
     }
 
