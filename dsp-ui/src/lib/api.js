@@ -178,6 +178,38 @@ export const api = {
     },
   },
 
+  stats: {
+    // GET /clients/campaigns/{id}/impression-chart-stats/impressions
+    // Params: chartGroupType=BY_HOURS|BY_DAYS, from/to (ms timestamps), avgStats=true
+    // Returns: object keyed by datetime string → { date, value, chargedValue?, otsDmp? }
+    chart(id, params = {}) {
+      const q = new URLSearchParams()
+      for (const [k, v] of Object.entries(params)) {
+        if (v != null && v !== '') q.set(k, String(v))
+      }
+      const qs = q.toString()
+      return request(`/clients/campaigns/${id}/impression-chart-stats/impressions${qs ? '?' + qs : ''}`)
+    },
+    // GET /clients/campaigns/{id}/impressions  (paginated impression log)
+    list(id, params = {}) {
+      const q = new URLSearchParams()
+      for (const [k, v] of Object.entries(params)) {
+        if (v != null && v !== '') q.set(k, String(v))
+      }
+      return request(`/clients/campaigns/${id}/impressions?${q}`)
+    },
+    // GET /clients/campaigns/{id}/impression-inventory-stats
+    // Returns array of per-inventory stats with location for map view
+    inventoryStats(id, params = {}) {
+      const q = new URLSearchParams()
+      for (const [k, v] of Object.entries(params)) {
+        if (v != null && v !== '') q.set(k, String(v))
+      }
+      const qs = q.toString()
+      return request(`/clients/campaigns/${id}/impression-inventory-stats${qs ? '?' + qs : ''}`)
+    },
+  },
+
   inventories: {
     list(params = {}) {
       const q = new URLSearchParams({ enabled: 'true', ...params })
