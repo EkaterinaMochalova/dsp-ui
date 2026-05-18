@@ -85,19 +85,21 @@
 
   // ── Status config ─────────────────────────────────────────────────────
   const STATUS = {
-    NEW:                { label: 'Новый',            cls: 'st-blue'   },
-    APPROVED:           { label: 'Согласован',       cls: 'st-green'  },
-    ACTIVE:             { label: 'Согласован',       cls: 'st-green'  },
-    PENDING:            { label: 'На модерации',     cls: 'st-yellow' },
-    MODERATION:         { label: 'На модерации',     cls: 'st-yellow' },
-    PREMODERATION:      { label: 'На модерации',     cls: 'st-yellow' },
-    REJECTED:           { label: 'Отклонён',         cls: 'st-red'    },
-    DECLINED:           { label: 'Отклонён',         cls: 'st-red'    },
-    SENDING_ERROR:      { label: 'Ошибка отправки',  cls: 'st-red'    },
-    REACTIVATION_ERROR: { label: 'Ошибка активации', cls: 'st-red'    },
-    ERROR:              { label: 'Ошибка',           cls: 'st-red'    },
-    ARCHIVED:           { label: 'Заархивирован',    cls: 'st-grey'   },
-    ARCHIVE:            { label: 'Заархивирован',    cls: 'st-grey'   },
+    NEW:                { label: 'Новый',                    cls: 'st-blue'   },
+    APPROVED:           { label: 'Согласован',               cls: 'st-green'  },
+    ACTIVE:             { label: 'Согласован',               cls: 'st-green'  },
+    PENDING:            { label: 'На модерации',             cls: 'st-yellow' },
+    MODERATION:         { label: 'На модерации',             cls: 'st-yellow' },
+    PREMODERATION:      { label: 'На модерации',             cls: 'st-yellow' },
+    SENT:               { label: 'Отправлен',                cls: 'st-yellow' },
+    SENDING:            { label: 'Отправляется',             cls: 'st-yellow' },
+    REJECTED:           { label: 'Отклонён',                 cls: 'st-red'    },
+    DECLINED:           { label: 'Отклонён',                 cls: 'st-red'    },
+    SENDING_ERROR:      { label: 'Ошибка отправки',          cls: 'st-red'    },
+    REACTIVATION_ERROR: { label: 'Ошибка активации',         cls: 'st-red'    },
+    ERROR:              { label: 'Ошибка',                   cls: 'st-red'    },
+    ARCHIVED:           { label: 'Заархивирован',            cls: 'st-grey'   },
+    ARCHIVE:            { label: 'Заархивирован',            cls: 'st-grey'   },
   }
 
   const FILTER_TABS = [
@@ -112,6 +114,7 @@
     if (!raw) return ''
     if (raw === 'ACTIVE')                                          return 'APPROVED'
     if (raw === 'MODERATION' || raw === 'PREMODERATION')           return 'PENDING'
+    if (raw === 'SENT' || raw === 'SENDING')                       return 'PENDING'
     if (raw === 'DECLINED')                                        return 'REJECTED'
     if (raw === 'SENDING_ERROR' || raw === 'REACTIVATION_ERROR' || raw === 'ERROR') return 'ERROR'
     if (raw === 'ARCHIVE')                                         return 'ARCHIVED'
