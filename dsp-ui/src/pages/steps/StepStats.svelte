@@ -26,6 +26,10 @@
   let impLoading = false
   let impError = ''
 
+  // Filters
+  let filterStatus = ''    // '' | 'SUCCESS' | 'FAILED'
+  let filterFormat = ''    // '' | 'BILLBOARD' | 'CITYFORMAT' | etc.
+
   // ── Chart tab ─────────────────────────────────────────────────────────────
   let chartGroupType = 'BY_HOURS'
   let chartMetric = 'value'       // 'value' | 'chargedValue' | 'otsDmp'
@@ -94,17 +98,17 @@
     if (map) { map.remove(); map = null }
   })
 
-  // ── KPI ───────────────────────────────────────────────────────────────────
+  // ── KPI — aggregate from inventory-stats (reliable per-inventory breakdown) ─
   async function loadKpi() {
     kpiLoading = true
     try {
-      const rows = await api.impressions.singleCampaignStats(campId)
-      if (!Array.isArray(rows)) { kpiLoading = false; return }
+      const rows = await api.stats.inventoryStats(campId)
+      if (!Array.isArray(rows) || !rows.length) { kpiLoading = false; return }
       let showed = 0, ots = 0, budget = 0, cpmSum = 0, cpmCount = 0
       for (const r of rows) {
-        showed  += r.totalShowed ?? r.totalCountShowed ?? 0
+        showed  += r.totalShowed ?? 0
         ots     += r.totalOpOts ?? r.totalOts ?? 0
-        budget  += r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0
+        budget  += r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? r.showPrice ?? 0
         if (r.cpm) { cpmSum += r.cpm; cpmCount++ }
       }
       kpi = { showed, ots, budget, cpm: cpmCount ? cpmSum / cpmCount : 0 }
@@ -117,7 +121,10 @@
     if (!campId) return
     impLoading = true; impError = ''
     try {
-      const data = await api.stats.list(campId, { page, size: impSize, sort: 'showTime,desc' })
+      const params = { page, size: impSize, sort: 'showTime,desc' }
+      if (filterStatus) params.bidRequestState = filterStatus
+      if (filterFormat) params.inventoryFormat = filterFormat
+      const data = await api.stats.list(campId, params)
       impRows       = data.content ?? []
       impTotal      = data.totalElements ?? 0
       impTotalPages = data.totalPages ?? 1
@@ -125,6 +132,12 @@
     } catch { impError = 'Не удалось загрузить показы' }
     impLoading = false
   }
+
+  // Reset to page 0 whenever a filter changes
+  function applyFilter() { loadImpressions(0) }
+
+  // Collect unique formats from loaded rows for the format filter
+  $: formats = [...new Set(impRows.map(r => r.inventoryFormat).filter(Boolean))]
 
   // ── Chart ─────────────────────────────────────────────────────────────────
   async function loadChart() {
@@ -265,7 +278,7 @@
   }
 </script>
 
-<div class="step-content">
+<div class="step-content stats-root">
   <h1 class="step-title">Статистика</h1>
 
   <!-- ── KPI cards ─────────────────────────────────────────────────────────── -->
@@ -321,13 +334,42 @@
 
     <!-- ── TABLE TAB ─────────────────────────────────────────────────────────── -->
     {#if activeTab === 'table'}
+      <!-- Filter bar -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <span class="filter-label">Статус</span>
+          <div class="filter-pills">
+            <button class="filter-pill" class:active={filterStatus === ''}        on:click={() => { filterStatus = '';         applyFilter() }}>Все</button>
+            <button class="filter-pill" class:active={filterStatus === 'SUCCESS'} on:click={() => { filterStatus = 'SUCCESS';  applyFilter() }}>Показан</button>
+            <button class="filter-pill" class:active={filterStatus === 'FAILED'}  on:click={() => { filterStatus = 'FAILED';   applyFilter() }}>Не показан</button>
+          </div>
+        </div>
+        {#if formats.length > 1}
+          <div class="filter-group">
+            <span class="filter-label">Формат</span>
+            <div class="filter-pills">
+              <button class="filter-pill" class:active={filterFormat === ''} on:click={() => { filterFormat = ''; applyFilter() }}>Все</button>
+              {#each formats as f}
+                <button class="filter-pill" class:active={filterFormat === f} on:click={() => { filterFormat = f; applyFilter() }}>{f}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+        <div style="flex:1"></div>
+        {#if impTotal > 0}
+          <span class="filter-count">{fmt(impTotal)} записей</span>
+        {/if}
+      </div>
+
       <div class="step-card tab-panel" style="padding:0;overflow:hidden">
         {#if impLoading && impRows.length === 0}
           <div class="panel-loading"><div class="spinner"></div> Загрузка…</div>
         {:else if impError}
           <div class="panel-error">{impError}</div>
         {:else if impRows.length === 0}
-          <div class="panel-empty">Показы ещё не зафиксированы.</div>
+          <div class="panel-empty">
+            {filterStatus || filterFormat ? 'Нет записей с выбранными фильтрами.' : 'Показы ещё не зафиксированы.'}
+          </div>
         {:else}
           <div class="tbl-wrap">
             <table class="tbl">
@@ -339,13 +381,14 @@
                   <th>Формат</th>
                   <th>Креатив</th>
                   <th>Статус</th>
+                  <th>Причина отказа</th>
                   <th class="num">OTS</th>
                   <th class="num">Стоимость</th>
                 </tr>
               </thead>
               <tbody>
                 {#each impRows as row (row.id)}
-                  <tr>
+                  <tr class:row-failed={row.bidRequestState !== 'SUCCESS'}>
                     <td class="mono">{fmtMs(row.showTime)}</td>
                     <td class="mono">{fmtLocalTime(row.inventoryShowTime)}</td>
                     <td>
@@ -360,9 +403,13 @@
                     </td>
                     <td>
                       <span class="badge {impStatus(row).cls}">{impStatus(row).label}</span>
-                      {#if row.bidRequestState !== 'SUCCESS' && row.failureReasonType}
-                        <span class="reason" title={row.failureReasonMessage ?? ''}>{row.failureReasonType}</span>
-                      {/if}
+                    </td>
+                    <td class="dim reason-cell">
+                      {#if row.bidRequestState !== 'SUCCESS'}
+                        <span title={row.failureReasonMessage ?? ''}>
+                          {row.failureReasonCodeName ?? row.failureReasonType ?? '—'}
+                        </span>
+                      {:else}—{/if}
                     </td>
                     <td class="num mono">{fmt(row.ots ?? row.opOts)}</td>
                     <td class="num mono">{row.chargedPrice != null ? formatMoney(row.chargedPrice) : '—'}</td>
@@ -377,9 +424,9 @@
               {impPage * impSize + 1}–{Math.min((impPage + 1) * impSize, impTotal)} из {fmt(impTotal)}
             </span>
             <div class="pg-btns">
-              <button class="pg-btn" disabled={impPage === 0} on:click={() => loadImpressions(impPage - 1)}>‹ Назад</button>
+              <button class="pg-btn" disabled={impPage === 0 || impLoading} on:click={() => loadImpressions(impPage - 1)}>‹ Назад</button>
               <span class="pg-cur">{impPage + 1} / {impTotalPages}</span>
-              <button class="pg-btn" disabled={impPage >= impTotalPages - 1} on:click={() => loadImpressions(impPage + 1)}>Далее ›</button>
+              <button class="pg-btn" disabled={impPage >= impTotalPages - 1 || impLoading} on:click={() => loadImpressions(impPage + 1)}>Далее ›</button>
             </div>
           </div>
         {/if}
@@ -524,6 +571,58 @@
 </div>
 
 <style>
+  /* ── Full-width overrides (stats page breaks the 600px wizard constraint) ── */
+  :global(.stats-root.step-content) { align-items: stretch !important; }
+  :global(.stats-root .step-card)   { max-width: none !important; }
+  :global(.stats-root .step-title)  { max-width: none !important; text-align: left !important; }
+  :global(.stats-root .step-nav)    { max-width: none !important; }
+
+  /* ── Filter bar ──────────────────────────────────────────────────────────── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 10px 0 12px;
+  }
+  .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .filter-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .filter-pills { display: flex; gap: 4px; }
+  .filter-pill {
+    padding: 4px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .12s;
+    white-space: nowrap;
+  }
+  .filter-pill.active {
+    border-color: var(--navy);
+    background: var(--navy);
+    color: #fff;
+    font-weight: 600;
+  }
+  .filter-pill:hover:not(.active) { border-color: #9ca3af; color: var(--text); }
+  .filter-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
   /* ── KPI cards ────────────────────────────────────────────────────────────── */
   .kpi-row {
     display: flex;
@@ -666,6 +765,11 @@
 
   .inv-name { display: block; font-weight: 500; font-size: 12px; }
   .inv-addr { display: block; font-size: 11px; color: var(--text-muted); }
+
+  .reason-cell { font-size: 11.5px; max-width: 180px; }
+  .reason-cell span { cursor: help; }
+  .tbl tr.row-failed td { background: #fef9f9; }
+  .tbl tr.row-failed:hover td { background: #fee2e2; }
 
   .badge {
     display: inline-block;
