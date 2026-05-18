@@ -385,6 +385,28 @@
   async function launchCampaign() {
     if (saving || launching) return
     if (!draft.name?.trim()) { saveError = 'Укажите название кампании'; return }
+
+    // Pre-validate creatives before hitting the API
+    const creativeIds = draft.creativeIds ?? []
+    if (creativeIds.length === 0) {
+      saveError = 'Добавьте хотя бы один рекламный материал перед запуском.'
+      return
+    }
+    const statuses = draft.creativeStatuses ?? {}
+    const hasActive = creativeIds.some(id => statuses[id] === 'APPROVED')
+    if (!hasActive) {
+      const allPending  = creativeIds.every(id => statuses[id] === 'PENDING')
+      const allRejected = creativeIds.every(id => statuses[id] === 'REJECTED')
+      if (allRejected) {
+        saveError = 'Все рекламные материалы отклонены. Загрузите новые перед запуском.'
+      } else if (allPending) {
+        saveError = 'Рекламные материалы ещё на модерации. Дождитесь активации и попробуйте снова.'
+      } else {
+        saveError = 'Нет ни одного активного рекламного материала. Дождитесь модерации или добавьте согласованный креатив.'
+      }
+      return
+    }
+
     launching = true
     saveError = ''
     try {
