@@ -703,7 +703,11 @@
   <!-- Wizard left panel -->
   <div class="wizard-panel">
     <div class="wizard-badges">
-      <span class="wizard-draft-badge">Черновик</span>
+      {#if draft.state}
+        <StatusBadge state={draft.state} />
+      {:else}
+        <span class="wizard-draft-badge">Черновик</span>
+      {/if}
       <span class="wizard-type-badge">{typeBadgeLabel}</span>
     </div>
 
