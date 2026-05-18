@@ -803,7 +803,7 @@
       <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing}>
         {#if saving}Сохранение…{:else}Сохранить{/if}
       </button>
-      {#if draft.state === 'ACTIVE'}
+      {#if ['ACTIVE','ACTIVATED','RESERVED','BOOKED'].includes(draft.state)}
         <button class="btn-pause" on:click={pauseCampaign} disabled={pausing || saving}>
           {#if pausing}Пауза…{:else}Пауза{/if}
         </button>
