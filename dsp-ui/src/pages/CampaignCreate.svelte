@@ -24,6 +24,10 @@
   // Raw API response for the existing campaign — used as the base for PUT (read-modify-write)
   let rawCamp = null
 
+  const DEFAULT_PHOTO_SETTINGS = {
+    saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
+  }
+
   // Campaign draft state
   let draft = {
     // Seed id/state from props immediately so child steps (e.g. StepStats) can start
@@ -57,14 +61,7 @@
     screenIds: [],
     creativeIds: [],
     creativeTargeting: {},
-    photoReports: {
-      saveAll: false,
-      selectByCountry: false,
-      period: 'campaign',
-      days: 5,
-      showSummary: false,
-      showSchedule: false,
-    },
+    photoReportSettings: { ...DEFAULT_PHOTO_SETTINGS },
     analytics: {
       counters: [],
       offlineBlocks: [],
@@ -81,9 +78,7 @@
     return d.includes('T') ? d : d + 'T00:00:00'
   }
 
-  const DEFAULT_PHOTO_SETTINGS = {
-    saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
-  }
+
 
   function buildSegments() {
     // The PUT endpoint uses approval record IDs in segments[].mediaSegments[].id — NOT the
@@ -144,7 +139,7 @@
           bid:          Number(draft.screenBids?.[inv.id]) || (inv.bid ?? 0),
         })),
         mediaSegments: buildMediaSegments(seg.medias, seg.displayOwner?.id ?? null),
-        photoReportSettings: seg.photoReportSettings ?? rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
+        photoReportSettings: draft.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       }))
     }
 
@@ -174,7 +169,7 @@
         bid: Number(draft.screenBids?.[id]) || 0,
       })),
       mediaSegments: buildMediaSegments([], ownerId),
-      photoReportSettings: rawCamp?.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
+      photoReportSettings: draft.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
     }))
   }
 
@@ -215,7 +210,7 @@
       impressionInterval:  rawCamp?.impressionInterval  ?? null,
       poi:                 rawCamp?.poi                 ?? null,
       targetAudience:      rawCamp?.targetAudience      ?? null,
-      photoReportSettings: rawCamp?.photoReportSettings ?? null,
+      photoReportSettings: draft.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       strategy:            rawCamp?.strategy            ?? 'STANDARD',
       strategyLimitType:   rawCamp?.strategyLimitType   ?? (draft.bidType === 'OTS' ? 'BY_OTS' : 'BY_PLAYS'),
       segments,
@@ -633,9 +628,12 @@
           otsLimitHour:     String(camp.maxHourlyOtsCount || camp.otsLimitHour   || ''),
           buyerMarkup:      resolvedMarkup,
           customBudgetTotal: resolvedBudget > 0 ? String(resolvedBudget) : '',
-          screenIds:        resolvedScreenIds.length ? resolvedScreenIds : draft.screenIds,
-          cities:           resolvedCities,
-          cityIds:          resolvedCityIds,
+          screenIds:           resolvedScreenIds.length ? resolvedScreenIds : draft.screenIds,
+          cities:              resolvedCities,
+          cityIds:             resolvedCityIds,
+          photoReportSettings: camp.photoReportSettings
+            ? { ...DEFAULT_PHOTO_SETTINGS, ...camp.photoReportSettings }
+            : { ...DEFAULT_PHOTO_SETTINGS },
         }
 
         const isTerminal = ['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(camp.state)

@@ -484,6 +484,7 @@
             <div class="cr-meta-label" style="margin-top:10px">Длительность</div>
             <div class="cr-meta-val">{durationLabel(activeCreative)}</div>
           </div>
+          {#if false}<!-- Дополнительные документы hidden for now -->
           <div class="cr-meta-block">
             <div class="cr-meta-label">Дополнительные документы</div>
             <div class="cr-docs">
@@ -501,6 +502,7 @@
               </button>
             </div>
           </div>
+          {/if}
         </div>
 
         <!-- Tabs -->
