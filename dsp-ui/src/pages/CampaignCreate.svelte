@@ -287,7 +287,13 @@
     const camp = preloadedCamp ?? await api.campaigns.get(id)
     rawCamp = camp
     if (!preloadedCamp) {
-      draft = { ...draft, id: camp.id ?? id, state: camp.state ?? draft.state }
+      // Sync key fields from a fresh GET (post-save reload path)
+      draft = {
+        ...draft,
+        id:    camp.id    ?? id,
+        state: camp.state ?? draft.state,
+        name:  camp.name  || draft.name,   // || so empty API string falls back to local
+      }
     }
 
     // Unique displayOwner IDs across all segments — needed for per-vendor creative filtering
@@ -863,7 +869,8 @@
       <input
         class="creation-title-input"
         type="text"
-        placeholder="Название кампании"
+        placeholder={campLoading ? 'Загрузка…' : 'Название кампании'}
+        disabled={campLoading}
         bind:value={draft.name}
       />
       {#if campaignId && draft.state}
