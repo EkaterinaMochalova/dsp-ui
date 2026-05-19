@@ -82,7 +82,11 @@
 
   // ── Chart tab ─────────────────────────────────────────────────────────────
   let chartGroupType = 'BY_HOURS'
-  let chartMetric = 'value'       // 'value' | 'chargedValue' | 'otsDmp'
+  // chartMetric drives which endpoint is called and how the Y-axis is labelled
+  // 'impressions' → /impression-chart-stats/impressions
+  // 'cost'        → /impression-chart-stats/cost   (avgStats=true)
+  // 'ots'         → /impression-chart-stats/ots    (avgStats=true)
+  let chartMetric = 'impressions'
   let chartData = {}
   let chartLoading = false
   let chartError = ''
@@ -238,17 +242,30 @@
   }
 
   // ── Chart ─────────────────────────────────────────────────────────────────
+  // Map UI metric key → API endpoint suffix and whether avgStats is needed
+  const METRICS = [
+    { key: 'impressions', label: 'Показы',    color: '#6366f1', avgStats: false },
+    { key: 'cost',        label: 'Стоимость', color: '#10b981', avgStats: true  },
+    { key: 'ots',         label: 'OTS',       color: '#0ea5e9', avgStats: true  },
+  ]
+  $: activeMetric = METRICS.find(m => m.key === chartMetric) ?? METRICS[0]
+
   async function loadChart() {
     if (!campId) return
     chartLoading = true; chartError = ''
     try {
-      const params = { chartGroupType, avgStats: true }
+      const metric = activeMetric
+      const params = { chartGroupType }
+      if (metric.avgStats) params.avgStats = true
       const f = dateToMs(chartFrom)
       const t = dateToMs(chartTo)
-      if (f) params.from = f
-      if (t) params.to   = t + 86399999   // end of day
-      chartData = await api.stats.chart(campId, params) ?? {}
-    } catch { chartError = 'Не удалось загрузить данные графика'; chartData = {} }
+      if (f) params.start = f
+      if (t) params.end   = t + 86399999   // end of day (ms)
+      chartData = await api.stats.chart(campId, metric.key, params) ?? {}
+    } catch (e) {
+      chartError = 'Не удалось загрузить данные графика'
+      chartData = {}
+    }
     chartLoading = false
   }
 
@@ -276,15 +293,9 @@
   const CH = SVG_H - PAD.t - PAD.b
 
   $: chartPoints = Object.values(chartData).sort((a, b) => a.date < b.date ? -1 : 1)
-  $: chartVals   = chartPoints.map(p => Number(p[chartMetric] ?? 0))
+  // Each endpoint returns the metric value in the 'value' field
+  $: chartVals   = chartPoints.map(p => Number(p.value ?? 0))
   $: chartMax    = Math.max(...chartVals, 1)
-
-  const METRICS = [
-    { key: 'value',        label: 'Показы',     color: '#6366f1' },
-    { key: 'chargedValue', label: 'Стоимость',  color: '#10b981' },
-    { key: 'otsDmp',       label: 'OTS',        color: '#0ea5e9' },
-  ]
-  $: activeMetric = METRICS.find(m => m.key === chartMetric) ?? METRICS[0]
 
   function ptX(i, total) { return PAD.l + (i / Math.max(total - 1, 1)) * CW }
   function ptY(v)         { return PAD.t + (1 - v / chartMax) * CH }
@@ -322,7 +333,7 @@
   }
 
   function fmtYVal(v) {
-    if (chartMetric === 'chargedValue') return formatMoney(v).replace(' ₽', '')
+    if (chartMetric === 'cost') return formatMoney(v).replace(' ₽', '')
     if (v >= 1000) return (v / 1000).toFixed(1) + 'k'
     return fmt(v)
   }
@@ -603,7 +614,7 @@
                 class="metric-pill"
                 class:active={chartMetric === m.key}
                 style="--pill-color:{m.color}"
-                on:click={() => { chartMetric = m.key }}
+                on:click={() => { chartMetric = m.key; chartData = {}; loadChart() }}
               >{m.label}</button>
             {/each}
           </div>
@@ -680,7 +691,7 @@
             <div class="cs-item">
               <span class="cs-label">Всего за период</span>
               <span class="cs-val" style="color:{activeMetric.color}">
-                {#if chartMetric === 'chargedValue'}
+                {#if chartMetric === 'cost'}
                   {formatMoney(chartVals.reduce((s, v) => s + v, 0))}
                 {:else}
                   {fmt(chartVals.reduce((s, v) => s + v, 0))}
@@ -690,7 +701,7 @@
             <div class="cs-item">
               <span class="cs-label">Максимум</span>
               <span class="cs-val">
-                {#if chartMetric === 'chargedValue'}{formatMoney(chartMax)}{:else}{fmt(chartMax)}{/if}
+                {#if chartMetric === 'cost'}{formatMoney(chartMax)}{:else}{fmt(chartMax)}{/if}
               </span>
             </div>
             <div class="cs-item">

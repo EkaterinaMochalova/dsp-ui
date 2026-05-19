@@ -179,16 +179,26 @@ export const api = {
   },
 
   stats: {
-    // GET /clients/campaigns/{id}/impression-chart-stats/impressions
-    // Params: chartGroupType=BY_HOURS|BY_DAYS, from/to (ms timestamps), avgStats=true
-    // Returns: object keyed by datetime string → { date, value, chargedValue?, otsDmp? }
-    chart(id, params = {}) {
-      const q = new URLSearchParams()
-      for (const [k, v] of Object.entries(params)) {
-        if (v != null && v !== '') q.set(k, String(v))
+    // GET /clients/campaigns/{id}/impression-chart-stats/{metric}
+    // metric: 'impressions' | 'ots' | 'cost' | 'cpm'
+    // Required params: chartType=impressions, start/end (ms timestamps), chartGroupType=BY_HOURS|BY_DAYS
+    // avgStats=true required for ots and cost endpoints
+    // Returns: object keyed by datetime string → { date, value, ... }
+    chart(id, metric = 'impressions', params = {}) {
+      const base = {
+        chartType: 'impressions',
+        campaignIds: '',
+        cities: '',
+        displayOwners: '',
+        formats: '',
+        creatives: '',
       }
-      const qs = q.toString()
-      return request(`/clients/campaigns/${id}/impression-chart-stats/impressions${qs ? '?' + qs : ''}`)
+      const q = new URLSearchParams()
+      // base defaults first, then caller overrides
+      for (const [k, v] of Object.entries({ ...base, ...params })) {
+        q.set(k, v != null ? String(v) : '')
+      }
+      return request(`/clients/campaigns/${id}/impression-chart-stats/${metric}?${q}`)
     },
     // GET /clients/campaigns/{id}/impressions  (paginated impression log)
     list(id, params = {}) {
