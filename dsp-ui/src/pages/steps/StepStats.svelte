@@ -134,33 +134,64 @@
   }
 
   // ── Table ─────────────────────────────────────────────────────────────────
-  // Load a server page. When a filter is active we fetch a large batch so the
-  // client-side filter has plenty of rows to work with.
+  // Normal mode: load one server page (SRV_NORMAL rows).
+  // Filter mode: fetch ALL pages in parallel and concatenate — ensures filtered
+  // results span the entire dataset, not just the first batch.
   async function loadImpressions(page) {
     if (!campId) return
     impLoading = true; impError = ''
     try {
-      const hasFilter = !!(filterStatus || filterFormat)
-      const size = hasFilter ? SRV_FILTER : SRV_NORMAL
-      const data  = await api.stats.list(campId, { page, size, sort: 'showTime,desc' })
+      const data = await api.stats.list(campId, { page, size: SRV_NORMAL, sort: 'showTime,desc' })
       allRows  = data.content ?? []
       srvTotal = data.totalElements ?? 0
       srvPages = data.totalPages ?? 1
       srvPage  = page
-      viewPage = 0   // reset client view whenever we load a new server page
+      viewPage = 0
     } catch { impError = 'Не удалось загрузить показы' }
     impLoading = false
   }
 
-  // When filter changes: keep current server batch, just reset the view page.
-  // If the batch was loaded without a filter (small size), reload with larger batch.
+  // Load ALL server pages in parallel and concatenate — used when a filter is active
+  // so client-side filtering covers the full dataset (e.g. 6 successes spread across
+  // 1541 total rows that span multiple pages).
+  async function loadAllForFilter() {
+    if (!campId) return
+    impLoading = true; impError = ''
+    try {
+      // Page 0 first so we know totalPages
+      const first = await api.stats.list(campId, { page: 0, size: SRV_FILTER, sort: 'showTime,desc' })
+      const total = first.totalElements ?? 0
+      const pages = first.totalPages ?? 1
+      let rows = first.content ?? []
+
+      if (pages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: pages - 1 }, (_, i) =>
+            api.stats.list(campId, { page: i + 1, size: SRV_FILTER, sort: 'showTime,desc' })
+              .then(d => d.content ?? []).catch(() => [])
+          )
+        )
+        rows = [...rows, ...rest.flat()]
+      }
+
+      allRows  = rows
+      srvTotal = total
+      srvPages = 1     // all data is now local, no further server paging needed
+      srvPage  = 0
+      viewPage = 0
+    } catch { impError = 'Не удалось загрузить показы' }
+    impLoading = false
+  }
+
   function applyFilter() {
     viewPage = 0
-    const batchIsTooSmall = allRows.length < SRV_FILTER && srvTotal > SRV_NORMAL
-    if ((filterStatus || filterFormat) && batchIsTooSmall) {
-      loadImpressions(0)   // re-fetch with large batch
+    if (filterStatus || filterFormat) {
+      // Need the full dataset for accurate client-side filtering
+      loadAllForFilter()
+    } else {
+      // Back to "no filter" — reload normal first page
+      loadImpressions(0)
     }
-    // Otherwise: reactive $: filteredRows re-computes automatically
   }
 
   // Collect unique formats from loaded rows for the format filter pill list
