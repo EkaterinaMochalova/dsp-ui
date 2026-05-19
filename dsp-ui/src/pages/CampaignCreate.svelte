@@ -641,11 +641,19 @@
         try { await reloadCampaign(campaignId, camp) } catch { /* non-fatal */ }
         // Mark all steps done → left sidebar shows checkmarks
         for (const s of STEPS) completedSteps = { ...completedSteps, [s.id]: true }
+
+        // Terminal campaigns open directly on the Stats step
+        if (['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(camp.state)) {
+          goToStep('stats')
+        }
       } catch (e) {
         console.warn('Failed to load campaign', e)
       }
     }
   })
+
+  const TERMINAL_STATES = ['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED']
+  $: isReadonly = TERMINAL_STATES.includes(draft.state)
 
   function goToStep(id) { currentStep = id; if (id !== 'screens') screensView = 'selection' }
 
@@ -761,7 +769,9 @@
     <div class="wizard-steps">
       {#each stepRows as step (step.id)}
         <div class="wizard-step">
-          <button class="wizard-step-header" on:click={() => goToStep(step.id)}>
+          <button class="wizard-step-header"
+            class:readonly-step={isReadonly && step.id !== 'stats'}
+            on:click={() => { if (!isReadonly || step.id === 'stats') goToStep(step.id) }}>
             {#if step.status === 'done'}
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="flex-shrink:0;margin-top:1px">
                 <circle cx="9" cy="9" r="9" fill="#112853"/>

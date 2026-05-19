@@ -781,6 +781,13 @@ tbody td {
 .wizard-step-label.active { color: #2563EB; font-weight: 700; }
 .wizard-step-label.done   { color: var(--text); font-weight: 500; }
 
+/* Read-only mode: non-stats steps are dimmed and non-interactive */
+.wizard-step-header.readonly-step {
+  cursor: default;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .wizard-substeps {
   margin-left: 22px;
   padding: 2px 0 4px 12px;
