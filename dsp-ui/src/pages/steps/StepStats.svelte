@@ -33,19 +33,52 @@
   const VIEW_SIZE = 20
   let viewPage = 0
 
-  // Filters (client-side — API doesn't support bidRequestState/inventoryFormat params)
-  let filterStatus = ''    // '' | 'SUCCESS' | 'FAILED'
-  let filterFormat = ''    // '' | 'BILLBOARD' | etc.
+  // Filters (all client-side — API ignores these as query params)
+  let filterStatus   = ''   // '' | 'SUCCESS' | 'FAILED'
+  let filterDateFrom = ''   // YYYY-MM-DD
+  let filterDateTo   = ''   // YYYY-MM-DD
+  let filterScreen   = ''   // free-text search on inventory name + address
+  let filterFormat   = ''   // exact match on inventoryFormat
+  let filterCreative = ''   // free-text search on media.name
+  let filterReason   = ''   // exact match on failureReasonCodeName/Type
 
-  // Derived: filtered rows from current server batch
+  $: hasAnyFilter = !!(filterStatus || filterDateFrom || filterDateTo ||
+                       filterScreen || filterFormat || filterCreative || filterReason)
+
+  // Derived: filtered rows
   $: filteredRows = allRows.filter(r => {
-    if (filterStatus === 'SUCCESS' && r.bidRequestState !== 'SUCCESS')  return false
-    if (filterStatus === 'FAILED'  && r.bidRequestState === 'SUCCESS')  return false
-    if (filterFormat && r.inventoryFormat !== filterFormat) return false
+    if (filterStatus === 'SUCCESS' && r.bidRequestState !== 'SUCCESS') return false
+    if (filterStatus === 'FAILED'  && r.bidRequestState === 'SUCCESS') return false
+    if (filterFormat   && r.inventoryFormat !== filterFormat) return false
+    if (filterReason) {
+      const reason = r.failureReasonCodeName ?? r.failureReasonType ?? ''
+      if (reason !== filterReason) return false
+    }
+    if (filterScreen) {
+      const haystack = `${r.inventory?.name ?? ''} ${r.address ?? ''} ${r.inventoryGid ?? ''}`.toLowerCase()
+      if (!haystack.includes(filterScreen.toLowerCase())) return false
+    }
+    if (filterCreative) {
+      if (!(r.media?.name ?? '').toLowerCase().includes(filterCreative.toLowerCase())) return false
+    }
+    if (filterDateFrom || filterDateTo) {
+      const d = r.showTime ? new Date(r.showTime).toISOString().slice(0, 10) : ''
+      if (filterDateFrom && d < filterDateFrom) return false
+      if (filterDateTo   && d > filterDateTo)   return false
+    }
     return true
   })
-  $: viewRows      = filteredRows.slice(viewPage * VIEW_SIZE, (viewPage + 1) * VIEW_SIZE)
+  $: viewRows       = filteredRows.slice(viewPage * VIEW_SIZE, (viewPage + 1) * VIEW_SIZE)
   $: viewTotalPages = Math.max(1, Math.ceil(filteredRows.length / VIEW_SIZE))
+
+  // Dropdown options derived from full loaded dataset
+  $: formats = [...new Set(allRows.map(r => r.inventoryFormat).filter(Boolean))].sort()
+  $: reasons = [...new Set(
+      allRows.map(r => r.failureReasonCodeName ?? r.failureReasonType).filter(Boolean)
+    )].sort()
+
+  // True when we have the full server dataset loaded locally
+  $: hasFullDataset = srvTotal > 0 && allRows.length >= srvTotal
 
   // ── Chart tab ─────────────────────────────────────────────────────────────
   let chartGroupType = 'BY_HOURS'
@@ -183,19 +216,26 @@
     impLoading = false
   }
 
+  // Called by the top-level status pills
   function applyFilter() {
     viewPage = 0
-    if (filterStatus || filterFormat) {
-      // Need the full dataset for accurate client-side filtering
-      loadAllForFilter()
+    if (filterStatus || filterFormat || filterScreen || filterCreative || filterReason || filterDateFrom || filterDateTo) {
+      if (!hasFullDataset) loadAllForFilter()
     } else {
-      // Back to "no filter" — reload normal first page
       loadImpressions(0)
     }
   }
 
-  // Collect unique formats from loaded rows for the format filter pill list
-  $: formats = [...new Set(allRows.map(r => r.inventoryFormat).filter(Boolean))]
+  // Called by column-header filter inputs (debounced slightly so typing doesn't spam)
+  let _colFilterTimer = null
+  function applyColumnFilter() {
+    viewPage = 0
+    clearTimeout(_colFilterTimer)
+    _colFilterTimer = setTimeout(() => {
+      if (hasAnyFilter && !hasFullDataset) loadAllForFilter()
+      // else: reactive filteredRows recomputes automatically
+    }, 220)
+  }
 
   // ── Chart ─────────────────────────────────────────────────────────────────
   async function loadChart() {
@@ -392,35 +432,32 @@
 
     <!-- ── TABLE TAB ─────────────────────────────────────────────────────────── -->
     {#if activeTab === 'table'}
-      <!-- Filter bar -->
+      <!-- Status filter bar + count -->
       <div class="filter-bar">
         <div class="filter-group">
           <span class="filter-label">Статус</span>
           <div class="filter-pills">
-            <button class="filter-pill" class:active={filterStatus === ''}        on:click={() => { filterStatus = '';         applyFilter() }}>Все</button>
-            <button class="filter-pill" class:active={filterStatus === 'SUCCESS'} on:click={() => { filterStatus = 'SUCCESS';  applyFilter() }}>Показан</button>
-            <button class="filter-pill" class:active={filterStatus === 'FAILED'}  on:click={() => { filterStatus = 'FAILED';   applyFilter() }}>Не показан</button>
+            <button class="filter-pill" class:active={filterStatus === ''}        on:click={() => { filterStatus = '';        applyFilter() }}>Все</button>
+            <button class="filter-pill" class:active={filterStatus === 'SUCCESS'} on:click={() => { filterStatus = 'SUCCESS'; applyFilter() }}>Показан</button>
+            <button class="filter-pill" class:active={filterStatus === 'FAILED'}  on:click={() => { filterStatus = 'FAILED';  applyFilter() }}>Не показан</button>
           </div>
         </div>
-        {#if formats.length > 1}
-          <div class="filter-group">
-            <span class="filter-label">Формат</span>
-            <div class="filter-pills">
-              <button class="filter-pill" class:active={filterFormat === ''} on:click={() => { filterFormat = ''; applyFilter() }}>Все</button>
-              {#each formats as f}
-                <button class="filter-pill" class:active={filterFormat === f} on:click={() => { filterFormat = f; applyFilter() }}>{f}</button>
-              {/each}
-            </div>
-          </div>
-        {/if}
         <div style="flex:1"></div>
         <span class="filter-count">
-          {#if filterStatus || filterFormat}
+          {#if hasAnyFilter}
             {fmt(filteredRows.length)} из {fmt(srvTotal)}
+            {#if impLoading}<span class="filter-loading">…</span>{/if}
           {:else}
             {fmt(srvTotal)} записей
           {/if}
         </span>
+        {#if hasAnyFilter}
+          <button class="filter-clear" on:click={() => {
+            filterStatus=''; filterDateFrom=''; filterDateTo='';
+            filterScreen=''; filterFormat=''; filterCreative=''; filterReason='';
+            applyFilter()
+          }}>× Сбросить</button>
+        {/if}
       </div>
 
       <div class="step-card tab-panel" style="padding:0;overflow:hidden">
@@ -434,6 +471,7 @@
           <div class="tbl-wrap">
             <table class="tbl">
               <thead>
+                <!-- Column labels -->
                 <tr>
                   <th>Дата/Время</th>
                   <th>Местное</th>
@@ -444,6 +482,51 @@
                   <th>Причина отказа</th>
                   <th class="num">OTS</th>
                   <th class="num">Стоимость</th>
+                </tr>
+                <!-- Column filter inputs -->
+                <tr class="filter-row">
+                  <!-- Date range -->
+                  <th>
+                    <div class="col-filter-pair">
+                      <input class="col-filter" type="date" bind:value={filterDateFrom}
+                        title="С" on:input={applyColumnFilter} />
+                      <input class="col-filter" type="date" bind:value={filterDateTo}
+                        title="По" on:input={applyColumnFilter} />
+                    </div>
+                  </th>
+                  <!-- Местное — no filter -->
+                  <th></th>
+                  <!-- Экран -->
+                  <th>
+                    <input class="col-filter" type="text" placeholder="Поиск…"
+                      bind:value={filterScreen} on:input={applyColumnFilter} />
+                  </th>
+                  <!-- Формат -->
+                  <th>
+                    <select class="col-filter col-select" bind:value={filterFormat}
+                      on:change={applyColumnFilter}>
+                      <option value="">Все</option>
+                      {#each formats as f}<option value={f}>{f}</option>{/each}
+                    </select>
+                  </th>
+                  <!-- Креатив -->
+                  <th>
+                    <input class="col-filter" type="text" placeholder="Поиск…"
+                      bind:value={filterCreative} on:input={applyColumnFilter} />
+                  </th>
+                  <!-- Статус — handled by top pills -->
+                  <th></th>
+                  <!-- Причина отказа -->
+                  <th>
+                    <select class="col-filter col-select" bind:value={filterReason}
+                      on:change={applyColumnFilter}>
+                      <option value="">Все</option>
+                      {#each reasons as r}<option value={r}>{r}</option>{/each}
+                    </select>
+                  </th>
+                  <!-- OTS, Стоимость — no filter -->
+                  <th></th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -698,6 +781,47 @@
     color: var(--text-muted);
     white-space: nowrap;
   }
+  .filter-loading { opacity: .5; }
+  .filter-clear {
+    padding: 4px 10px;
+    border: 1.5px solid #d1d5db;
+    border-radius: 16px;
+    background: #fff;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .12s;
+    white-space: nowrap;
+  }
+  .filter-clear:hover { border-color: #ef4444; color: #ef4444; }
+
+  /* ── Column filter row ──────────────────────────────────────────────────── */
+  .filter-row th {
+    padding: 4px 6px 6px;
+    background: var(--bg-muted, #f9fafb);
+    border-bottom: 2px solid var(--border);
+  }
+  .col-filter {
+    width: 100%;
+    height: 26px;
+    border: 1.5px solid var(--border);
+    border-radius: 5px;
+    padding: 0 6px;
+    font-size: 11.5px;
+    font-family: inherit;
+    color: var(--text);
+    background: #fff;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color .12s;
+  }
+  .col-filter:focus { border-color: var(--navy); }
+  .col-filter:not(:placeholder-shown),
+  .col-select:not([value=""]) { border-color: var(--navy); background: #eef2ff; }
+  .col-select { padding-right: 4px; cursor: pointer; }
+  .col-filter-pair { display: flex; flex-direction: column; gap: 3px; }
+  .col-filter-pair .col-filter { font-size: 10.5px; }
 
   /* ── KPI cards ────────────────────────────────────────────────────────────── */
   .kpi-row {
