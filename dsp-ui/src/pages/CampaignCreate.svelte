@@ -814,14 +814,16 @@
       <div class="save-error">{saveError}</div>
     {/if}
     <div class="wizard-actions">
-      <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing}>
-        {#if saving}Сохранение…{:else}Сохранить{/if}
-      </button>
+      {#if !['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(draft.state)}
+        <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing}>
+          {#if saving}Сохранение…{:else}Сохранить{/if}
+        </button>
+      {/if}
       {#if ['ACTIVE','ACTIVATED','ON_TARGETING_CREATION','ON_TARGETING_UPDATE','RESERVED','BOOKED'].includes(draft.state)}
         <button class="btn-pause" on:click={pauseCampaign} disabled={pausing || saving}>
           {#if pausing}Пауза…{:else}Пауза{/if}
         </button>
-      {:else}
+      {:else if !['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(draft.state)}
         <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1} on:click={launchCampaign} disabled={saving || launching || pausing}>
           {#if launching}Запуск…{:else}Запустить{/if}
         </button>
