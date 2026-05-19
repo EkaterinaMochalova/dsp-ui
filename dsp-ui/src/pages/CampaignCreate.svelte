@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { logout } from '../lib/stores.js'
+  import { logout, page as pageStore } from '../lib/stores.js'
   import RightBar from '../components/RightBar.svelte'
   import StatusBadge from '../components/StatusBadge.svelte'
   import StepStart        from './steps/StepStart.svelte'
@@ -26,7 +26,11 @@
 
   // Campaign draft state
   let draft = {
-    type: campaignType,
+    // Seed id/state from props immediately so child steps (e.g. StepStats) can start
+    // loading before onMount's async API call completes — avoids the "Сохраните кампанию"
+    // flash and the brief "Черновик" badge when opening an existing campaign.
+    id:    campaignId ?? null,
+    type:  campaignType,
     name: '',
     state: null,
     customerId: null,
@@ -378,13 +382,16 @@
     saveError = ''
     try {
       const savedId = await doSave()
-      // Update URL (important for new campaigns where the ID wasn't in the URL yet)
-      window.location.hash = `#/campaigns/${savedId}`
-      // Reload in-place so the component reflects the actual saved state.
-      // This is essential when editing an existing campaign — the hash doesn't change
-      // so the router won't remount the component, and rawCamp would stay stale.
+      // Reload in-place BEFORE changing the URL so this component stays mounted throughout.
       await reloadCampaign(savedId)
       goToStep('summary')
+      // Update the URL silently (history.replaceState does NOT fire hashchange, so App.svelte
+      // won't destroy+remount this component mid-save showing a blank "Черновик" flash).
+      const newHash = `#/campaigns/${savedId}`
+      if (window.location.hash !== newHash) {
+        history.replaceState(null, '', newHash)
+        pageStore.set(`campaigns/${savedId}`)
+      }
     } catch (e) {
       console.warn('[save] error:', JSON.stringify(e))
       saveError = e?.status === 403
@@ -466,6 +473,12 @@
       await api.campaigns.setState(id, 'ACTIVE')
       await reloadCampaign(id)
       goToStep('summary')
+      // Silent URL update — same as in saveCampaign (no hashchange, no remount)
+      const newHash = `#/campaigns/${id}`
+      if (window.location.hash !== newHash) {
+        history.replaceState(null, '', newHash)
+        pageStore.set(`campaigns/${id}`)
+      }
     } catch (e) {
       console.warn('[launch] error:', JSON.stringify(e))
       saveError = e?.status === 403

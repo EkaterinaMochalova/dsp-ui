@@ -40,7 +40,12 @@
 {:else if campaignCreateType}
   <CampaignCreate campaignType={campaignCreateType} />
 {:else if campaignIdParam}
-  <CampaignCreate campaignId={campaignIdParam} initialStep="summary" />
+  <!-- {#key} ensures a fresh component (and fresh onMount) when the campaign ID changes,
+       e.g. navigating from campaign A to campaign B in the list. Without it Svelte reuses
+       the same component instance and onMount never re-fires with the new ID. -->
+  {#key campaignIdParam}
+    <CampaignCreate campaignId={campaignIdParam} initialStep="summary" />
+  {/key}
 {:else}
   <div class="layout">
     <Sidebar />
