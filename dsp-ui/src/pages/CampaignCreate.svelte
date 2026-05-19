@@ -638,16 +638,21 @@
           cityIds:          resolvedCityIds,
         }
 
+        const isTerminal = ['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(camp.state)
+
         // ── Creatives ──────────────────────────────────────────────────
-        // Pass already-fetched camp to avoid a second GET request
-        try { await reloadCampaign(campaignId, camp) } catch { /* non-fatal */ }
+        // Skip for terminal campaigns — they open on Stats and never need creative data.
+        // reloadCampaign fires 2+ extra requests (creative lib, per-vendor approvals)
+        // which is the main source of the ~1 min load time on completed campaigns.
+        if (!isTerminal) {
+          try { await reloadCampaign(campaignId, camp) } catch { /* non-fatal */ }
+        }
+
         // Mark all steps done → left sidebar shows checkmarks
         for (const s of STEPS) completedSteps = { ...completedSteps, [s.id]: true }
 
         // Terminal campaigns open directly on the Stats step
-        if (['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(camp.state)) {
-          goToStep('stats')
-        }
+        if (isTerminal) goToStep('stats')
       } catch (e) {
         console.warn('Failed to load campaign', e)
       } finally {
