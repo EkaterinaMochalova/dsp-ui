@@ -37,13 +37,19 @@
   let filterStatus   = ''   // '' | 'SUCCESS' | 'FAILED'
   let filterDateFrom = ''   // YYYY-MM-DD
   let filterDateTo   = ''   // YYYY-MM-DD
+  let filterLocal    = ''   // free-text on local time string (e.g. "13" matches 13:xx)
   let filterScreen   = ''   // free-text search on inventory name + address
   let filterFormat   = ''   // exact match on inventoryFormat
   let filterCreative = ''   // free-text search on media.name
   let filterReason   = ''   // exact match on failureReasonCodeName/Type
+  let filterOtsMin   = ''   // numeric min for OTS
+  let filterOtsMax   = ''   // numeric max for OTS
+  let filterCostMin  = ''   // numeric min for charged price
+  let filterCostMax  = ''   // numeric max for charged price
 
-  $: hasAnyFilter = !!(filterStatus || filterDateFrom || filterDateTo ||
-                       filterScreen || filterFormat || filterCreative || filterReason)
+  $: hasAnyFilter = !!(filterStatus || filterDateFrom || filterDateTo || filterLocal ||
+                       filterScreen || filterFormat || filterCreative || filterReason ||
+                       filterOtsMin || filterOtsMax || filterCostMin || filterCostMax)
 
   // Derived: filtered rows
   $: filteredRows = allRows.filter(r => {
@@ -53,6 +59,10 @@
     if (filterReason) {
       const reason = r.failureReasonCodeName ?? r.failureReasonType ?? ''
       if (reason !== filterReason) return false
+    }
+    if (filterLocal) {
+      const localStr = fmtLocalTime(r.inventoryShowTime)
+      if (!localStr.includes(filterLocal)) return false
     }
     if (filterScreen) {
       const haystack = `${r.inventory?.name ?? ''} ${r.address ?? ''} ${r.inventoryGid ?? ''}`.toLowerCase()
@@ -65,6 +75,16 @@
       const d = r.showTime ? new Date(r.showTime).toISOString().slice(0, 10) : ''
       if (filterDateFrom && d < filterDateFrom) return false
       if (filterDateTo   && d > filterDateTo)   return false
+    }
+    if (filterOtsMin !== '' || filterOtsMax !== '') {
+      const ots = r.ots ?? r.opOts ?? 0
+      if (filterOtsMin !== '' && ots < Number(filterOtsMin)) return false
+      if (filterOtsMax !== '' && ots > Number(filterOtsMax)) return false
+    }
+    if (filterCostMin !== '' || filterCostMax !== '') {
+      const cost = r.chargedPrice ?? 0
+      if (filterCostMin !== '' && cost < Number(filterCostMin)) return false
+      if (filterCostMax !== '' && cost > Number(filterCostMax)) return false
     }
     return true
   })
@@ -232,7 +252,7 @@
   // Called by the top-level status pills
   function applyFilter() {
     viewPage = 0
-    if (filterStatus || filterFormat || filterScreen || filterCreative || filterReason || filterDateFrom || filterDateTo) {
+    if (hasAnyFilter) {
       if (!hasFullDataset) loadAllForFilter()
     } else {
       loadImpressions(0)
@@ -500,8 +520,9 @@
         </span>
         {#if hasAnyFilter}
           <button class="filter-clear" on:click={() => {
-            filterStatus=''; filterDateFrom=''; filterDateTo='';
+            filterStatus=''; filterDateFrom=''; filterDateTo=''; filterLocal='';
             filterScreen=''; filterFormat=''; filterCreative=''; filterReason='';
+            filterOtsMin=''; filterOtsMax=''; filterCostMin=''; filterCostMax='';
             applyFilter()
           }}>× Сбросить</button>
         {/if}
@@ -532,7 +553,7 @@
                 </tr>
                 <!-- Column filter inputs -->
                 <tr class="filter-row">
-                  <!-- Date range -->
+                  <!-- Дата/Время -->
                   <th>
                     <div class="col-filter-pair">
                       <input class="col-filter" type="date" bind:value={filterDateFrom}
@@ -541,8 +562,11 @@
                         title="По" on:input={applyColumnFilter} />
                     </div>
                   </th>
-                  <!-- Местное — no filter -->
-                  <th></th>
+                  <!-- Местное -->
+                  <th>
+                    <input class="col-filter" type="text" placeholder="чч:мм"
+                      bind:value={filterLocal} on:input={applyColumnFilter} />
+                  </th>
                   <!-- Экран -->
                   <th>
                     <input class="col-filter" type="text" placeholder="Поиск…"
@@ -561,8 +585,15 @@
                     <input class="col-filter" type="text" placeholder="Поиск…"
                       bind:value={filterCreative} on:input={applyColumnFilter} />
                   </th>
-                  <!-- Статус — handled by top pills -->
-                  <th></th>
+                  <!-- Статус -->
+                  <th>
+                    <select class="col-filter col-select" bind:value={filterStatus}
+                      on:change={() => { applyColumnFilter(); applyFilter() }}>
+                      <option value="">Все</option>
+                      <option value="SUCCESS">Показан</option>
+                      <option value="FAILED">Не показан</option>
+                    </select>
+                  </th>
                   <!-- Причина отказа -->
                   <th>
                     <select class="col-filter col-select" bind:value={filterReason}
@@ -571,9 +602,24 @@
                       {#each reasons as r}<option value={r}>{r}</option>{/each}
                     </select>
                   </th>
-                  <!-- OTS, Стоимость — no filter -->
-                  <th></th>
-                  <th></th>
+                  <!-- OTS -->
+                  <th>
+                    <div class="col-filter-pair">
+                      <input class="col-filter" type="number" placeholder="от" min="0"
+                        bind:value={filterOtsMin} on:input={applyColumnFilter} />
+                      <input class="col-filter" type="number" placeholder="до" min="0"
+                        bind:value={filterOtsMax} on:input={applyColumnFilter} />
+                    </div>
+                  </th>
+                  <!-- Стоимость -->
+                  <th>
+                    <div class="col-filter-pair">
+                      <input class="col-filter" type="number" placeholder="от" min="0" step="0.01"
+                        bind:value={filterCostMin} on:input={applyColumnFilter} />
+                      <input class="col-filter" type="number" placeholder="до" min="0" step="0.01"
+                        bind:value={filterCostMax} on:input={applyColumnFilter} />
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
