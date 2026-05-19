@@ -249,23 +249,33 @@
     impLoading = false
   }
 
-  // Called by the top-level status pills
+  // Compute "has any active filter" from current variable values directly.
+  // We cannot use the reactive $: hasAnyFilter here because Svelte batches reactive
+  // updates — reading $: vars immediately after setting a dependency gives stale values.
+  function anyFilterActive() {
+    return !!(filterStatus || filterDateFrom || filterDateTo || filterLocal ||
+              filterScreen || filterFormat || filterCreative || filterReason ||
+              filterOtsMin || filterOtsMax || filterCostMin || filterCostMax)
+  }
+
+  // Called by the top-level status pills and the Статус column dropdown
   function applyFilter() {
     viewPage = 0
-    if (hasAnyFilter) {
+    if (anyFilterActive()) {
       if (!hasFullDataset) loadAllForFilter()
+      // else: reactive filteredRows recomputes automatically from allRows
     } else {
       loadImpressions(0)
     }
   }
 
-  // Called by column-header filter inputs (debounced slightly so typing doesn't spam)
+  // Called by column-header filter inputs (debounced so typing doesn't spam)
   let _colFilterTimer = null
   function applyColumnFilter() {
     viewPage = 0
     clearTimeout(_colFilterTimer)
     _colFilterTimer = setTimeout(() => {
-      if (hasAnyFilter && !hasFullDataset) loadAllForFilter()
+      if (anyFilterActive() && !hasFullDataset) loadAllForFilter()
       // else: reactive filteredRows recomputes automatically
     }, 220)
   }
