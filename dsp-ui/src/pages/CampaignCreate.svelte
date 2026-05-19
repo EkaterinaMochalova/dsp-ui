@@ -559,6 +559,8 @@
   let currentStep = initialStep
   let completedSteps = {}   // plain object — spread creates new ref, guaranteed reactive
   let screensView = 'selection'  // 'selection' | 'bids' | 'schedule'
+  // True while the existing campaign is being fetched — hides step content to avoid flash
+  let campLoading = !!campaignId
 
   onMount(async () => {
 
@@ -648,7 +650,11 @@
         }
       } catch (e) {
         console.warn('Failed to load campaign', e)
+      } finally {
+        campLoading = false
       }
+    } else {
+      campLoading = false
     }
   })
 
@@ -862,7 +868,12 @@
     </div>
 
     <!-- Step content -->
-    {#if currentStep === 'start'}
+    {#if campLoading}
+      <div class="camp-loading">
+        <div class="spinner"></div>
+        <span>Загрузка кампании…</span>
+      </div>
+    {:else if currentStep === 'start'}
       <StepStart on:start={() => goToStep('basic')} on:explore={() => goToStep('screens')} />
     {:else if currentStep === 'basic'}
       <StepBasicParams bind:draft on:next={() => completeStep('basic')} on:back={() => goToStep('start')} />

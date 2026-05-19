@@ -541,6 +541,19 @@ tbody td {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Campaign loading overlay */
+.camp-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.camp-loading .spinner { margin: 0; }
+
 /* ── Creation layout ──────────────────────────────── */
 
 /* Icon-only sidebar used in creation flow */
