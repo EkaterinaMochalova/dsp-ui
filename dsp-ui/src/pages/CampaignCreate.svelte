@@ -441,6 +441,11 @@
   let launching = false
   let pausing   = false
 
+  // Auto-clear stale "no creative" error once a creative is added
+  $: if (draft.creativeIds?.length > 0 && saveError === 'Добавьте хотя бы один рекламный материал перед запуском.') {
+    saveError = ''
+  }
+
   async function pauseCampaign() {
     if (pausing || saving) return
     pausing = true
@@ -875,16 +880,16 @@
     {/if}
     <div class="wizard-actions">
       {#if !['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(draft.state)}
-        <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing}>
+        <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing || campLoading}>
           {#if saving}Сохранение…{:else}Сохранить{/if}
         </button>
       {/if}
       {#if ['ACTIVE','ACTIVATED','ON_TARGETING_CREATION','ON_TARGETING_UPDATE','RESERVED','BOOKED'].includes(draft.state)}
-        <button class="btn-pause" on:click={pauseCampaign} disabled={pausing || saving}>
+        <button class="btn-pause" on:click={pauseCampaign} disabled={pausing || saving || campLoading}>
           {#if pausing}Пауза…{:else}Пауза{/if}
         </button>
       {:else if !['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(draft.state)}
-        <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1} on:click={launchCampaign} disabled={saving || launching || pausing}>
+        <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1} on:click={launchCampaign} disabled={saving || launching || pausing || campLoading}>
           {#if launching}Запуск…{:else}Запустить{/if}
         </button>
       {/if}
