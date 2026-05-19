@@ -143,23 +143,27 @@
   function getTargeting(id) {
     if (!draft.creativeTargeting[id]) {
       draft.creativeTargeting[id] = {
-        documents:   [],
-        weather:     [],    // array of selected: 'sunny'|'rainy'|'snowy'|'cloudy'
-        temperature: false,
-        windSpeed:   false,
-        uvIndex:     false,
-        airQuality:  false,
-        traffic:     false,
-        gender:      [],    // 'MALE'|'FEMALE'
-        ageMin:      18,
-        ageMax:      80,
-        income:      [],    // 'HIGH'|'MEDIUM'|'LOW'
-        interests:   [],
-        minOts:      0,
-        // timing
-        weekdays:    [1,2,3,4,5,6,7],  // 1=Mon..7=Sun
-        timeFrom:    '00:00',
-        timeTo:      '23:59',
+        documents: [],
+        gender:    [],
+        ageMin:    18,
+        ageMax:    80,
+        income:    [],
+        interests: [],
+        minOts:    0,
+        weekdays:  [1,2,3,4,5,6,7],
+        timeFrom:  '00:00',
+        timeTo:    '23:59',
+        weatherParams: {
+          enabled:   false,
+          temp:      { enabled: false, start: -40, end: 40  },
+          condition: { enabled: false, values: []            },
+          wind:      { enabled: false, start: 0,  end: 32   },
+          uvIndex:   { enabled: false, start: 0,  end: 11   },
+          aqIndex:   { enabled: false, start: 0,  end: 500  },
+        },
+        jamParams: {
+          level: { enabled: false, start: 1, end: 4 },
+        },
       }
       draft.creativeTargeting = { ...draft.creativeTargeting }
     }
@@ -167,6 +171,8 @@
   }
 
   $: tg = activeId ? getTargeting(activeId) : null
+  $: wp = tg?.weatherParams
+  $: jp = tg?.jamParams
 
   function mutate() { draft.creativeTargeting = { ...draft.creativeTargeting } }
 
@@ -178,6 +184,30 @@
 
   function setField(id, field, val) {
     getTargeting(id)[field] = val
+    mutate()
+  }
+
+  // Weather / jam helpers
+  function setWp(id, field, val) {
+    const t = getTargeting(id)
+    t.weatherParams = { ...t.weatherParams, [field]: val }
+    mutate()
+  }
+  function setWpSub(id, key, subField, val) {
+    const t = getTargeting(id)
+    t.weatherParams = { ...t.weatherParams, [key]: { ...t.weatherParams[key], [subField]: val } }
+    mutate()
+  }
+  function toggleCondVal(id, val) {
+    const t = getTargeting(id)
+    const c = t.weatherParams.condition
+    const nv = c.values.includes(val) ? c.values.filter(v => v !== val) : [...c.values, val]
+    t.weatherParams = { ...t.weatherParams, condition: { values: nv, enabled: nv.length > 0 } }
+    mutate()
+  }
+  function setJam(id, subField, val) {
+    const t = getTargeting(id)
+    t.jamParams = { level: { ...t.jamParams.level, [subField]: val } }
     mutate()
   }
 
@@ -600,39 +630,157 @@
         {:else if activeTab === 'conditions'}
           <div class="cr-tab-body">
             <p class="cr-tab-note">Стоимость использования данных будет рассчитана после завершения рекламной кампании.</p>
-            <div class="cr-section-label">Погода</div>
-            <div class="cr-chip-row">
-              {#each [
-                { v:'sunny',  l:'Солнечно', e:'☀️' },
-                { v:'rainy',  l:'Дождь',    e:'🌧️' },
-                { v:'snowy',  l:'Снегопад', e:'🌨️' },
-                { v:'cloudy', l:'Облачно',  e:'☁️' },
-              ] as w}
-                <button
-                  class="cr-chip"
-                  class:cr-chip-on={tgt.weather.includes(w.v)}
-                  on:click={() => toggleArr(activeCreative.id, 'weather', w.v)}
-                >{w.e} {w.l}{#if tgt.weather.includes(w.v)} <span class="cr-chip-x">×</span>{/if}</button>
-              {/each}
-            </div>
-            {#each [
-              { f:'temperature', l:'Температура'             },
-              { f:'windSpeed',   l:'Скорость ветра, м/с'    },
-              { f:'uvIndex',     l:'УФ-индекс'               },
-              { f:'airQuality',  l:'Индекс качества воздуха' },
-              { f:'traffic',     l:'Пробки'                  },
-            ] as row}
-              <div class="cr-toggle-row">
-                <span class="cr-toggle-label">{row.l}</span>
+
+            <!-- ── Погода ── -->
+            <div class="cr-cond-block">
+              <div class="cr-cond-row">
+                <span class="cr-section-label" style="margin:0">Погода</span>
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <!-- svelte-ignore a11y-no-static-element-interactions -->
-                <div class="cr-toggle" class:cr-toggle-on={tgt[row.f]}
-                  on:click={() => setField(activeCreative.id, row.f, !tgt[row.f])}
-                  role="switch" aria-checked={tgt[row.f]}>
+                <div class="cr-toggle" class:cr-toggle-on={wp.enabled}
+                  on:click={() => setWp(activeCreative.id, 'enabled', !wp.enabled)}
+                  role="switch" aria-checked={wp.enabled}>
                   <div class="cr-toggle-thumb"></div>
                 </div>
               </div>
-            {/each}
+
+              {#if wp.enabled}
+                <!-- Condition chips -->
+                <div class="cr-cond-sub">
+                  <div class="cr-cond-sub-label">Условие погоды</div>
+                  <div class="cr-chip-row" style="flex-wrap:wrap;gap:6px">
+                    {#each [
+                      { v:'Clear',        l:'Ясно',     e:'☀️' },
+                      { v:'Clouds',       l:'Облачно',  e:'☁️' },
+                      { v:'Rain',         l:'Дождь',    e:'🌧️' },
+                      { v:'Drizzle',      l:'Морось',   e:'🌦️' },
+                      { v:'Thunderstorm', l:'Гроза',    e:'⛈️' },
+                      { v:'Snow',         l:'Снег',     e:'🌨️' },
+                    ] as w}
+                      <!-- svelte-ignore a11y-click-events-have-key-events -->
+                      <button class="cr-chip" class:cr-chip-on={wp.condition.values.includes(w.v)}
+                        on:click={() => toggleCondVal(activeCreative.id, w.v)}
+                      >{w.e} {w.l}{#if wp.condition.values.includes(w.v)} <span class="cr-chip-x">×</span>{/if}</button>
+                    {/each}
+                  </div>
+                </div>
+
+                <!-- Temp -->
+                <div class="cr-cond-sub">
+                  <div class="cr-cond-row">
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div class="cr-toggle cr-toggle-sm" class:cr-toggle-on={wp.temp.enabled}
+                      on:click={() => setWpSub(activeCreative.id,'temp','enabled',!wp.temp.enabled)}
+                      role="switch" aria-checked={wp.temp.enabled}><div class="cr-toggle-thumb"></div></div>
+                    <span class="cr-cond-sub-label">Температура, °C</span>
+                  </div>
+                  {#if wp.temp.enabled}
+                    <div class="cr-range-row" style="margin-top:8px">
+                      <div class="cr-range-field"><label class="cr-range-label">От</label>
+                        <input class="cr-range-input" type="number" min="-80" max="60" value={wp.temp.start}
+                          on:input={e=>setWpSub(activeCreative.id,'temp','start',+e.target.value)} /></div>
+                      <div class="cr-range-field"><label class="cr-range-label">До</label>
+                        <input class="cr-range-input" type="number" min="-80" max="60" value={wp.temp.end}
+                          on:input={e=>setWpSub(activeCreative.id,'temp','end',+e.target.value)} /></div>
+                    </div>
+                  {/if}
+                </div>
+
+                <!-- Wind -->
+                <div class="cr-cond-sub">
+                  <div class="cr-cond-row">
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div class="cr-toggle cr-toggle-sm" class:cr-toggle-on={wp.wind.enabled}
+                      on:click={() => setWpSub(activeCreative.id,'wind','enabled',!wp.wind.enabled)}
+                      role="switch" aria-checked={wp.wind.enabled}><div class="cr-toggle-thumb"></div></div>
+                    <span class="cr-cond-sub-label">Скорость ветра, м/с</span>
+                  </div>
+                  {#if wp.wind.enabled}
+                    <div class="cr-range-row" style="margin-top:8px">
+                      <div class="cr-range-field"><label class="cr-range-label">От</label>
+                        <input class="cr-range-input" type="number" min="0" max="100" value={wp.wind.start}
+                          on:input={e=>setWpSub(activeCreative.id,'wind','start',+e.target.value)} /></div>
+                      <div class="cr-range-field"><label class="cr-range-label">До</label>
+                        <input class="cr-range-input" type="number" min="0" max="100" value={wp.wind.end}
+                          on:input={e=>setWpSub(activeCreative.id,'wind','end',+e.target.value)} /></div>
+                    </div>
+                  {/if}
+                </div>
+
+                <!-- UV Index -->
+                <div class="cr-cond-sub">
+                  <div class="cr-cond-row">
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div class="cr-toggle cr-toggle-sm" class:cr-toggle-on={wp.uvIndex.enabled}
+                      on:click={() => setWpSub(activeCreative.id,'uvIndex','enabled',!wp.uvIndex.enabled)}
+                      role="switch" aria-checked={wp.uvIndex.enabled}><div class="cr-toggle-thumb"></div></div>
+                    <span class="cr-cond-sub-label">УФ-индекс (0–11)</span>
+                  </div>
+                  {#if wp.uvIndex.enabled}
+                    <div class="cr-range-row" style="margin-top:8px">
+                      <div class="cr-range-field"><label class="cr-range-label">От</label>
+                        <input class="cr-range-input" type="number" min="0" max="11" value={wp.uvIndex.start}
+                          on:input={e=>setWpSub(activeCreative.id,'uvIndex','start',+e.target.value)} /></div>
+                      <div class="cr-range-field"><label class="cr-range-label">До</label>
+                        <input class="cr-range-input" type="number" min="0" max="11" value={wp.uvIndex.end}
+                          on:input={e=>setWpSub(activeCreative.id,'uvIndex','end',+e.target.value)} /></div>
+                    </div>
+                  {/if}
+                </div>
+
+                <!-- AQ Index -->
+                <div class="cr-cond-sub">
+                  <div class="cr-cond-row">
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div class="cr-toggle cr-toggle-sm" class:cr-toggle-on={wp.aqIndex.enabled}
+                      on:click={() => setWpSub(activeCreative.id,'aqIndex','enabled',!wp.aqIndex.enabled)}
+                      role="switch" aria-checked={wp.aqIndex.enabled}><div class="cr-toggle-thumb"></div></div>
+                    <span class="cr-cond-sub-label">Качество воздуха (AQI)</span>
+                  </div>
+                  {#if wp.aqIndex.enabled}
+                    <div class="cr-range-row" style="margin-top:8px">
+                      <div class="cr-range-field"><label class="cr-range-label">От</label>
+                        <input class="cr-range-input" type="number" min="0" max="500" value={wp.aqIndex.start}
+                          on:input={e=>setWpSub(activeCreative.id,'aqIndex','start',+e.target.value)} /></div>
+                      <div class="cr-range-field"><label class="cr-range-label">До</label>
+                        <input class="cr-range-input" type="number" min="0" max="500" value={wp.aqIndex.end}
+                          on:input={e=>setWpSub(activeCreative.id,'aqIndex','end',+e.target.value)} /></div>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+
+            <!-- ── Пробки ── -->
+            <div class="cr-cond-block">
+              <div class="cr-cond-row">
+                <span class="cr-section-label" style="margin:0">Пробки</span>
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <!-- svelte-ignore a11y-no-static-element-interactions -->
+                <div class="cr-toggle" class:cr-toggle-on={jp.level.enabled}
+                  on:click={() => setJam(activeCreative.id,'enabled',!jp.level.enabled)}
+                  role="switch" aria-checked={jp.level.enabled}>
+                  <div class="cr-toggle-thumb"></div>
+                </div>
+              </div>
+              {#if jp.level.enabled}
+                <div class="cr-cond-sub">
+                  <div class="cr-cond-sub-label">Уровень пробок (1–4)</div>
+                  <div class="cr-range-row" style="margin-top:8px">
+                    <div class="cr-range-field"><label class="cr-range-label">От</label>
+                      <input class="cr-range-input" type="number" min="1" max="4" value={jp.level.start}
+                        on:input={e=>setJam(activeCreative.id,'start',+e.target.value)} /></div>
+                    <div class="cr-range-field"><label class="cr-range-label">До</label>
+                      <input class="cr-range-input" type="number" min="1" max="4" value={jp.level.end}
+                        on:input={e=>setJam(activeCreative.id,'end',+e.target.value)} /></div>
+                  </div>
+                </div>
+              {/if}
+            </div>
           </div>
 
         <!-- ── Tab: Аудитория ──────────────────────────────────────── -->
@@ -955,4 +1103,46 @@
   .nav-link { background:none; border:none; font-size:13px; font-weight:500; color:#64748B; cursor:pointer; padding:0; transition:color .12s; }
   .nav-link:hover { color:var(--navy,#112853); }
   .nav-link-next { color:var(--navy,#112853); font-weight:600; }
+
+  /* ── Conditions tab ── */
+  .cr-cond-block {
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .cr-cond-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .cr-cond-sub {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border, #f1f5f9);
+  }
+  .cr-cond-sub-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .cr-toggle-sm {
+    width: 32px !important;
+    height: 18px !important;
+    border-radius: 9px !important;
+  }
+  .cr-toggle-sm .cr-toggle-thumb {
+    width: 12px !important;
+    height: 12px !important;
+    top: 3px !important;
+    left: 3px !important;
+  }
+  .cr-toggle-sm.cr-toggle-on .cr-toggle-thumb {
+    left: 17px !important;
+  }
 </style>

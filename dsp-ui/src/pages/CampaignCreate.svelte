@@ -27,6 +27,17 @@
   const DEFAULT_PHOTO_SETTINGS = {
     saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
   }
+  const DEFAULT_WEATHER_PARAMS = {
+    enabled: false,
+    temp:      { enabled: false, start: -40, end: 40  },
+    condition: { enabled: false, values: []            },
+    wind:      { enabled: false, start: 0,  end: 32   },
+    uvIndex:   { enabled: false, start: 0,  end: 11   },
+    aqIndex:   { enabled: false, start: 0,  end: 500  },
+  }
+  const DEFAULT_JAM_PARAMS = {
+    level: { enabled: false, start: 1, end: 4 },
+  }
 
   // Campaign draft state
   let draft = {
@@ -97,14 +108,18 @@
       // Existing approved medias: use their approval record IDs (m.id) directly in PUT
       const existing = (rawSegMedias ?? [])
         .filter(m => m.state === 'APPROVED')
-        .map(m => ({
-          id:                        m.id,   // approval record ID — correct for PUT
-          default:                   m.default ?? false,
-          externalConditionParamsId: m.externalConditionParamsId ?? null,
-          weatherParams:             m.weatherParams ?? null,
-          jamParams:                 m.jamParams     ?? null,
-          fixedTimeShow:             m.fixedTimeShow ?? null,
-        }))
+        .map(m => {
+          const creativeId = m.adLayout?.id ?? m.adLayoutId
+          const tgt = creativeId != null ? draft.creativeTargeting?.[creativeId] : null
+          return {
+            id:                        m.id,   // approval record ID — correct for PUT
+            default:                   m.default ?? false,
+            externalConditionParamsId: m.externalConditionParamsId ?? null,
+            weatherParams:             tgt?.weatherParams ?? m.weatherParams ?? null,
+            jamParams:                 tgt?.jamParams     ?? m.jamParams     ?? null,
+            fixedTimeShow:             m.fixedTimeShow ?? null,
+          }
+        })
 
       // Track which creatives are already represented (by creative ID = adLayout.id)
       const existingCreativeIds = new Set(
@@ -115,14 +130,17 @@
       // The vendor map is built from request-media-segments so vendor approval is guaranteed.
       const toAdd = (draft.creativeIds ?? [])
         .filter(creativeId => !existingCreativeIds.has(creativeId) && vendorMap.has(creativeId))
-        .map(creativeId => ({
-          id:                        vendorMap.get(creativeId),  // approval record ID for PUT
-          default:                   false,
-          externalConditionParamsId: null,
-          weatherParams:             null,
-          jamParams:                 null,
-          fixedTimeShow:             null,
-        }))
+        .map(creativeId => {
+          const tgt = draft.creativeTargeting?.[creativeId]
+          return {
+            id:                        vendorMap.get(creativeId),
+            default:                   false,
+            externalConditionParamsId: null,
+            weatherParams:             tgt?.weatherParams?.enabled ? tgt.weatherParams : null,
+            jamParams:                 tgt?.jamParams?.level?.enabled ? tgt.jamParams : null,
+            fixedTimeShow:             null,
+          }
+        })
 
       if (toAdd.length) console.log(`[buildMediaSegments] vendor=${displayOwnerId} adding ${toAdd.length} creative(s):`, toAdd.map(m => m.id))
       return [...existing, ...toAdd]
@@ -358,7 +376,23 @@
     // from wiping creatives that the backend hasn't yet moved to APPROVED state.
     const finalCreativeIds = ids.length > 0 ? ids : (draft.creativeIds ?? [])
 
-    draft = { ...draft, creativeIds: finalCreativeIds, creativeStatuses: statusMap, vendorApprovedIds }
+    // Build creativeTargeting from segment medias (weather/jam params)
+    const targetingFromSegs = {}
+    for (const seg of camp.segments ?? []) {
+      for (const m of seg.medias ?? []) {
+        const cid = m.adLayout?.id ?? m.adLayoutId
+        if (cid == null) continue
+        if (!targetingFromSegs[cid]) targetingFromSegs[cid] = {}
+        if (m.weatherParams) targetingFromSegs[cid].weatherParams = m.weatherParams
+        if (m.jamParams)     targetingFromSegs[cid].jamParams     = m.jamParams
+      }
+    }
+    const mergedTargeting = { ...draft.creativeTargeting }
+    for (const [id, fields] of Object.entries(targetingFromSegs)) {
+      mergedTargeting[id] = { ...mergedTargeting[id], ...fields }
+    }
+
+    draft = { ...draft, creativeIds: finalCreativeIds, creativeStatuses: statusMap, vendorApprovedIds, creativeTargeting: mergedTargeting }
   }
 
   // Extract the most human-readable error message from an API error.
