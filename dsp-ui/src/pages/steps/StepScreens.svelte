@@ -329,10 +329,23 @@
           } catch {}
           fetchedPages = p + 1
         }
-        totalLoaded = screens.length
+        // Always cache the full unfiltered set under '__all__'
         if (screens.length > 0) {
           if (!window._dspScreensCache) window._dspScreensCache = {}
-          window._dspScreensCache[cacheKey] = screens
+          window._dspScreensCache['__all__'] = screens
+        }
+        // If city names were selected but cityIds were unavailable, filter client-side
+        if (selectedCities.length > 0) {
+          const citySet = new Set(selectedCities)
+          const cityFiltered = screens.filter(s => citySet.has(s.city))
+          screens = cityFiltered
+          totalLoaded = cityFiltered.length
+          if (cityFiltered.length > 0) {
+            if (!window._dspScreensCache) window._dspScreensCache = {}
+            window._dspScreensCache[cacheKey] = cityFiltered
+          }
+        } else {
+          totalLoaded = screens.length
         }
       }
     } catch (e) {

@@ -377,6 +377,7 @@
     saveError = ''
     try {
       const savedId = await doSave()
+      saving = false  // unlock button immediately — reloadCampaign can be slow
       // Reload in-place BEFORE changing the URL so this component stays mounted throughout.
       await reloadCampaign(savedId)
       goToStep('summary')
