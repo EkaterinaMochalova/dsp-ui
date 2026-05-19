@@ -81,7 +81,6 @@
   $: hasFullDataset = srvTotal > 0 && allRows.length >= srvTotal
 
   // ── Chart tab ─────────────────────────────────────────────────────────────
-  let chartGroupType = 'BY_HOURS'
   // chartMetric drives which endpoint is called and how the Y-axis is labelled
   // 'impressions' → /impression-chart-stats/impressions
   // 'cost'        → /impression-chart-stats/cost   (avgStats=true)
@@ -91,11 +90,16 @@
   let chartLoading = false
   let chartError = ''
   const today = new Date().toISOString().slice(0, 10)
-  let chartFrom = draft.startDate ?? today
-  let chartTo   = (() => {
+  // The most recent day that this campaign was (or is) active — used as default
+  const _latestDay = (() => {
     if (!draft.endDate) return today
     return draft.endDate < today ? draft.endDate : today
   })()
+  // BY_HOURS shows a single day; default to last active day.
+  // BY_DAYS shows a range; dates will expand when the user switches.
+  let chartGroupType = 'BY_HOURS'
+  let chartFrom = _latestDay
+  let chartTo   = _latestDay
 
   // ── Map tab ───────────────────────────────────────────────────────────────
   let mapEl = null
@@ -120,14 +124,19 @@
   }
 
   function fmtLocalTime(isoStr) {
-    // "2026-05-18T18:37:16.691" → "18:37:16"
+    // Parse as local time (no Z suffix from the server = local time already)
+    // If it does have Z/offset, toLocaleTimeString converts to browser locale
     if (!isoStr) return '—'
-    return isoStr.slice(11, 19)
+    const d = new Date(isoStr.endsWith('Z') || isoStr.includes('+') ? isoStr : isoStr + 'Z')
+    if (isNaN(d)) return isoStr.slice(11, 19)
+    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   }
 
   function dateToMs(dateStr) {
     if (!dateStr) return null
-    return new Date(dateStr + 'T00:00:00').getTime()
+    // Always produce UTC midnight so the server (which uses UTC) sees the right day.
+    // new Date("YYYY-MM-DD") parses as UTC per spec; adding T00:00:00 makes it *local* — avoid that.
+    return new Date(dateStr).getTime()  // "YYYY-MM-DD" → UTC midnight per spec
   }
 
   const IMP_STATUS = {
@@ -259,8 +268,16 @@
       if (metric.avgStats) params.avgStats = true
       const f = dateToMs(chartFrom)
       const t = dateToMs(chartTo)
-      if (f) params.start = f
-      if (t) params.end   = t + 86399999   // end of day (ms)
+      if (chartGroupType === 'BY_HOURS') {
+        // Server expects start=end=UTC midnight of the single day being viewed.
+        // Prod app sends identical values for both params.
+        const day = f ?? t
+        if (day != null) { params.start = day; params.end = day }
+      } else {
+        // BY_DAYS: send full inclusive range (end = start of last day + 23:59:59.999)
+        if (f != null) params.start = f
+        if (t != null) params.end   = t + 86399999
+      }
       chartData = await api.stats.chart(campId, metric.key, params) ?? {}
     } catch (e) {
       chartError = 'Не удалось загрузить данные графика'
@@ -273,6 +290,20 @@
     activeTab = tab
     if (tab === 'chart' && !Object.keys(chartData).length) loadChart()
     if (tab === 'map'   && !mapInited) scheduleMapLoad()
+  }
+
+  function setGroupType(type) {
+    if (type === chartGroupType) return
+    chartGroupType = type
+    if (type === 'BY_HOURS') {
+      // Collapse to single day: use the to-date as the day
+      chartFrom = chartTo
+    } else {
+      // Expand back to campaign range
+      chartFrom = draft.startDate ?? _latestDay
+    }
+    chartData = {}
+    loadChart()
   }
 
   async function scheduleMapLoad() {
@@ -327,9 +358,14 @@
 
   function fmtXLabel(pt) {
     if (!pt?.date) return ''
-    return chartGroupType === 'BY_DAYS'
-      ? pt.date.slice(5, 10).replace('-', '.')
-      : pt.date.slice(11, 16)
+    if (chartGroupType === 'BY_DAYS') {
+      return pt.date.slice(5, 10).replace('-', '.')
+    }
+    // BY_HOURS: convert UTC datetime string to local browser time
+    try {
+      const d = new Date(pt.date.includes('T') ? pt.date + 'Z' : pt.date)
+      return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    } catch { return pt.date.slice(11, 16) }
   }
 
   function fmtYVal(v) {
@@ -621,17 +657,25 @@
 
           <div style="flex:1"></div>
 
-          <!-- Date range -->
+          <!-- Date range (single picker for BY_HOURS, range for BY_DAYS) -->
           <div class="chart-dates">
-            <input class="date-inp" type="date" bind:value={chartFrom} on:change={loadChart} />
-            <span class="date-sep">—</span>
-            <input class="date-inp" type="date" bind:value={chartTo}   on:change={loadChart} max={today} />
+            {#if chartGroupType === 'BY_HOURS'}
+              <!-- BY_HOURS: single day selector -->
+              <input class="date-inp" type="date" bind:value={chartTo} max={today}
+                on:change={() => { chartFrom = chartTo; chartData = {}; loadChart() }} />
+            {:else}
+              <input class="date-inp" type="date" bind:value={chartFrom}
+                on:change={() => { chartData = {}; loadChart() }} />
+              <span class="date-sep">—</span>
+              <input class="date-inp" type="date" bind:value={chartTo} max={today}
+                on:change={() => { chartData = {}; loadChart() }} />
+            {/if}
           </div>
 
           <!-- Group type toggle -->
           <div class="toggle-group">
-            <button class="toggle-btn" class:active={chartGroupType==='BY_HOURS'} on:click={() => { chartGroupType='BY_HOURS'; loadChart() }}>По часам</button>
-            <button class="toggle-btn" class:active={chartGroupType==='BY_DAYS'}  on:click={() => { chartGroupType='BY_DAYS';  loadChart() }}>По дням</button>
+            <button class="toggle-btn" class:active={chartGroupType==='BY_HOURS'} on:click={() => setGroupType('BY_HOURS')}>По часам</button>
+            <button class="toggle-btn" class:active={chartGroupType==='BY_DAYS'}  on:click={() => setGroupType('BY_DAYS')}>По дням</button>
           </div>
         </div>
 
