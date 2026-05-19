@@ -18,17 +18,34 @@
   let kpiLoading = true
 
   // ── Table tab ─────────────────────────────────────────────────────────────
-  let impRows = []
-  let impPage = 0
-  const impSize = 20
-  let impTotal = 0
-  let impTotalPages = 0
+  // Raw rows fetched from the server (one server-page at a time in normal mode,
+  // or a large batch when a filter is active so client-side filtering has enough data)
+  let allRows    = []    // full server batch currently loaded
+  let srvPage    = 0     // server page index
+  let srvTotal   = 0     // total records on server (unfiltered)
+  let srvPages   = 1     // total server pages
+  const SRV_NORMAL  = 50   // rows per server fetch in normal (no-filter) mode
+  const SRV_FILTER  = 500  // large batch when a filter is active
   let impLoading = false
-  let impError = ''
+  let impError   = ''
 
-  // Filters
+  // Client-side view pagination (applied on top of local filtering)
+  const VIEW_SIZE = 20
+  let viewPage = 0
+
+  // Filters (client-side — API doesn't support bidRequestState/inventoryFormat params)
   let filterStatus = ''    // '' | 'SUCCESS' | 'FAILED'
-  let filterFormat = ''    // '' | 'BILLBOARD' | 'CITYFORMAT' | etc.
+  let filterFormat = ''    // '' | 'BILLBOARD' | etc.
+
+  // Derived: filtered rows from current server batch
+  $: filteredRows = allRows.filter(r => {
+    if (filterStatus === 'SUCCESS' && r.bidRequestState !== 'SUCCESS')  return false
+    if (filterStatus === 'FAILED'  && r.bidRequestState === 'SUCCESS')  return false
+    if (filterFormat && r.inventoryFormat !== filterFormat) return false
+    return true
+  })
+  $: viewRows      = filteredRows.slice(viewPage * VIEW_SIZE, (viewPage + 1) * VIEW_SIZE)
+  $: viewTotalPages = Math.max(1, Math.ceil(filteredRows.length / VIEW_SIZE))
 
   // ── Chart tab ─────────────────────────────────────────────────────────────
   let chartGroupType = 'BY_HOURS'
@@ -117,27 +134,37 @@
   }
 
   // ── Table ─────────────────────────────────────────────────────────────────
+  // Load a server page. When a filter is active we fetch a large batch so the
+  // client-side filter has plenty of rows to work with.
   async function loadImpressions(page) {
     if (!campId) return
     impLoading = true; impError = ''
     try {
-      const params = { page, size: impSize, sort: 'showTime,desc' }
-      if (filterStatus) params.bidRequestState = filterStatus
-      if (filterFormat) params.inventoryFormat = filterFormat
-      const data = await api.stats.list(campId, params)
-      impRows       = data.content ?? []
-      impTotal      = data.totalElements ?? 0
-      impTotalPages = data.totalPages ?? 1
-      impPage       = page
+      const hasFilter = !!(filterStatus || filterFormat)
+      const size = hasFilter ? SRV_FILTER : SRV_NORMAL
+      const data  = await api.stats.list(campId, { page, size, sort: 'showTime,desc' })
+      allRows  = data.content ?? []
+      srvTotal = data.totalElements ?? 0
+      srvPages = data.totalPages ?? 1
+      srvPage  = page
+      viewPage = 0   // reset client view whenever we load a new server page
     } catch { impError = 'Не удалось загрузить показы' }
     impLoading = false
   }
 
-  // Reset to page 0 whenever a filter changes
-  function applyFilter() { loadImpressions(0) }
+  // When filter changes: keep current server batch, just reset the view page.
+  // If the batch was loaded without a filter (small size), reload with larger batch.
+  function applyFilter() {
+    viewPage = 0
+    const batchIsTooSmall = allRows.length < SRV_FILTER && srvTotal > SRV_NORMAL
+    if ((filterStatus || filterFormat) && batchIsTooSmall) {
+      loadImpressions(0)   // re-fetch with large batch
+    }
+    // Otherwise: reactive $: filteredRows re-computes automatically
+  }
 
-  // Collect unique formats from loaded rows for the format filter
-  $: formats = [...new Set(impRows.map(r => r.inventoryFormat).filter(Boolean))]
+  // Collect unique formats from loaded rows for the format filter pill list
+  $: formats = [...new Set(allRows.map(r => r.inventoryFormat).filter(Boolean))]
 
   // ── Chart ─────────────────────────────────────────────────────────────────
   async function loadChart() {
@@ -356,20 +383,22 @@
           </div>
         {/if}
         <div style="flex:1"></div>
-        {#if impTotal > 0}
-          <span class="filter-count">{fmt(impTotal)} записей</span>
-        {/if}
+        <span class="filter-count">
+          {#if filterStatus || filterFormat}
+            {fmt(filteredRows.length)} из {fmt(srvTotal)}
+          {:else}
+            {fmt(srvTotal)} записей
+          {/if}
+        </span>
       </div>
 
       <div class="step-card tab-panel" style="padding:0;overflow:hidden">
-        {#if impLoading && impRows.length === 0}
+        {#if impLoading && allRows.length === 0}
           <div class="panel-loading"><div class="spinner"></div> Загрузка…</div>
         {:else if impError}
           <div class="panel-error">{impError}</div>
-        {:else if impRows.length === 0}
-          <div class="panel-empty">
-            {filterStatus || filterFormat ? 'Нет записей с выбранными фильтрами.' : 'Показы ещё не зафиксированы.'}
-          </div>
+        {:else if allRows.length === 0}
+          <div class="panel-empty">Показы ещё не зафиксированы.</div>
         {:else}
           <div class="tbl-wrap">
             <table class="tbl">
@@ -387,47 +416,63 @@
                 </tr>
               </thead>
               <tbody>
-                {#each impRows as row (row.id)}
-                  <tr class:row-failed={row.bidRequestState !== 'SUCCESS'}>
-                    <td class="mono">{fmtMs(row.showTime)}</td>
-                    <td class="mono">{fmtLocalTime(row.inventoryShowTime)}</td>
-                    <td>
-                      <span class="inv-name">{row.inventory?.name ?? row.inventoryGid ?? '—'}</span>
-                      <span class="inv-addr">{row.address}{row.city ? ', ' + row.city : ''}</span>
-                    </td>
-                    <td class="dim">{row.inventoryFormat ?? '—'}</td>
-                    <td class="dim" title={row.media?.name ?? ''}>
-                      {#if row.media?.name}
-                        {row.media.name.length > 28 ? row.media.name.slice(0, 26) + '…' : row.media.name}
-                      {:else}—{/if}
-                    </td>
-                    <td>
-                      <span class="badge {impStatus(row).cls}">{impStatus(row).label}</span>
-                    </td>
-                    <td class="dim reason-cell">
-                      {#if row.bidRequestState !== 'SUCCESS'}
-                        <span title={row.failureReasonMessage ?? ''}>
-                          {row.failureReasonCodeName ?? row.failureReasonType ?? '—'}
-                        </span>
-                      {:else}—{/if}
-                    </td>
-                    <td class="num mono">{fmt(row.ots ?? row.opOts)}</td>
-                    <td class="num mono">{row.chargedPrice != null ? formatMoney(row.chargedPrice) : '—'}</td>
-                  </tr>
-                {/each}
+                {#if viewRows.length === 0}
+                  <tr><td colspan="9" class="panel-empty" style="text-align:center;padding:32px">
+                    Нет записей с выбранными фильтрами.
+                  </td></tr>
+                {:else}
+                  {#each viewRows as row (row.id)}
+                    <tr class:row-failed={row.bidRequestState !== 'SUCCESS'}>
+                      <td class="mono">{fmtMs(row.showTime)}</td>
+                      <td class="mono">{fmtLocalTime(row.inventoryShowTime)}</td>
+                      <td>
+                        <span class="inv-name">{row.inventory?.name ?? row.inventoryGid ?? '—'}</span>
+                        <span class="inv-addr">{row.address}{row.city ? ', ' + row.city : ''}</span>
+                      </td>
+                      <td class="dim">{row.inventoryFormat ?? '—'}</td>
+                      <td class="dim" title={row.media?.name ?? ''}>
+                        {#if row.media?.name}
+                          {row.media.name.length > 28 ? row.media.name.slice(0, 26) + '…' : row.media.name}
+                        {:else}—{/if}
+                      </td>
+                      <td>
+                        <span class="badge {impStatus(row).cls}">{impStatus(row).label}</span>
+                      </td>
+                      <td class="dim reason-cell">
+                        {#if row.bidRequestState !== 'SUCCESS'}
+                          <span title={row.failureReasonMessage ?? ''}>
+                            {row.failureReasonCodeName ?? row.failureReasonType ?? '—'}
+                          </span>
+                        {:else}—{/if}
+                      </td>
+                      <td class="num mono">{fmt(row.ots ?? row.opOts)}</td>
+                      <td class="num mono">{row.chargedPrice != null ? formatMoney(row.chargedPrice) : '—'}</td>
+                    </tr>
+                  {/each}
+                {/if}
               </tbody>
             </table>
           </div>
-          <!-- Pagination -->
+          <!-- Pagination: client-side view pages + server-side page navigation -->
           <div class="pagination">
-            <span class="pg-info">
-              {impPage * impSize + 1}–{Math.min((impPage + 1) * impSize, impTotal)} из {fmt(impTotal)}
-            </span>
             <div class="pg-btns">
-              <button class="pg-btn" disabled={impPage === 0 || impLoading} on:click={() => loadImpressions(impPage - 1)}>‹ Назад</button>
-              <span class="pg-cur">{impPage + 1} / {impTotalPages}</span>
-              <button class="pg-btn" disabled={impPage >= impTotalPages - 1 || impLoading} on:click={() => loadImpressions(impPage + 1)}>Далее ›</button>
+              <!-- Client-side view pagination (within loaded batch) -->
+              <button class="pg-btn" disabled={viewPage === 0}
+                on:click={() => viewPage--}>‹</button>
+              <span class="pg-cur">{viewPage + 1} / {viewTotalPages}</span>
+              <button class="pg-btn" disabled={viewPage >= viewTotalPages - 1}
+                on:click={() => viewPage++}>›</button>
             </div>
+            <!-- Server page navigation (load more from backend) -->
+            {#if srvPages > 1}
+              <div class="pg-srv">
+                <span class="pg-info">Страница {srvPage + 1} / {srvPages}</span>
+                <button class="pg-btn" disabled={srvPage === 0 || impLoading}
+                  on:click={() => loadImpressions(srvPage - 1)}>← Пред. пачка</button>
+                <button class="pg-btn" disabled={srvPage >= srvPages - 1 || impLoading}
+                  on:click={() => loadImpressions(srvPage + 1)}>След. пачка →</button>
+              </div>
+            {/if}
           </div>
         {/if}
       </div>
@@ -732,12 +777,17 @@
   .panel-error { color: #ef4444; }
 
   /* ── Table ───────────────────────────────────────────────────────────────── */
-  .tbl-wrap { overflow-x: auto; }
+  .tbl-wrap {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 520px;   /* fixed height so the table scrolls instead of the whole page */
+  }
   .tbl {
     width: 100%;
     border-collapse: collapse;
     font-size: 12.5px;
   }
+  .tbl thead { position: sticky; top: 0; z-index: 2; }
   .tbl th {
     padding: 8px 14px;
     text-align: left;
@@ -816,6 +866,14 @@
   .pg-btn:hover:not(:disabled) { background: var(--bg-muted); }
   .pg-btn:disabled { opacity: 0.4; cursor: default; }
   .pg-cur { font-size: 12px; color: var(--text); min-width: 50px; text-align: center; }
+  .pg-srv {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-left: 1px solid var(--border);
+    padding-left: 12px;
+    margin-left: 4px;
+  }
 
   /* ── Chart ───────────────────────────────────────────────────────────────── */
   .chart-controls {
