@@ -19,6 +19,9 @@
   let uploadErr  = ''
   let interests       = []   // for audience dropdown
   let dataConditions  = []   // for "Данные" (externalConditionParams)
+  let dmpSegments     = []   // available campaign-level DMP segments
+  let dmpLoading      = false
+  let dmpExpanded     = false
   let fileInput
 
   // ── Browse-panel filter state ─────────────────────────────────────────
@@ -56,10 +59,13 @@
   }
 
   // ── Load data ─────────────────────────────────────────────────────────
+  if (!draft.dmpData) draft.dmpData = []
+
   onMount(async () => {
     await loadCreatives()
     loadInterests()
     loadDataConditions()
+    loadDmpSegments()
   })
 
   async function loadCreatives() {
@@ -90,6 +96,41 @@
       const res = await api.filters.externalConditions()
       dataConditions = Array.isArray(res) ? res : (res?.content ?? [])
     } catch { dataConditions = [] }
+  }
+
+  async function loadDmpSegments() {
+    dmpLoading = true
+    try {
+      const payload = draft.id ? { campaignId: draft.id } : {}
+      const res = await api.campaigns.possibleDmpSegments(payload)
+      dmpSegments = Array.isArray(res) ? res : (res?.content ?? res?.data ?? [])
+    } catch { dmpSegments = [] } finally { dmpLoading = false }
+  }
+
+  // DMP helpers — operate on draft.dmpData
+  function isDmpSelected(dmpId) {
+    return (draft.dmpData ?? []).some(d => d.dmpId === dmpId)
+  }
+
+  function addDmpSegment(seg) {
+    if (isDmpSelected(seg.dmpId ?? seg.id)) return
+    draft.dmpData = [...(draft.dmpData ?? []), {
+      dmpId:    seg.dmpId ?? seg.id,
+      provider: seg.provider ?? null,
+      service:  seg.service  ?? null,
+      minOts:   seg.minOts   ?? 0,
+      dmpName:  seg.dmpName  ?? seg.name ?? null,
+    }]
+  }
+
+  function removeDmpSegment(dmpId) {
+    draft.dmpData = (draft.dmpData ?? []).filter(d => d.dmpId !== dmpId)
+  }
+
+  function setDmpMinOts(dmpId, val) {
+    draft.dmpData = (draft.dmpData ?? []).map(d =>
+      d.dmpId === dmpId ? { ...d, minOts: +val } : d
+    )
   }
 
   // ── Status config ─────────────────────────────────────────────────────
@@ -394,6 +435,72 @@
   {#if uploadErr}
     <div class="cr-error-banner">{uploadErr}</div>
   {/if}
+
+  <!-- ── Campaign-level DMP targeting ───────────────────────────────── -->
+  <div class="cr-dmp-section">
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div class="cr-dmp-header" on:click={() => dmpExpanded = !dmpExpanded} role="button" tabindex="0"
+      on:keydown={e => e.key==='Enter' && (dmpExpanded = !dmpExpanded)}>
+      <span class="cr-dmp-title">DMP-данные кампании</span>
+      {#if draft.dmpData?.length > 0}
+        <span class="cr-count-badge" style="font-size:11px">{draft.dmpData.length} сегм.</span>
+      {/if}
+      {#if dmpLoading}
+        <span class="cr-spinner" style="margin-left:6px"></span>
+      {/if}
+      <span class="cr-dmp-chevron" class:cr-dmp-chevron-open={dmpExpanded}>▾</span>
+    </div>
+
+    {#if dmpExpanded}
+      <div class="cr-dmp-body">
+        <!-- Selected DMP segments -->
+        {#if draft.dmpData?.length > 0}
+          <div class="cr-dmp-selected">
+            {#each draft.dmpData as d (d.dmpId)}
+              <div class="cr-dmp-row">
+                <div class="cr-dmp-row-info">
+                  <span class="cr-dmp-name">{d.dmpName ?? `DMP ${d.dmpId}`}</span>
+                  {#if d.provider}<span class="cr-file-chip">{d.provider}</span>{/if}
+                  {#if d.service}<span class="cr-file-chip">{d.service}</span>{/if}
+                </div>
+                <div class="cr-dmp-row-ots">
+                  <label class="cr-range-label" style="white-space:nowrap">Мин. OTS</label>
+                  <input class="cr-range-input" type="number" min="0" style="width:80px"
+                    value={d.minOts}
+                    on:input={e => setDmpMinOts(d.dmpId, e.target.value)} />
+                </div>
+                <button class="cr-dmp-remove" on:click={() => removeDmpSegment(d.dmpId)}>×</button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <!-- Add segment -->
+        {#if dmpLoading}
+          <div style="font-size:12.5px;color:#94A3B8;display:flex;align-items:center;gap:6px">
+            <span class="cr-spinner"></span> Загрузка сегментов…
+          </div>
+        {:else if dmpSegments.length > 0}
+          <select class="cr-interests-select" style="margin-top:{draft.dmpData?.length > 0 ? 8 : 0}px"
+            on:change={e => {
+              const idx = +e.target.value
+              if (!isNaN(idx) && idx >= 0) addDmpSegment(dmpSegments[idx])
+              e.target.value = ''
+            }}>
+            <option value="">Добавить сегмент…</option>
+            {#each dmpSegments as seg, i}
+              {#if !isDmpSelected(seg.dmpId ?? seg.id)}
+                <option value={i}>{seg.dmpName ?? seg.name ?? `DMP ${seg.dmpId ?? seg.id}`}{seg.provider ? ` (${seg.provider})` : ''}</option>
+              {/if}
+            {/each}
+          </select>
+        {:else if !dmpLoading}
+          <div style="font-size:12.5px;color:#94A3B8">Доступные DMP-сегменты не найдены</div>
+        {/if}
+      </div>
+    {/if}
+  </div>
 
   <!-- ── Main two-panel area ──────────────────────────────────────────── -->
   <div class="cr-layout">
@@ -943,6 +1050,22 @@
     height: 100%; padding: 20px 24px 16px;
     box-sizing: border-box; gap: 10px; overflow: hidden;
   }
+
+  /* ── DMP section ── */
+  .cr-dmp-section { flex-shrink:0; border:1.5px solid #E2E8F0; border-radius:10px; background:white; overflow:hidden; }
+  .cr-dmp-header { display:flex; align-items:center; gap:8px; padding:8px 14px; cursor:pointer; user-select:none; }
+  .cr-dmp-header:hover { background:#F8FAFC; }
+  .cr-dmp-title { font-size:13px; font-weight:600; color:var(--navy,#112853); flex:1; }
+  .cr-dmp-chevron { font-size:14px; color:#94A3B8; transition:transform .15s; margin-left:auto; }
+  .cr-dmp-chevron-open { transform:rotate(180deg); }
+  .cr-dmp-body { padding:10px 14px 14px; border-top:1px solid #F1F5F9; display:flex; flex-direction:column; gap:8px; }
+  .cr-dmp-selected { display:flex; flex-direction:column; gap:6px; }
+  .cr-dmp-row { display:flex; align-items:center; gap:10px; padding:6px 10px; background:#F8FAFC; border-radius:8px; border:1px solid #E2E8F0; }
+  .cr-dmp-row-info { flex:1; display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+  .cr-dmp-name { font-size:12.5px; font-weight:500; color:#334155; }
+  .cr-dmp-row-ots { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .cr-dmp-remove { width:22px; height:22px; border-radius:4px; border:none; background:none; color:#94A3B8; font-size:16px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; padding:0; }
+  .cr-dmp-remove:hover { background:#FEE2E2; color:#DC2626; }
 
   /* ── Top bar ── */
   .cr-topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-shrink:0; }

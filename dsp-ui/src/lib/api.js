@@ -91,6 +91,15 @@ export const api = {
     forecastCampaign(data) {
       return request('/clients/analytics/campaign-forecast', { method: 'POST', body: JSON.stringify(data) })
     },
+    possibleDmpSegments(data) {
+      return request('/clients/campaigns/possible-dmp-segments', { method: 'POST', body: JSON.stringify(data) })
+    },
+    preCampaignData(data) {
+      return request('/clients/campaigns/pre-campaign-data', { method: 'POST', body: JSON.stringify(data) })
+    },
+    preCampaignResult(data) {
+      return request('/clients/campaigns/pre-campaign-result', { method: 'POST', body: JSON.stringify(data) })
+    },
   },
 
   customers: {

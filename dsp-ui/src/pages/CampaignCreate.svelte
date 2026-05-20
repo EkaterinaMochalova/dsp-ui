@@ -74,6 +74,7 @@
     screenObjects: [],
     creativeIds: [],
     creativeTargeting: {},
+    dmpData: [],
     photoReportSettings: { ...DEFAULT_PHOTO_SETTINGS },
     analytics: {
       counters: [],
@@ -229,7 +230,9 @@
       impressionIntervalInMinutes: rawCamp?.impressionIntervalInMinutes ?? null,
       impressionInterval:  rawCamp?.impressionInterval  ?? null,
       poi:                 rawCamp?.poi                 ?? null,
-      targetAudience:      rawCamp?.targetAudience      ?? null,
+      targetAudience:      rawCamp?.targetAudience
+        ? { ...rawCamp.targetAudience, dmpData: draft.dmpData ?? [] }
+        : ((draft.dmpData?.length > 0) ? { enabled: true, dmpData: draft.dmpData } : null),
       photoReportSettings: draft.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       strategy:            rawCamp?.strategy            ?? 'STANDARD',
       strategyLimitType:   rawCamp?.strategyLimitType   ?? (draft.bidType === 'OTS' ? 'BY_OTS' : 'BY_PLAYS'),
@@ -717,6 +720,7 @@
           photoReportSettings: camp.photoReportSettings
             ? { ...DEFAULT_PHOTO_SETTINGS, ...camp.photoReportSettings }
             : { ...DEFAULT_PHOTO_SETTINGS },
+          dmpData: camp.targetAudience?.dmpData ?? [],
         }
 
         const isTerminal = ['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(camp.state)
