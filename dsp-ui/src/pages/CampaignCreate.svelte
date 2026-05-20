@@ -637,6 +637,13 @@
           .filter(i => i.id)
           .map(i => mapInventory(i))
 
+        // Restore per-screen bids from segments
+        const resolvedScreenBids = {}
+        for (const inv of segmentInventories) {
+          const id = inv.id ?? inv.inventory?.id
+          if (id != null && inv.bid != null) resolvedScreenBids[id] = inv.bid
+        }
+
         // ── Cities ─────────────────────────────────────────────────────
         // camp.cities may be empty; fall back to extracting from segments.inventories.city
         const resolvedCities = camp.cities?.length
@@ -687,6 +694,7 @@
           customBudgetTotal: resolvedBudget > 0 ? String(resolvedBudget) : '',
           screenIds:           resolvedScreenIds.length ? resolvedScreenIds : draft.screenIds,
           screenObjects:       resolvedScreenObjects.length ? resolvedScreenObjects : (draft.screenObjects ?? []),
+          screenBids:          Object.keys(resolvedScreenBids).length ? resolvedScreenBids : (draft.screenBids ?? {}),
           cities:              resolvedCities,
           cityIds:             resolvedCityIds,
           photoReportSettings: camp.photoReportSettings
