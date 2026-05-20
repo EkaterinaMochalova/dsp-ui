@@ -939,6 +939,7 @@
               {/each}
             </div>
 
+            {#if interests.length > 0 || tgt.interests.length > 0}
             <div class="cr-section-label" style="margin-top:14px">Интересы</div>
             <div class="cr-interests-wrap">
               {#if tgt.interests.length}
@@ -964,16 +965,9 @@
                   <option value="">Выберите интересы</option>
                   {#each interests as int}<option value={int.name??int.id??int}>{int.name??int}</option>{/each}
                 </select>
-              {:else}
-                <input class="cr-range-input" type="text" placeholder="Введите и нажмите Enter"
-                  on:keydown={e => {
-                    if (e.key!=='Enter'||!e.target.value.trim()) return
-                    const t=getTargeting(activeCreative.id)
-                    if(!t.interests.includes(e.target.value.trim())){t.interests=[...t.interests,e.target.value.trim()];mutate()}
-                    e.target.value=''
-                  }} />
               {/if}
             </div>
+            {/if}
 
             {#if dataConditions.length > 0}
             <div class="cr-section-label" style="margin-top:14px">Данные</div>
