@@ -145,6 +145,7 @@
 
   // Open filter dropdown
   let openFilterCol = ''
+  let dropdownSearch = ''   // search query inside searchable dropdowns
 
   function toggleSort(col) {
     if (sortCol === col) sortDir = -sortDir
@@ -153,16 +154,22 @@
 
   function toggleFilter(col, e) {
     e.stopPropagation()
-    openFilterCol = openFilterCol === col ? '' : col
+    const next = openFilterCol === col ? '' : col
+    openFilterCol = next
+    dropdownSearch = ''
   }
 
   function setColFilter(col, val) {
     colFilters = { ...colFilters, [col]: val }
     openFilterCol = ''
+    dropdownSearch = ''
   }
 
+  // Columns whose dropdown should have a search box (when options > 6)
+  const SEARCHABLE_COLS = new Set(['city', 'owner'])
+
   // Close filter dropdown / col picker / map search on outside click
-  function onDocClick() { openFilterCol = ''; colPickerOpen = false; closeMapSearch() }
+  function onDocClick() { openFilterCol = ''; dropdownSearch = ''; colPickerOpen = false; closeMapSearch() }
 
   // Unique values per filterable column (from ALL screens, not filtered)
   $: colOptions = {
@@ -1118,10 +1125,21 @@
                         </div>
                       {:else}
                         <div class="col-filter-drop" on:click|stopPropagation>
+                          {#if SEARCHABLE_COLS.has(col.id) && (colOptions[col.id]?.length ?? 0) > 6}
+                            <div class="col-filter-search-wrap">
+                              <input
+                                class="col-filter-search"
+                                type="text"
+                                placeholder="Поиск…"
+                                bind:value={dropdownSearch}
+                                on:click|stopPropagation
+                              />
+                            </div>
+                          {/if}
                           <button class="col-filter-opt" class:sel={!colFilters[col.id]} on:click={() => setColFilter(col.id, '')}>
                             Все
                           </button>
-                          {#each colOptions[col.id] ?? [] as opt}
+                          {#each (colOptions[col.id] ?? []).filter(o => !dropdownSearch || o.toLowerCase().includes(dropdownSearch.toLowerCase())) as opt}
                             <button class="col-filter-opt" class:sel={colFilters[col.id]===opt} on:click={() => setColFilter(col.id, opt)}>
                               {opt || '—'}
                             </button>
@@ -1660,6 +1678,26 @@
   }
   .col-filter-opt:hover { background: var(--bg); }
   .col-filter-opt.sel { background: #EFF6FF; color: var(--navy); font-weight: 600; }
+
+  .col-filter-search-wrap {
+    padding: 4px 4px 2px;
+    position: sticky;
+    top: -4px;
+    background: white;
+    z-index: 1;
+  }
+  .col-filter-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    outline: none;
+    color: var(--text);
+  }
+  .col-filter-search:focus { border-color: var(--navy); }
 
   .panel-expand-btn {
     width: 30px;

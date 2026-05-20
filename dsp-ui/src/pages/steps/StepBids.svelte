@@ -1,5 +1,6 @@
 <script>
-  import { createEventDispatcher } from 'svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
+  import { api } from '../../lib/api.js'
   const dispatch = createEventDispatcher()
 
   export let draft
@@ -10,13 +11,33 @@
 
   // ── Screens from cache ────────────────────────────────────────────────
   let screens = []
-  $: {
-    const cacheKey = (draft.cities ?? []).length > 0
+  let screensLoading = false
+
+  function cacheKey() {
+    return (draft.cities ?? []).length > 0
       ? [...draft.cities].sort().join('|')
       : '__all__'
-    const cached = window._dspScreensCache?.[cacheKey] ?? []
-    screens = cached.filter(s => draft.screenIds.includes(s.id))
   }
+
+  $: {
+    const cached = window._dspScreensCache?.[cacheKey()] ?? []
+    screens = cached.filter(s => (draft.screenIds ?? []).includes(s.id))
+  }
+
+  // If cache is cold when this step mounts, load screens now
+  onMount(async () => {
+    if ((window._dspScreensCache?.[cacheKey()]?.length ?? 0) > 0) return
+    screensLoading = true
+    try {
+      await api.inventories.allMapped()
+      const cached = window._dspScreensCache?.[cacheKey()] ?? []
+      screens = cached.filter(s => (draft.screenIds ?? []).includes(s.id))
+    } catch (e) {
+      console.warn('[StepBids] screen load failed:', e)
+    } finally {
+      screensLoading = false
+    }
+  })
 
   // ── Bid mode ──────────────────────────────────────────────────────────
   let bidMode = draft.useRecBid ? 'recommended' : 'custom'
@@ -217,7 +238,12 @@
 
   <!-- ── Table ── -->
   <div class="bids-table-wrap">
-    {#if screens.length === 0}
+    {#if screensLoading}
+      <div class="bids-empty">
+        <div class="bids-spinner"></div>
+        <span style="color:#94A3B8">Загрузка экранов…</span>
+      </div>
+    {:else if screens.length === 0}
       <div class="bids-empty">
         <span>Нет выбранных экранов</span>
         <button class="bids-back-link" on:click={() => dispatch('back')}>← Выбрать экраны</button>
@@ -552,6 +578,14 @@
     background: none; border: none; color: var(--navy);
     font-size: 13px; cursor: pointer; font-family: inherit;
   }
+  .bids-spinner {
+    width: 20px; height: 20px;
+    border: 2px solid #E2E8F0;
+    border-top-color: var(--navy);
+    border-radius: 50%;
+    animation: bids-spin .7s linear infinite;
+  }
+  @keyframes bids-spin { to { transform: rotate(360deg); } }
 
   .bids-table {
     width: 100%; border-collapse: collapse; font-size: 12.5px;
