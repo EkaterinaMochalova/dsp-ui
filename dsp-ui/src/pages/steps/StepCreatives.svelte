@@ -975,26 +975,24 @@
               {/if}
             </div>
 
+            {#if dataConditions.length > 0}
             <div class="cr-section-label" style="margin-top:14px">Данные</div>
             <div class="cr-interests-wrap">
-              {#if dataConditions.length > 0}
-                <select class="cr-interests-select"
-                  value={tgt.externalConditionParamsId ?? ''}
-                  on:change={e => { setField(activeCreative.id, 'externalConditionParamsId', e.target.value ? +e.target.value : null) }}>
-                  <option value="">Не выбрано</option>
-                  {#each dataConditions as dc}
-                    <option value={dc.id ?? dc}>{dc.name ?? dc.title ?? dc.id ?? dc}</option>
-                  {/each}
-                </select>
-                {#if tgt.externalConditionParamsId}
-                  <button class="cr-add-doc" style="margin-top:4px" on:click={() => setField(activeCreative.id,'externalConditionParamsId',null)}>
-                    × Сбросить
-                  </button>
-                {/if}
-              {:else}
-                <div style="font-size:12.5px;color:#94A3B8">Нет доступных условий</div>
+              <select class="cr-interests-select"
+                value={tgt.externalConditionParamsId ?? ''}
+                on:change={e => { setField(activeCreative.id, 'externalConditionParamsId', e.target.value ? +e.target.value : null) }}>
+                <option value="">Не выбрано</option>
+                {#each dataConditions as dc}
+                  <option value={dc.id ?? dc}>{dc.name ?? dc.title ?? dc.id ?? dc}</option>
+                {/each}
+              </select>
+              {#if tgt.externalConditionParamsId}
+                <button class="cr-add-doc" style="margin-top:4px" on:click={() => setField(activeCreative.id,'externalConditionParamsId',null)}>
+                  × Сбросить
+                </button>
               {/if}
             </div>
+            {/if}
 
             <div class="cr-section-label" style="margin-top:14px">Минимальный OTS целевой аудитории</div>
             <input class="cr-range-input" type="number" min="0" style="margin-top:6px;max-width:200px"
