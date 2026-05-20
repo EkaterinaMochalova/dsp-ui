@@ -469,47 +469,47 @@
     if (saving || launching) return
     if (!draft.name?.trim()) { saveError = 'Укажите название кампании'; return }
 
-    // Pre-validate creatives before hitting the API
+    // ── Synchronous pre-checks (no await — instant feedback) ──────────
     const creativeIds = draft.creativeIds ?? []
     if (creativeIds.length === 0) {
       saveError = 'Добавьте хотя бы один рекламный материал перед запуском.'
       return
     }
     const statuses = draft.creativeStatuses ?? {}
-
-    // Immediately block only if every creative is rejected
     const allRejected = creativeIds.every(id => statuses[id] === 'REJECTED')
     if (allRejected) {
       saveError = 'Все рекламные материалы отклонены. Загрузите новые перед запуском.'
       return
     }
 
-    // A campaign can launch if at least one vendor has approved any creative.
-    // Check vendorApprovedIds first (already loaded for existing campaigns).
-    // For new campaigns where it isn't populated yet, fetch segments on-demand.
-    const vendorMaps = Object.values(draft.vendorApprovedIds ?? {})
-    let hasVendorApproval = vendorMaps.some(m => creativeIds.some(id => m.has(id)))
-
-    if (!hasVendorApproval) {
-      // Either no vendor data (new campaign) or truly none approved — fetch segments to confirm
-      try {
-        const segResults = await Promise.allSettled(creativeIds.map(id => api.creatives.segments(id)))
-        hasVendorApproval = segResults.some(r =>
-          r.status === 'fulfilled' &&
-          (r.value?.content ?? []).some(s => s.state === 'APPROVED')
-        )
-      } catch { /* non-fatal — let the API decide */ }
-    }
-
-    const hasActive = creativeIds.some(id => statuses[id] === 'APPROVED') || hasVendorApproval
-    if (!hasActive) {
-      saveError = 'Рекламные материалы ещё на модерации. Дождитесь согласования хотя бы одним площадочником и попробуйте снова.'
-      return
-    }
-
+    // Lock the button NOW — before any await — so the user can't double-click
+    // while vendor approval is being checked or the save is running.
     launching = true
     saveError = ''
+
     try {
+      // A campaign can launch if at least one vendor has approved any creative.
+      // Check vendorApprovedIds first (already loaded for existing campaigns).
+      // For new campaigns where it isn't populated yet, fetch segments on-demand.
+      const vendorMaps = Object.values(draft.vendorApprovedIds ?? {})
+      let hasVendorApproval = vendorMaps.some(m => creativeIds.some(id => m.has(id)))
+
+      if (!hasVendorApproval) {
+        try {
+          const segResults = await Promise.allSettled(creativeIds.map(id => api.creatives.segments(id)))
+          hasVendorApproval = segResults.some(r =>
+            r.status === 'fulfilled' &&
+            (r.value?.content ?? []).some(s => s.state === 'APPROVED')
+          )
+        } catch { /* non-fatal — let the API decide */ }
+      }
+
+      const hasActive = creativeIds.some(id => statuses[id] === 'APPROVED') || hasVendorApproval
+      if (!hasActive) {
+        saveError = 'Рекламные материалы ещё на модерации. Дождитесь согласования хотя бы одним площадочником и попробуйте снова.'
+        return  // finally still runs → launching = false ✓
+      }
+
       const id = await doSave()
       await api.campaigns.setState(id, 'ACTIVE')
       await reloadCampaign(id)
