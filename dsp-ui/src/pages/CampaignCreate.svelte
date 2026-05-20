@@ -305,6 +305,20 @@
     console.log('[doSave] savedId:', savedId, '| rawId:', rawId)
     if (!savedId) throw new Error('Не удалось получить ID кампании после сохранения')
 
+    // Attach creatives via upload-media so the backend wires them into the correct
+    // vendor segments automatically. This mirrors the production Angular app flow and
+    // ensures creatives are linked even when vendorApprovedIds isn't fully populated yet.
+    const creativeIds = draft.creativeIds ?? []
+    if (creativeIds.length > 0) {
+      try {
+        await api.campaigns.uploadMedia(savedId, creativeIds)
+        console.log('[doSave] uploadMedia ok — attached', creativeIds.length, 'creative(s)')
+      } catch (e) {
+        // Non-fatal: the campaign is saved; log but don't abort
+        console.warn('[doSave] uploadMedia failed (non-fatal):', e)
+      }
+    }
+
     return savedId
   }
 
