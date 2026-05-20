@@ -436,7 +436,8 @@
     <div class="cr-error-banner">{uploadErr}</div>
   {/if}
 
-  <!-- ── Campaign-level DMP targeting ───────────────────────────────── -->
+  <!-- ── Campaign-level DMP targeting — only shown when segments or saved data exist ── -->
+  {#if dmpSegments.length > 0 || draft.dmpData?.length > 0}
   <div class="cr-dmp-section">
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -501,6 +502,7 @@
       </div>
     {/if}
   </div>
+  {/if}
 
   <!-- ── Main two-panel area ──────────────────────────────────────────── -->
   <div class="cr-layout">
