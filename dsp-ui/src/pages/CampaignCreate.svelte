@@ -231,8 +231,13 @@
       impressionInterval:  rawCamp?.impressionInterval  ?? null,
       poi:                 rawCamp?.poi                 ?? null,
       targetAudience:      rawCamp?.targetAudience
-        ? { ...rawCamp.targetAudience, dmpData: draft.dmpData ?? [] }
-        : ((draft.dmpData?.length > 0) ? { enabled: true, dmpData: draft.dmpData } : null),
+        // Only inject dmpData when the user has actually configured DMP segments.
+        // Sending dmpData:[] on a campaign without DMP targeting causes the RTB engine
+        // to apply an empty DMP filter → 100% play failures (failureReasonCode 1000).
+        ? (draft.dmpData?.length > 0
+            ? { ...rawCamp.targetAudience, dmpData: draft.dmpData }
+            : rawCamp.targetAudience)
+        : (draft.dmpData?.length > 0 ? { enabled: true, dmpData: draft.dmpData } : null),
       photoReportSettings: draft.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       strategy:            rawCamp?.strategy            ?? 'STANDARD',
       strategyLimitType:   rawCamp?.strategyLimitType   ?? (draft.bidType === 'OTS' ? 'BY_OTS' : 'BY_PLAYS'),
