@@ -9,11 +9,11 @@
   $: customBudget   = Number(draft.customBudgetTotal) || 0
   $: baer = customBudget || forecastBudget
 
-  // Warn when user's budget exceeds what the selected screens can deliver
-  // Only warn if the entered budget meaningfully exceeds forecast (>1% or >1₽ difference)
-  // Avoids "55 > 54.93 → max is 55" nonsense due to rounding in the message
+  // Warn when user's budget meaningfully exceeds what screens can deliver.
+  // Threshold: at least 15% over forecast — avoids false positives for small
+  // test budgets where the margin is tiny (e.g. 11 vs 9.61 = 14%).
   $: capacityExceeded = customBudget > 0 && forecastBudget > 0
-    && customBudget > Math.ceil(forecastBudget)
+    && customBudget > forecastBudget * 1.15
   $: markupPct = Number(draft.buyerMarkup) || 0
   $: markupAmt = baer * (markupPct / 100)
   $: clientBase = baer + markupAmt
@@ -99,7 +99,7 @@
       </svg>
       <span>
         Ёмкость выбранных экранов не позволяет реализовать бюджет {customBudget.toLocaleString('ru-RU')} ₽.
-        Максимальный реализуемый бюджет: <strong>{forecastBudget.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽</strong>.
+        Максимальный реализуемый бюджет: <strong>{forecastBudget.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ₽</strong>.
       </span>
     </div>
   {/if}
