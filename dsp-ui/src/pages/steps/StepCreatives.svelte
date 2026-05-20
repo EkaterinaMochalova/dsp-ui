@@ -171,8 +171,10 @@
   }
 
   $: tg = activeId ? getTargeting(activeId) : null
-  $: wp = tg?.weatherParams
-  $: jp = tg?.jamParams
+  // Depend on draft.creativeTargeting (replaced by mutate()) not just tg
+  // so Svelte re-runs when weatherParams / jamParams change in-place.
+  $: wp = draft.creativeTargeting?.[activeId]?.weatherParams ?? tg?.weatherParams
+  $: jp = draft.creativeTargeting?.[activeId]?.jamParams     ?? tg?.jamParams
 
   function mutate() { draft.creativeTargeting = { ...draft.creativeTargeting } }
 
