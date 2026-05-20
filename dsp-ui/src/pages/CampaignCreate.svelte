@@ -446,9 +446,16 @@
     saveError = ''
     try {
       const savedId = await doSave()
-      saving = false  // unlock button immediately — reloadCampaign can be slow
       // Reload in-place BEFORE changing the URL so this component stays mounted throughout.
-      await reloadCampaign(savedId)
+      // NOTE: do NOT set saving=false here — keep the lock until the full flow completes.
+      // Setting it early created a race: a second save could start during reloadCampaign,
+      // and if that second PUT hung (server errors), saving would stay true forever.
+      try {
+        await reloadCampaign(savedId)
+      } catch (reloadErr) {
+        // Non-fatal: campaign is already saved; proceed to summary even if reload fails
+        console.warn('[save] reloadCampaign failed (non-fatal):', reloadErr)
+      }
       goToStep('summary')
       // Update the URL silently (history.replaceState does NOT fire hashchange, so App.svelte
       // won't destroy+remount this component mid-save showing a blank "Черновик" flash).
