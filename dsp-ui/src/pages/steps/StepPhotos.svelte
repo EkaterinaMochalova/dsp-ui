@@ -180,6 +180,7 @@
   .ph-days-row {
     display: inline-flex;
     align-items: center;
+    align-self: flex-start;
     border: 1px solid var(--border, #e5e7eb);
     border-radius: 8px;
     overflow: hidden;
