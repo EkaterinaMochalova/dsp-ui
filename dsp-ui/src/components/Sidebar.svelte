@@ -1,5 +1,5 @@
 <script>
-  import { page, logout, currentUser } from '../lib/stores.js'
+  import { page, currentUser } from '../lib/stores.js'
 
   function nav(target) { window.location.hash = `#/${target}` }
 
@@ -76,17 +76,12 @@
 
   </nav>
 
-  <!-- User avatar + logout -->
+  <!-- User avatar -->
   <div class="sidebar-footer">
     <div class="user-avatar">{initials($currentUser?.name || $currentUser?.email || '')}</div>
     <div class="user-info">
       <div class="user-name">{$currentUser?.name || $currentUser?.email || 'Профиль'}</div>
     </div>
-    <button class="logout-btn" on:click={logout} title="Выйти">
-      <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
-        <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h7a1 1 0 000-2H4V5h6a1 1 0 000-2H3zm11.293 4.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L15.586 11H9a1 1 0 010-2h6.586l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
-      </svg>
-    </button>
   </div>
 </aside>
 
@@ -127,21 +122,4 @@
     text-overflow: ellipsis;
   }
 
-  .logout-btn {
-    background: none;
-    border: none;
-    color: rgba(255,255,255,0.5);
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    transition: color 0.15s, background 0.15s;
-  }
-
-  .logout-btn:hover {
-    color: #fff;
-    background: rgba(255,255,255,0.1);
-  }
 </style>
