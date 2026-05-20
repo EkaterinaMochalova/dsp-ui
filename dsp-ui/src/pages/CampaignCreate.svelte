@@ -693,10 +693,10 @@
         // Mark all steps done immediately — campaign already exists
         for (const s of STEPS) completedSteps = { ...completedSteps, [s.id]: true }
 
-        if (isTerminal) {
-          goToStep('stats')
-          return
-        }
+        // Always open stats first for existing campaigns
+        goToStep('stats')
+
+        if (isTerminal) return
 
         // ── Background parallel jobs ───────────────────────────────────
         // 1. Prefetch all screens so StepScreens gets a cache hit instead of
