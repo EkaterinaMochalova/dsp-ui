@@ -17,7 +17,8 @@
   let loadError  = ''
   let uploading  = false
   let uploadErr  = ''
-  let interests  = []           // for audience dropdown
+  let interests       = []   // for audience dropdown
+  let dataConditions  = []   // for "Данные" (externalConditionParams)
   let fileInput
 
   // ── Browse-panel filter state ─────────────────────────────────────────
@@ -58,6 +59,7 @@
   onMount(async () => {
     await loadCreatives()
     loadInterests()
+    loadDataConditions()
   })
 
   async function loadCreatives() {
@@ -81,6 +83,13 @@
       const res = await api.filters.interests()
       interests = Array.isArray(res) ? res : (res?.content ?? [])
     } catch { interests = [] }
+  }
+
+  async function loadDataConditions() {
+    try {
+      const res = await api.filters.externalConditions()
+      dataConditions = Array.isArray(res) ? res : (res?.content ?? [])
+    } catch { dataConditions = [] }
   }
 
   // ── Status config ─────────────────────────────────────────────────────
@@ -144,6 +153,7 @@
     if (!draft.creativeTargeting[id]) {
       draft.creativeTargeting[id] = {
         documents: [],
+        externalConditionParamsId: null,
         gender:    [],
         ageMin:    18,
         ageMax:    80,
@@ -855,6 +865,27 @@
                     if(!t.interests.includes(e.target.value.trim())){t.interests=[...t.interests,e.target.value.trim()];mutate()}
                     e.target.value=''
                   }} />
+              {/if}
+            </div>
+
+            <div class="cr-section-label" style="margin-top:14px">Данные</div>
+            <div class="cr-interests-wrap">
+              {#if dataConditions.length > 0}
+                <select class="cr-interests-select"
+                  value={tgt.externalConditionParamsId ?? ''}
+                  on:change={e => { setField(activeCreative.id, 'externalConditionParamsId', e.target.value ? +e.target.value : null) }}>
+                  <option value="">Не выбрано</option>
+                  {#each dataConditions as dc}
+                    <option value={dc.id ?? dc}>{dc.name ?? dc.title ?? dc.id ?? dc}</option>
+                  {/each}
+                </select>
+                {#if tgt.externalConditionParamsId}
+                  <button class="cr-add-doc" style="margin-top:4px" on:click={() => setField(activeCreative.id,'externalConditionParamsId',null)}>
+                    × Сбросить
+                  </button>
+                {/if}
+              {:else}
+                <div style="font-size:12.5px;color:#94A3B8">Нет доступных условий</div>
               {/if}
             </div>
 

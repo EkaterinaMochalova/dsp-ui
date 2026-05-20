@@ -116,7 +116,7 @@
           return {
             id:                        m.id,   // approval record ID — correct for PUT
             default:                   m.default ?? false,
-            externalConditionParamsId: m.externalConditionParamsId ?? null,
+            externalConditionParamsId: tgt?.externalConditionParamsId ?? m.externalConditionParamsId ?? null,
             weatherParams:             tgt?.weatherParams ?? m.weatherParams ?? null,
             jamParams:                 tgt?.jamParams     ?? m.jamParams     ?? null,
             fixedTimeShow:             m.fixedTimeShow ?? null,
@@ -137,7 +137,7 @@
           return {
             id:                        vendorMap.get(creativeId),
             default:                   false,
-            externalConditionParamsId: null,
+            externalConditionParamsId: tgt?.externalConditionParamsId ?? null,
             weatherParams:             tgt?.weatherParams?.enabled ? tgt.weatherParams : null,
             jamParams:                 tgt?.jamParams?.level?.enabled ? tgt.jamParams : null,
             fixedTimeShow:             null,

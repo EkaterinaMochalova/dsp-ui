@@ -116,6 +116,7 @@ export const api = {
     genders()          { return request('/clients/filters/genders') },
     incomeCategories() { return request('/clients/filters/income-categories') },
     ageGroups()        { return request('/clients/filters/age-groups') },
+    externalConditions() { return request('/clients/filters/external-condition-params') },
   },
 
   creatives: {
