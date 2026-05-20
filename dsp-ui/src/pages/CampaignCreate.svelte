@@ -369,7 +369,10 @@
     // We need creative IDs (adLayout.id) for draft.creativeIds, not approval record IDs.
     // NOTE: the backend may omit non-APPROVED medias from the GET response (SENT/PENDING drop
     // adLayout or the whole item), so fall back to multiple field names.
-    const nameIds = (creativeNames.status === 'fulfilled' ? creativeNames.value : [])?.map?.(c => c.id) ?? []
+    // creative-names endpoint may return a plain array OR a paginated {content:[]} object.
+    const rawNamesList = creativeNames.status === 'fulfilled' ? creativeNames.value : []
+    const namesList = Array.isArray(rawNamesList) ? rawNamesList : (rawNamesList?.content ?? [])
+    const nameIds = namesList.map(c => c.id).filter(Boolean)
     const mediasIds = [...new Set(
       (camp.segments ?? []).flatMap(s =>
         (s.medias ?? []).map(m =>
@@ -395,10 +398,12 @@
     const ARCHIVED = new Set(['ARCHIVED', 'ARCHIVE'])
     const ids = allIds.filter(id => !ARCHIVED.has(statusMap[id]))
 
-    // If the API returned no IDs (backend omits non-approved mediaSegments), preserve
-    // whatever creativeIds are already in the draft.  This prevents a reload after save
-    // from wiping creatives that the backend hasn't yet moved to APPROVED state.
-    const finalCreativeIds = ids.length > 0 ? ids : (draft.creativeIds ?? [])
+    // Always union server-returned IDs with whatever is already in the draft so that
+    // a reload never wipes out a creative the user just selected in StepCreatives.
+    // This handles: (a) backend not yet reflecting uploadMedia, (b) paginated response
+    // parsed as empty, (c) any async race between save and reload.
+    const prevIds = draft.creativeIds ?? []
+    const finalCreativeIds = [...new Set([...ids, ...prevIds])].filter(Boolean)
 
     // Build creativeTargeting from segment medias (weather/jam params)
     const targetingFromSegs = {}
