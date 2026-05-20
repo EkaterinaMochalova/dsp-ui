@@ -684,22 +684,31 @@
 
         const isTerminal = ['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(camp.state)
 
-        // ── Creatives ──────────────────────────────────────────────────
-        // Skip for terminal campaigns — they open on Stats and never need creative data.
-        // reloadCampaign fires 2+ extra requests (creative lib, per-vendor approvals)
-        // which is the main source of the ~1 min load time on completed campaigns.
-        if (!isTerminal) {
-          try { await reloadCampaign(campaignId, camp) } catch { /* non-fatal */ }
-        }
+        // Release the loading screen as soon as campaign metadata is ready.
+        // Creative data (reloadCampaign) and screen data (allMapped) continue in background.
+        campLoading = false
 
-        // Mark all steps done → left sidebar shows checkmarks
+        // Mark all steps done immediately — campaign already exists
         for (const s of STEPS) completedSteps = { ...completedSteps, [s.id]: true }
 
-        // Terminal campaigns open directly on the Stats step
-        if (isTerminal) goToStep('stats')
+        if (isTerminal) {
+          goToStep('stats')
+          return
+        }
+
+        // ── Background parallel jobs ───────────────────────────────────
+        // 1. Prefetch all screens so StepScreens gets a cache hit instead of
+        //    starting a slow multi-page load from scratch.
+        api.inventories.allMapped().catch(() => {})
+
+        // 2. Load creative/vendor data (non-terminal campaigns only).
+        //    Fire-and-forget — StepCreatives will show a loading state if needed.
+        reloadCampaign(campaignId, camp).catch(e => {
+          console.warn('[onMount] reloadCampaign failed (non-fatal):', e)
+        })
+
       } catch (e) {
         console.warn('Failed to load campaign', e)
-      } finally {
         campLoading = false
       }
     } else {

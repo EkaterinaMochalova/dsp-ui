@@ -771,6 +771,7 @@
     {#if error && screens.length === 0}
       <div class="map-overlay">
         <span style="color:#EF4444">{error}</span>
+        <button class="retry-btn" on:click={loadScreens}>Повторить</button>
       </div>
     {/if}
 
@@ -1148,7 +1149,13 @@
               <div class="spinner"></div> Загрузка страницы {fetchedPages} из {totalPages}…
             </td></tr>
           {:else if error}
-            <tr><td colspan={colSpan} class="table-state-cell" style="color:#EF4444">{error}</td></tr>
+            <tr><td colspan={colSpan} class="table-state-cell">
+              <span style="color:#EF4444">{error}</span>
+              {#if activeTab === 'selected' && draft.screenIds?.length > 0}
+                <span style="color:#64748B;margin-left:8px">({draft.screenIds.length} экранов выбрано)</span>
+              {/if}
+              <button class="retry-btn-inline" on:click={loadScreens}>Повторить</button>
+            </td></tr>
           {:else if tabRows.length === 0}
             <tr><td colspan={colSpan} class="table-state-cell">
               {activeTab === 'selected' ? 'Нет выбранных экранов' : 'Экраны не найдены'}
@@ -1317,6 +1324,34 @@
     font-size: 14px;
     color: var(--text-muted);
   }
+  .retry-btn {
+    margin-top: 4px;
+    padding: 6px 18px;
+    border: 1.5px solid var(--navy, #112853);
+    border-radius: 8px;
+    background: white;
+    color: var(--navy, #112853);
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .retry-btn:hover { background: #EFF6FF; }
+  .retry-btn-inline {
+    margin-left: 12px;
+    padding: 3px 12px;
+    border: 1.5px solid var(--navy, #112853);
+    border-radius: 6px;
+    background: white;
+    color: var(--navy, #112853);
+    font-size: 12px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .retry-btn-inline:hover { background: #EFF6FF; }
 
   .load-bar-track {
     width: 200px;
