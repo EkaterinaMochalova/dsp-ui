@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
+  import { mapInventory } from '../lib/utils.js'
   import { logout, page as pageStore } from '../lib/stores.js'
   import RightBar from '../components/RightBar.svelte'
   import StatusBadge from '../components/StatusBadge.svelte'
@@ -70,6 +71,7 @@
     cities: [],
     cityIds: [],
     screenIds: [],
+    screenObjects: [],
     creativeIds: [],
     creativeTargeting: {},
     photoReportSettings: { ...DEFAULT_PHOTO_SETTINGS },
@@ -624,9 +626,16 @@
 
         // ── Screens ────────────────────────────────────────────────────
         // Screens live at camp.segments[].inventories[].id, NOT camp.inventories[]
-        const resolvedScreenIds = (camp.segments ?? [])
-          .flatMap(s => (s.inventories ?? []).map(i => i.id ?? i.inventory?.id))
+        const segmentInventories = (camp.segments ?? [])
+          .flatMap(s => s.inventories ?? [])
+        const resolvedScreenIds = segmentInventories
+          .map(i => i.id ?? i.inventory?.id)
           .filter(Boolean)
+        // Map segment inventory objects so StepBids/StepScreens can show
+        // the saved selection instantly, before allMapped() finishes.
+        const resolvedScreenObjects = segmentInventories
+          .filter(i => i.id)
+          .map(i => mapInventory(i))
 
         // ── Cities ─────────────────────────────────────────────────────
         // camp.cities may be empty; fall back to extracting from segments.inventories.city
@@ -677,6 +686,7 @@
           buyerMarkup:      resolvedMarkup,
           customBudgetTotal: resolvedBudget > 0 ? String(resolvedBudget) : '',
           screenIds:           resolvedScreenIds.length ? resolvedScreenIds : draft.screenIds,
+          screenObjects:       resolvedScreenObjects.length ? resolvedScreenObjects : (draft.screenObjects ?? []),
           cities:              resolvedCities,
           cityIds:             resolvedCityIds,
           photoReportSettings: camp.photoReportSettings

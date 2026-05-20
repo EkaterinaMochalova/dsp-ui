@@ -293,6 +293,15 @@
       return
     }
 
+    // Cache cold but campaign has saved screen objects — show selected screens
+    // immediately while the full list loads in the background.
+    if ((draft.screenObjects ?? []).length > 0) {
+      screens = draft.screenObjects
+      totalLoaded = draft.screenObjects.length
+      screensLoading = false
+      // Continue loading to get the full list (don't return)
+    }
+
     const PAGE = 500
 
     try {

@@ -9,7 +9,7 @@
   if (!draft.screenBids) draft.screenBids = {}
   if (draft.useRecBid == null) draft.useRecBid = true
 
-  // ── Screens from cache ────────────────────────────────────────────────
+  // ── Screens ──────────────────────────────────────────────────────────
   let screens = []
   let screensLoading = false
 
@@ -19,19 +19,32 @@
       : '__all__'
   }
 
-  $: {
+  function screensFromCache() {
     const cached = window._dspScreensCache?.[cacheKey()] ?? []
-    screens = cached.filter(s => (draft.screenIds ?? []).includes(s.id))
+    return cached.filter(s => (draft.screenIds ?? []).includes(s.id))
   }
 
-  // If cache is cold when this step mounts, load screens now
+  $: {
+    const fromCache = screensFromCache()
+    if (fromCache.length > 0) {
+      // Full cache is ready — use it (most accurate data)
+      screens = fromCache
+    } else if ((draft.screenObjects ?? []).length > 0) {
+      // Cache cold but campaign has saved screen objects — show them immediately
+      screens = (draft.screenObjects ?? []).filter(s => (draft.screenIds ?? []).includes(s.id))
+    }
+  }
+
+  // If cache is cold, trigger allMapped() in the background so the
+  // full screen list is available if the user edits the selection.
   onMount(async () => {
     if ((window._dspScreensCache?.[cacheKey()]?.length ?? 0) > 0) return
     screensLoading = true
     try {
       await api.inventories.allMapped()
-      const cached = window._dspScreensCache?.[cacheKey()] ?? []
-      screens = cached.filter(s => (draft.screenIds ?? []).includes(s.id))
+      // Upgrade to full cache data once ready
+      const fromCache = screensFromCache()
+      if (fromCache.length > 0) screens = fromCache
     } catch (e) {
       console.warn('[StepBids] screen load failed:', e)
     } finally {
