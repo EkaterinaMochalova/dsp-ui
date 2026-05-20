@@ -501,6 +501,23 @@
       if (!hasVendorApproval) {
         try {
           const segResults = await Promise.allSettled(creativeIds.map(id => api.creatives.segments(id)))
+          // Build vendorApprovedIds from the segments response so buildMediaSegments
+          // can correctly link creatives in the PUT payload (new campaign, cold cache).
+          const built = {}
+          for (const res of segResults) {
+            if (res.status !== 'fulfilled') continue
+            for (const item of res.value?.content ?? []) {
+              if (item.state !== 'APPROVED') continue
+              const cid = item.adLayout?.id
+              const vid = item.displayOwner?.id
+              if (cid == null || vid == null || item.id == null) continue
+              if (!built[vid]) built[vid] = new Map()
+              built[vid].set(cid, item.id)
+            }
+          }
+          if (Object.keys(built).length > 0) {
+            draft = { ...draft, vendorApprovedIds: { ...draft.vendorApprovedIds, ...built } }
+          }
           hasVendorApproval = segResults.some(r =>
             r.status === 'fulfilled' &&
             (r.value?.content ?? []).some(s => s.state === 'APPROVED')
