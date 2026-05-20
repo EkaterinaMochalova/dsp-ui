@@ -33,6 +33,40 @@
   const VIEW_SIZE = 20
   let viewPage = 0
 
+  // ── Sort ──────────────────────────────────────────────────────────────────
+  let sortCol = 'date'   // default: newest first
+  let sortDir = -1       // -1 = desc, 1 = asc
+
+  function toggleSort(col) {
+    if (sortCol === col) sortDir = -sortDir
+    else { sortCol = col; sortDir = 1 }
+    viewPage = 0
+  }
+
+  function sortVal(r, col) {
+    if (col === 'date')     return r.showTime ?? 0
+    if (col === 'local')    return r.inventoryShowTime ?? ''
+    if (col === 'screen')   return r.inventory?.name ?? ''
+    if (col === 'format')   return r.inventoryFormat ?? ''
+    if (col === 'creative') return r.media?.name ?? ''
+    if (col === 'status')   return r.bidRequestState ?? ''
+    if (col === 'reason')   return r.failureReasonCodeName ?? r.failureReasonType ?? ''
+    if (col === 'ots')      return r.ots ?? r.opOts ?? 0
+    if (col === 'cost')     return r.chargedPrice ?? 0
+    return ''
+  }
+
+  // ── Column filter popover ─────────────────────────────────────────────────
+  let openFilterCol = ''
+  let filterDropSearch = ''
+
+  function toggleFilter(col) {
+    openFilterCol = openFilterCol === col ? '' : col
+    filterDropSearch = ''
+  }
+
+  function onDocClick() { openFilterCol = '' }
+
   // Filters (all client-side — API ignores these as query params)
   let filterStatus   = ''   // '' | 'SUCCESS' | 'FAILED'
   let filterDateFrom = ''   // YYYY-MM-DD
@@ -88,8 +122,14 @@
     }
     return true
   })
-  $: viewRows       = filteredRows.slice(viewPage * VIEW_SIZE, (viewPage + 1) * VIEW_SIZE)
-  $: viewTotalPages = Math.max(1, Math.ceil(filteredRows.length / VIEW_SIZE))
+  $: sortedRows = sortCol
+    ? [...filteredRows].sort((a, b) => {
+        const av = sortVal(a, sortCol), bv = sortVal(b, sortCol)
+        return av < bv ? -sortDir : av > bv ? sortDir : 0
+      })
+    : filteredRows
+  $: viewRows       = sortedRows.slice(viewPage * VIEW_SIZE, (viewPage + 1) * VIEW_SIZE)
+  $: viewTotalPages = Math.max(1, Math.ceil(sortedRows.length / VIEW_SIZE))
 
   // Dropdown options derived from full loaded dataset
   $: formats = [...new Set(allRows.map(r => r.inventoryFormat).filter(Boolean))].sort()
@@ -172,12 +212,14 @@
 
   // ── On mount ──────────────────────────────────────────────────────────────
   onMount(async () => {
+    document.addEventListener('click', onDocClick)
     if (!campId) { kpiLoading = false; return }
     loadKpi()
     loadImpressions(0)
   })
 
   onDestroy(() => {
+    document.removeEventListener('click', onDocClick)
     if (map) { map.remove(); map = null }
   })
 
@@ -549,86 +591,188 @@
           <div class="tbl-wrap">
             <table class="tbl">
               <thead>
-                <!-- Column labels -->
                 <tr>
-                  <th>Дата/Время</th>
-                  <th>Местное</th>
-                  <th>Экран</th>
-                  <th>Формат</th>
-                  <th>Креатив</th>
-                  <th>Статус</th>
-                  <th>Причина отказа</th>
-                  <th class="num">OTS</th>
-                  <th class="num">Стоимость</th>
-                </tr>
-                <!-- Column filter inputs -->
-                <tr class="filter-row">
                   <!-- Дата/Время -->
-                  <th>
-                    <div class="col-filter-pair">
-                      <input class="col-filter" type="date" bind:value={filterDateFrom}
-                        title="С" on:input={applyColumnFilter} />
-                      <input class="col-filter" type="date" bind:value={filterDateTo}
-                        title="По" on:input={applyColumnFilter} />
+                  <th style="position:relative">
+                    <div class="th-inner">
+                      <button class="th-sort-btn" on:click={() => toggleSort('date')}>
+                        Дата/Время
+                        {#if sortCol==='date'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
+                      <button class="th-filter-btn" class:active={filterDateFrom||filterDateTo}
+                        on:click|stopPropagation={() => toggleFilter('date')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
                     </div>
+                    {#if openFilterCol==='date'}
+                      <div class="th-filter-drop" on:click|stopPropagation>
+                        <label class="fd-label">С <input class="fd-input" type="date" bind:value={filterDateFrom} on:input={applyColumnFilter}/></label>
+                        <label class="fd-label">По <input class="fd-input" type="date" bind:value={filterDateTo} on:input={applyColumnFilter}/></label>
+                        <button class="fd-clear" on:click={() => { filterDateFrom=''; filterDateTo=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
+                      </div>
+                    {/if}
                   </th>
                   <!-- Местное -->
-                  <th>
-                    <input class="col-filter" type="text" placeholder="чч:мм"
-                      bind:value={filterLocal} on:input={applyColumnFilter} />
+                  <th style="position:relative">
+                    <div class="th-inner">
+                      <button class="th-sort-btn" on:click={() => toggleSort('local')}>
+                        Местное
+                        {#if sortCol==='local'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
+                      <button class="th-filter-btn" class:active={filterLocal}
+                        on:click|stopPropagation={() => toggleFilter('local')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
+                    </div>
+                    {#if openFilterCol==='local'}
+                      <div class="th-filter-drop" on:click|stopPropagation>
+                        <input class="fd-input" type="text" placeholder="чч:мм" bind:value={filterLocal} on:input={applyColumnFilter}/>
+                        <button class="fd-clear" on:click={() => { filterLocal=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
+                      </div>
+                    {/if}
                   </th>
                   <!-- Экран -->
-                  <th>
-                    <input class="col-filter" type="text" placeholder="Поиск…"
-                      bind:value={filterScreen} on:input={applyColumnFilter} />
+                  <th style="position:relative">
+                    <div class="th-inner">
+                      <button class="th-sort-btn" on:click={() => toggleSort('screen')}>
+                        Экран
+                        {#if sortCol==='screen'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
+                      <button class="th-filter-btn" class:active={filterScreen}
+                        on:click|stopPropagation={() => toggleFilter('screen')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
+                    </div>
+                    {#if openFilterCol==='screen'}
+                      <div class="th-filter-drop" on:click|stopPropagation>
+                        <input class="fd-input" type="text" placeholder="Поиск…" bind:value={filterScreen} on:input={applyColumnFilter}/>
+                        <button class="fd-clear" on:click={() => { filterScreen=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
+                      </div>
+                    {/if}
                   </th>
                   <!-- Формат -->
-                  <th>
-                    <select class="col-filter col-select" bind:value={filterFormat}
-                      on:change={applyColumnFilter}>
-                      <option value="">Все</option>
-                      {#each formats as f}<option value={f}>{f}</option>{/each}
-                    </select>
+                  <th style="position:relative">
+                    <div class="th-inner">
+                      <button class="th-sort-btn" on:click={() => toggleSort('format')}>
+                        Формат
+                        {#if sortCol==='format'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
+                      <button class="th-filter-btn" class:active={filterFormat}
+                        on:click|stopPropagation={() => toggleFilter('format')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
+                    </div>
+                    {#if openFilterCol==='format'}
+                      <div class="th-filter-drop" on:click|stopPropagation>
+                        <button class="fd-opt" class:sel={!filterFormat} on:click={() => { filterFormat=''; applyColumnFilter(); openFilterCol='' }}>Все</button>
+                        {#each formats as f}
+                          <button class="fd-opt" class:sel={filterFormat===f} on:click={() => { filterFormat=f; applyColumnFilter(); openFilterCol='' }}>{f}</button>
+                        {/each}
+                      </div>
+                    {/if}
                   </th>
                   <!-- Креатив -->
-                  <th>
-                    <input class="col-filter" type="text" placeholder="Поиск…"
-                      bind:value={filterCreative} on:input={applyColumnFilter} />
+                  <th style="position:relative">
+                    <div class="th-inner">
+                      <button class="th-sort-btn" on:click={() => toggleSort('creative')}>
+                        Креатив
+                        {#if sortCol==='creative'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
+                      <button class="th-filter-btn" class:active={filterCreative}
+                        on:click|stopPropagation={() => toggleFilter('creative')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
+                    </div>
+                    {#if openFilterCol==='creative'}
+                      <div class="th-filter-drop" on:click|stopPropagation>
+                        <input class="fd-input" type="text" placeholder="Поиск…" bind:value={filterCreative} on:input={applyColumnFilter}/>
+                        <button class="fd-clear" on:click={() => { filterCreative=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
+                      </div>
+                    {/if}
                   </th>
                   <!-- Статус -->
-                  <th>
-                    <select class="col-filter col-select" bind:value={filterStatus}
-                      on:change={() => { applyColumnFilter(); applyFilter() }}>
-                      <option value="">Все</option>
-                      <option value="SUCCESS">Показан</option>
-                      <option value="FAILED">Не показан</option>
-                    </select>
+                  <th style="position:relative">
+                    <div class="th-inner">
+                      <button class="th-sort-btn" on:click={() => toggleSort('status')}>
+                        Статус
+                        {#if sortCol==='status'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
+                      <button class="th-filter-btn" class:active={filterStatus}
+                        on:click|stopPropagation={() => toggleFilter('status')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
+                    </div>
+                    {#if openFilterCol==='status'}
+                      <div class="th-filter-drop" on:click|stopPropagation>
+                        <button class="fd-opt" class:sel={!filterStatus} on:click={() => { filterStatus=''; applyColumnFilter(); applyFilter(); openFilterCol='' }}>Все</button>
+                        <button class="fd-opt" class:sel={filterStatus==='SUCCESS'} on:click={() => { filterStatus='SUCCESS'; applyColumnFilter(); applyFilter(); openFilterCol='' }}>Показан</button>
+                        <button class="fd-opt" class:sel={filterStatus==='FAILED'} on:click={() => { filterStatus='FAILED'; applyColumnFilter(); applyFilter(); openFilterCol='' }}>Не показан</button>
+                      </div>
+                    {/if}
                   </th>
                   <!-- Причина отказа -->
-                  <th>
-                    <select class="col-filter col-select" bind:value={filterReason}
-                      on:change={applyColumnFilter}>
-                      <option value="">Все</option>
-                      {#each reasons as r}<option value={r}>{r}</option>{/each}
-                    </select>
+                  <th style="position:relative">
+                    <div class="th-inner">
+                      <button class="th-sort-btn" on:click={() => toggleSort('reason')}>
+                        Причина отказа
+                        {#if sortCol==='reason'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
+                      <button class="th-filter-btn" class:active={filterReason}
+                        on:click|stopPropagation={() => toggleFilter('reason')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
+                    </div>
+                    {#if openFilterCol==='reason'}
+                      <div class="th-filter-drop" on:click|stopPropagation>
+                        {#if reasons.length > 5}
+                          <input class="fd-input fd-search" type="text" placeholder="Поиск…" bind:value={filterDropSearch} on:click|stopPropagation/>
+                        {/if}
+                        <button class="fd-opt" class:sel={!filterReason} on:click={() => { filterReason=''; applyColumnFilter(); openFilterCol='' }}>Все</button>
+                        {#each reasons.filter(r => !filterDropSearch || r.toLowerCase().includes(filterDropSearch.toLowerCase())) as r}
+                          <button class="fd-opt" class:sel={filterReason===r} on:click={() => { filterReason=r; applyColumnFilter(); openFilterCol='' }}>{r}</button>
+                        {/each}
+                      </div>
+                    {/if}
                   </th>
                   <!-- OTS -->
-                  <th>
-                    <div class="col-filter-pair">
-                      <input class="col-filter" type="number" placeholder="от" min="0"
-                        bind:value={filterOtsMin} on:input={applyColumnFilter} />
-                      <input class="col-filter" type="number" placeholder="до" min="0"
-                        bind:value={filterOtsMax} on:input={applyColumnFilter} />
+                  <th class="num" style="position:relative">
+                    <div class="th-inner th-inner-r">
+                      <button class="th-filter-btn" class:active={filterOtsMin||filterOtsMax}
+                        on:click|stopPropagation={() => toggleFilter('ots')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
+                      <button class="th-sort-btn" on:click={() => toggleSort('ots')}>
+                        OTS
+                        {#if sortCol==='ots'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
                     </div>
+                    {#if openFilterCol==='ots'}
+                      <div class="th-filter-drop th-filter-drop-r" on:click|stopPropagation>
+                        <label class="fd-label">От <input class="fd-input" type="number" min="0" bind:value={filterOtsMin} on:input={applyColumnFilter}/></label>
+                        <label class="fd-label">До <input class="fd-input" type="number" min="0" bind:value={filterOtsMax} on:input={applyColumnFilter}/></label>
+                        <button class="fd-clear" on:click={() => { filterOtsMin=''; filterOtsMax=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
+                      </div>
+                    {/if}
                   </th>
                   <!-- Стоимость -->
-                  <th>
-                    <div class="col-filter-pair">
-                      <input class="col-filter" type="number" placeholder="от" min="0" step="0.01"
-                        bind:value={filterCostMin} on:input={applyColumnFilter} />
-                      <input class="col-filter" type="number" placeholder="до" min="0" step="0.01"
-                        bind:value={filterCostMax} on:input={applyColumnFilter} />
+                  <th class="num" style="position:relative">
+                    <div class="th-inner th-inner-r">
+                      <button class="th-filter-btn" class:active={filterCostMin||filterCostMax}
+                        on:click|stopPropagation={() => toggleFilter('cost')}>
+                        <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L13 10.414V17a1 1 0 01-.553.894l-4-2A1 1 0 018 15v-4.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                      </button>
+                      <button class="th-sort-btn" on:click={() => toggleSort('cost')}>
+                        Стоимость
+                        {#if sortCol==='cost'}<span class="th-arr">{sortDir>0?'↑':'↓'}</span>{/if}
+                      </button>
                     </div>
+                    {#if openFilterCol==='cost'}
+                      <div class="th-filter-drop th-filter-drop-r" on:click|stopPropagation>
+                        <label class="fd-label">От <input class="fd-input" type="number" min="0" step="0.01" bind:value={filterCostMin} on:input={applyColumnFilter}/></label>
+                        <label class="fd-label">До <input class="fd-input" type="number" min="0" step="0.01" bind:value={filterCostMax} on:input={applyColumnFilter}/></label>
+                        <button class="fd-clear" on:click={() => { filterCostMin=''; filterCostMax=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
+                      </div>
+                    {/if}
                   </th>
                 </tr>
               </thead>
@@ -907,32 +1051,81 @@
   }
   .filter-clear:hover { border-color: #ef4444; color: #ef4444; }
 
-  /* ── Column filter row ──────────────────────────────────────────────────── */
-  .filter-row th {
-    padding: 4px 6px 6px;
-    background: var(--bg-muted, #f9fafb);
-    border-bottom: 2px solid var(--border);
+  /* ── Column header sort + filter ────────────────────────────────────────── */
+  .th-inner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
   }
-  .col-filter {
-    width: 100%;
-    height: 26px;
-    border: 1.5px solid var(--border);
-    border-radius: 5px;
-    padding: 0 6px;
-    font-size: 11.5px;
-    font-family: inherit;
-    color: var(--text);
+  .th-inner-r { flex-direction: row-reverse; }
+
+  .th-sort-btn {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-family: inherit; font-size: 11px; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em;
+    display: flex; align-items: center; gap: 3px;
+  }
+  .th-sort-btn:hover { color: var(--navy); }
+  .th-arr { font-size: 10px; }
+
+  .th-filter-btn {
+    background: none; border: none; padding: 2px 3px; cursor: pointer;
+    color: #CBD5E1; border-radius: 3px; line-height: 1; flex-shrink: 0;
+    transition: color .1s, background .1s;
+  }
+  .th-filter-btn:hover { color: var(--navy); background: #EFF6FF; }
+  .th-filter-btn.active { color: var(--navy); }
+
+  .th-filter-drop {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 300;
     background: #fff;
-    outline: none;
-    box-sizing: border-box;
-    transition: border-color .12s;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.13);
+    padding: 8px;
+    min-width: 160px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
   }
-  .col-filter:focus { border-color: var(--navy); }
-  .col-filter:not(:placeholder-shown),
-  .col-select:not([value=""]) { border-color: var(--navy); background: #eef2ff; }
-  .col-select { padding-right: 4px; cursor: pointer; }
-  .col-filter-pair { display: flex; flex-direction: column; gap: 3px; }
-  .col-filter-pair .col-filter { font-size: 10.5px; }
+  .th-filter-drop-r { left: auto; right: 0; }
+
+  .fd-input {
+    width: 100%; box-sizing: border-box;
+    height: 28px; padding: 0 7px;
+    border: 1.5px solid var(--border); border-radius: 5px;
+    font-size: 12px; font-family: inherit; color: var(--text);
+    background: #fff; outline: none;
+  }
+  .fd-input:focus { border-color: var(--navy); }
+  .fd-search { margin-bottom: 2px; }
+
+  .fd-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11.5px; color: var(--text-muted); white-space: nowrap;
+  }
+  .fd-label .fd-input { flex: 1; }
+
+  .fd-opt {
+    display: block; width: 100%; text-align: left;
+    padding: 5px 8px; border: none; border-radius: 5px;
+    font-size: 12.5px; font-family: inherit; color: var(--text);
+    background: none; cursor: pointer; white-space: nowrap;
+  }
+  .fd-opt:hover { background: var(--bg); }
+  .fd-opt.sel { background: #EFF6FF; color: var(--navy); font-weight: 600; }
+
+  .fd-clear {
+    margin-top: 2px; padding: 4px 8px;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: #fff; font-size: 11.5px; font-family: inherit;
+    color: var(--text-muted); cursor: pointer; align-self: flex-start;
+  }
+  .fd-clear:hover { border-color: #ef4444; color: #ef4444; }
 
   /* ── KPI cards ────────────────────────────────────────────────────────────── */
   .kpi-row {
