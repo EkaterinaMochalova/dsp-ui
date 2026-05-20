@@ -454,7 +454,9 @@
       const id = draft.id != null ? Number(draft.id) : null
       if (!id) { saveError = 'Сохраните кампанию перед паузой'; return }
       await api.campaigns.setState(id, 'STOPPED')
-      draft = { ...draft, state: 'STOPPED' }
+      // Reload so local state always reflects what the server actually set —
+      // prevents any background reloadCampaign from overwriting with stale data.
+      await reloadCampaign(id)
     } catch (e) {
       console.warn('[pause] error:', JSON.stringify(e))
       saveError = e?.status === 403
