@@ -471,7 +471,7 @@
         {#if someChecked}· {[...checkedIds].length} выбрано{/if}
       </span>
       <button class="btn-draft" on:click={() => dispatch('save')}>Сохранить черновик</button>
-      <button class="btn-next" disabled={screens.length === 0} on:click={() => dispatch('next')}>Далее</button>
+      <button class="btn-next" disabled={screens.length === 0} on:click={() => dispatch('next')}>Дальше</button>
     </div>
   </div>
 </div>

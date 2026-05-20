@@ -1143,7 +1143,6 @@ tbody td {
   display: flex;
   justify-content: space-between;
   width: 100%;
-  max-width: 600px;
   margin-top: 8px;
   padding-top: 8px;
 }

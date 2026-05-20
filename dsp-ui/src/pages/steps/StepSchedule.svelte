@@ -257,7 +257,7 @@
         {screens.length} экран{screens.length === 1 ? '' : screens.length < 5 ? 'а' : 'ов'}
       </span>
       <button class="btn-draft" on:click={() => dispatch('save')}>Сохранить черновик</button>
-      <button class="btn-next" on:click={() => dispatch('next')}>Далее</button>
+      <button class="btn-next" on:click={() => dispatch('next')}>Дальше</button>
     </div>
   </div>
 </div>
