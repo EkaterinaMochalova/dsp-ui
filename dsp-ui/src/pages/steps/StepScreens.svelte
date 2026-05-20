@@ -293,6 +293,24 @@
       return
     }
 
+    // Fast-path: __all__ cache already populated (e.g. by allMapped prefetch).
+    // Filter it by city names instead of re-fetching everything from the server.
+    if (selectedCities.length > 0 && window._dspScreensCache?.['__all__']?.length > 0) {
+      const citySet = new Set(selectedCities.map(c => c.trim().toLowerCase()))
+      const cityFiltered = window._dspScreensCache['__all__'].filter(s =>
+        citySet.has((s.city ?? '').trim().toLowerCase())
+      )
+      if (cityFiltered.length > 0) {
+        screens = cityFiltered
+        totalLoaded = cityFiltered.length
+        screensLoading = false
+        if (!window._dspScreensCache) window._dspScreensCache = {}
+        window._dspScreensCache[cacheKey] = cityFiltered
+        return
+      }
+      // City not found in __all__ cache — fall through to server fetch
+    }
+
     // Cache cold but campaign has saved screen objects — show selected screens
     // immediately while the full list loads in the background.
     if ((draft.screenObjects ?? []).length > 0) {
@@ -303,6 +321,18 @@
     }
 
     const PAGE = 500
+
+    // Helper: apply city-name filter as a secondary safety net.
+    // Used after both server-side and client-side fetches to ensure the city
+    // filter is always respected even if the backend ignores cityIds param.
+    function applyCityFilter(items) {
+      if (selectedCities.length === 0) return items
+      const citySet = new Set(selectedCities.map(c => c.trim().toLowerCase()))
+      const filtered = items.filter(s => citySet.has((s.city ?? '').trim().toLowerCase()))
+      // Only apply if the filter actually narrows the results (> 0 and < total).
+      // If 0 results the backend city-ID filter may be more accurate — keep raw items.
+      return filtered.length > 0 ? filtered : items
+    }
 
     try {
       if (selectedCityIds.length > 0) {
@@ -321,7 +351,9 @@
           fetchedPages = p + 1
         }
 
-        const mapped = items.map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+        let mapped = items.map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+        // Secondary city-name filter — guards against server ignoring cityIds param
+        mapped = applyCityFilter(mapped)
         screens = mapped; totalLoaded = mapped.length
         if (mapped.length > 0) {
           if (!window._dspScreensCache) window._dspScreensCache = {}
@@ -334,8 +366,9 @@
         totalPages = first.totalPages ?? 1; fetchedPages = 1
         screensLoading = false
         const partial = (first.content ?? []).map(mapInventory).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+        // Don't show intermediate total when a city filter is active — avoids confusing "381 экранов" flash
         screens = partial
-        totalLoaded = first.totalElements ?? partial.length
+        totalLoaded = selectedCities.length > 0 ? partial.length : (first.totalElements ?? partial.length)
 
         for (let p = 1; p < totalPages; p++) {
           try {
@@ -352,10 +385,10 @@
         }
         // If city names were selected but cityIds were unavailable, filter client-side
         if (selectedCities.length > 0) {
-          const citySet = new Set(selectedCities)
-          const cityFiltered = screens.filter(s => citySet.has(s.city))
-          screens = cityFiltered
-          totalLoaded = cityFiltered.length
+          const citySet = new Set(selectedCities.map(c => c.trim().toLowerCase()))
+          const cityFiltered = screens.filter(s => citySet.has((s.city ?? '').trim().toLowerCase()))
+          screens = cityFiltered.length > 0 ? cityFiltered : screens
+          totalLoaded = screens.length
           if (cityFiltered.length > 0) {
             if (!window._dspScreensCache) window._dspScreensCache = {}
             window._dspScreensCache[cacheKey] = cityFiltered
