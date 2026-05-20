@@ -64,8 +64,8 @@
   onMount(async () => {
     await loadCreatives()
     loadInterests()
-    loadDataConditions()
-    loadDmpSegments()
+    // loadDataConditions()  — endpoint not yet available on backend (404)
+    // loadDmpSegments()     — endpoint not yet available on backend (JSON parse error)
   })
 
   async function loadCreatives() {
