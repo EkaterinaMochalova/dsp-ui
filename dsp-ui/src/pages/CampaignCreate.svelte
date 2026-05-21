@@ -1091,6 +1091,14 @@
         on:save={saveCampaign}
       />
     {:else if currentStep === 'stats'}
+      {#if rawCamp?.additionalCharge === 1 && new Set(['ACTIVE','ACTIVATED','STOPPED','PAUSED','COMPLETED','CANCELLED']).has(rawCamp?.state)}
+        <div class="rtb-charge-warn">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0;color:#b45309">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-3a1 1 0 00-1 1v1a1 1 0 002 0v-1a1 1 0 00-1-1z" clip-rule="evenodd"/>
+          </svg>
+          <span>Эта кампания была запущена с коэффициентом доплаты <strong>additionalCharge = 1.0</strong>, что блокирует выкуп показов в RTB-аукционе. Создайте новую кампанию, чтобы устранить проблему.</span>
+        </div>
+      {/if}
       <StepStats bind:draft on:back={() => prevStep('stats')} />
     {/if}
   </div>

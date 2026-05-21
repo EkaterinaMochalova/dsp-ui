@@ -541,6 +541,21 @@ tbody td {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* RTB additionalCharge warning banner (stats step) */
+.rtb-charge-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 20px 0;
+  padding: 10px 12px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #78350f;
+  line-height: 1.45;
+}
+
 /* Campaign loading overlay */
 .camp-loading {
   display: flex;
