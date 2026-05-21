@@ -33,6 +33,50 @@
   const VIEW_SIZE = 20
   let viewPage = 0
 
+  // ── Photo report helpers ─────────────────────────────────────────────────
+  // The API may return the photo URL under various field names.
+  function getPhotoUrl(row) {
+    return row.shotUrl
+      ?? row.photoUrl
+      ?? row.shot?.url
+      ?? row.shot?.fileUrl
+      ?? row.photoReport?.url
+      ?? row.photoReport?.fileUrl
+      ?? row.shots?.[0]?.url
+      ?? row.shots?.[0]?.fileUrl
+      ?? row.mediaShot?.url
+      ?? null
+  }
+  let lightboxUrl = null  // currently shown full-size photo
+
+  // ── Column visibility ─────────────────────────────────────────────────────
+  const COL_VIS_KEY = 'dsp_imp_col_vis'
+  const COL_DEFS = [
+    { key: 'date',     label: 'Дата/Время' },
+    { key: 'local',    label: 'Местное время' },
+    { key: 'screen',   label: 'Экран' },
+    { key: 'format',   label: 'Формат' },
+    { key: 'creative', label: 'Креатив' },
+    { key: 'photo',    label: 'Фотоотчет' },
+    { key: 'status',   label: 'Статус' },
+    { key: 'reason',   label: 'Причина отказа' },
+    { key: 'ots',      label: 'OTS' },
+    { key: 'cost',     label: 'Стоимость' },
+  ]
+  let colVis = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COL_VIS_KEY))
+      if (saved && typeof saved === 'object') return { ...Object.fromEntries(COL_DEFS.map(c => [c.key, true])), ...saved }
+    } catch {}
+    return Object.fromEntries(COL_DEFS.map(c => [c.key, true]))
+  })()
+  let colPickerOpen = false
+  function toggleColVis(key) {
+    colVis = { ...colVis, [key]: !colVis[key] }
+    try { localStorage.setItem(COL_VIS_KEY, JSON.stringify(colVis)) } catch {}
+  }
+  $: visibleColCount = COL_DEFS.filter(c => colVis[c.key]).length
+
   // ── Sort ──────────────────────────────────────────────────────────────────
   let sortCol = 'date'   // default: newest first
   let sortDir = -1       // -1 = desc, 1 = asc
@@ -698,6 +742,25 @@
             applyFilter()
           }}>× Сбросить</button>
         {/if}
+        <!-- Column chooser -->
+        <div style="position:relative">
+          <button class="col-picker-btn" class:active={colPickerOpen} title="Столбцы" on:click|stopPropagation={() => colPickerOpen = !colPickerOpen}>
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z"/>
+            </svg>
+          </button>
+          {#if colPickerOpen}
+            <div class="col-picker-drop" on:click|stopPropagation>
+              <div class="col-picker-title">Столбцы</div>
+              {#each COL_DEFS as col}
+                <label class="col-picker-row">
+                  <input type="checkbox" checked={colVis[col.key]} on:change={() => toggleColVis(col.key)} />
+                  {col.label}
+                </label>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
 
       <div class="step-card tab-panel" style="padding:0;overflow:hidden">
@@ -712,7 +775,7 @@
             <table class="tbl">
               <thead>
                 <tr>
-                  <!-- Дата/Время -->
+                  {#if colVis.date}<!-- Дата/Время -->
                   <th style="position:relative">
                     <div class="th-inner">
                       <button class="th-sort-btn" on:click={() => toggleSort('date')}>
@@ -731,8 +794,8 @@
                         <button class="fd-clear" on:click={() => { filterDateFrom=''; filterDateTo=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
                       </div>
                     {/if}
-                  </th>
-                  <!-- Местное -->
+                  </th>{/if}
+                  {#if colVis.local}<!-- Местное -->
                   <th style="position:relative">
                     <div class="th-inner">
                       <button class="th-sort-btn" on:click={() => toggleSort('local')}>
@@ -750,8 +813,8 @@
                         <button class="fd-clear" on:click={() => { filterLocal=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
                       </div>
                     {/if}
-                  </th>
-                  <!-- Экран -->
+                  </th>{/if}
+                  {#if colVis.screen}<!-- Экран -->
                   <th style="position:relative">
                     <div class="th-inner">
                       <button class="th-sort-btn" on:click={() => toggleSort('screen')}>
@@ -769,7 +832,8 @@
                         <button class="fd-clear" on:click={() => { filterScreen=''; applyColumnFilter(); openFilterCol='' }}>Сброс</button>
                       </div>
                     {/if}
-                  </th>
+                  </th>{/if}
+                  {#if colVis.format}
                   <!-- Формат -->
                   <th style="position:relative">
                     <div class="th-inner">
@@ -791,6 +855,8 @@
                       </div>
                     {/if}
                   </th>
+                  {/if}
+                  {#if colVis.creative}
                   <!-- Креатив -->
                   <th style="position:relative">
                     <div class="th-inner">
@@ -810,6 +876,16 @@
                       </div>
                     {/if}
                   </th>
+                  {/if}
+                  {#if colVis.photo}
+                  <!-- Фотоотчет -->
+                  <th style="width:72px;text-align:center">
+                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" style="vertical-align:middle;color:var(--text-muted)" title="Фотоотчет">
+                      <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                    </svg>
+                  </th>
+                  {/if}
+                  {#if colVis.status}
                   <!-- Статус -->
                   <th style="position:relative">
                     <div class="th-inner">
@@ -830,6 +906,8 @@
                       </div>
                     {/if}
                   </th>
+                  {/if}
+                  {#if colVis.reason}
                   <!-- Причина отказа -->
                   <th style="position:relative">
                     <div class="th-inner">
@@ -854,6 +932,8 @@
                       </div>
                     {/if}
                   </th>
+                  {/if}
+                  {#if colVis.ots}
                   <!-- OTS -->
                   <th class="num" style="position:relative">
                     <div class="th-inner th-inner-r">
@@ -874,6 +954,8 @@
                       </div>
                     {/if}
                   </th>
+                  {/if}
+                  {#if colVis.cost}
                   <!-- Стоимость -->
                   <th class="num" style="position:relative">
                     <div class="th-inner th-inner-r">
@@ -894,40 +976,59 @@
                       </div>
                     {/if}
                   </th>
+                  {/if}
                 </tr>
               </thead>
               <tbody>
                 {#if viewRows.length === 0}
-                  <tr><td colspan="9" class="panel-empty" style="text-align:center;padding:32px">
+                  <tr><td colspan={visibleColCount} class="panel-empty" style="text-align:center;padding:32px">
                     Нет записей с выбранными фильтрами.
                   </td></tr>
                 {:else}
                   {#each viewRows as row (row.id)}
+                    {@const photoUrl = getPhotoUrl(row)}
                     <tr class:row-failed={row.bidRequestState !== 'SUCCESS'}>
-                      <td class="mono">{fmtMs(row.showTime)}</td>
-                      <td class="mono">{fmtLocalTime(row.inventoryShowTime)}</td>
-                      <td>
-                        <span class="inv-name">{row.inventory?.name ?? row.inventoryGid ?? '—'}</span>
-                        <span class="inv-addr">{row.address}{row.city ? ', ' + row.city : ''}</span>
-                      </td>
-                      <td class="dim">{row.inventoryFormat ?? '—'}</td>
-                      <td class="dim" title={row.media?.name ?? ''}>
-                        {#if row.media?.name}
-                          {row.media.name.length > 28 ? row.media.name.slice(0, 26) + '…' : row.media.name}
-                        {:else}—{/if}
-                      </td>
-                      <td>
-                        <span class="badge {impStatus(row).cls}">{impStatus(row).label}</span>
-                      </td>
-                      <td class="dim reason-cell">
-                        {#if row.bidRequestState !== 'SUCCESS'}
-                          <span title={row.failureReasonMessage ?? ''}>
-                            {row.failureReasonCodeName ?? row.failureReasonType ?? '—'}
-                          </span>
-                        {:else}—{/if}
-                      </td>
-                      <td class="num mono">{fmt(row.ots ?? row.opOts)}</td>
-                      <td class="num mono">{row.chargedPrice != null ? formatMoney(row.chargedPrice) : '—'}</td>
+                      {#if colVis.date}<td class="mono">{fmtMs(row.showTime)}</td>{/if}
+                      {#if colVis.local}<td class="mono">{fmtLocalTime(row.inventoryShowTime)}</td>{/if}
+                      {#if colVis.screen}
+                        <td>
+                          <span class="inv-name">{row.inventory?.name ?? row.inventoryGid ?? '—'}</span>
+                          <span class="inv-addr">{row.address}{row.city ? ', ' + row.city : ''}</span>
+                        </td>
+                      {/if}
+                      {#if colVis.format}<td class="dim">{row.inventoryFormat ?? '—'}</td>{/if}
+                      {#if colVis.creative}
+                        <td class="dim" title={row.media?.name ?? ''}>
+                          {#if row.media?.name}
+                            {row.media.name.length > 28 ? row.media.name.slice(0, 26) + '…' : row.media.name}
+                          {:else}—{/if}
+                        </td>
+                      {/if}
+                      {#if colVis.photo}
+                        <td class="photo-cell">
+                          {#if photoUrl}
+                            <button class="photo-thumb-btn" on:click|stopPropagation={() => lightboxUrl = photoUrl} title="Открыть фото">
+                              <img src={photoUrl} alt="фотоотчет" class="photo-thumb" loading="lazy" />
+                            </button>
+                          {:else}
+                            <span class="dim">—</span>
+                          {/if}
+                        </td>
+                      {/if}
+                      {#if colVis.status}
+                        <td><span class="badge {impStatus(row).cls}">{impStatus(row).label}</span></td>
+                      {/if}
+                      {#if colVis.reason}
+                        <td class="dim reason-cell">
+                          {#if row.bidRequestState !== 'SUCCESS'}
+                            <span title={row.failureReasonMessage ?? ''}>
+                              {row.failureReasonCodeName ?? row.failureReasonType ?? '—'}
+                            </span>
+                          {:else}—{/if}
+                        </td>
+                      {/if}
+                      {#if colVis.ots}<td class="num mono">{fmt(row.ots ?? row.opOts)}</td>{/if}
+                      {#if colVis.cost}<td class="num mono">{row.chargedPrice != null ? formatMoney(row.chargedPrice) : '—'}</td>{/if}
                     </tr>
                   {/each}
                 {/if}
@@ -1263,6 +1364,16 @@
     <button class="btn-back" on:click={() => dispatch('back')}>Назад</button>
   </div>
 </div>
+
+<!-- ── Photo lightbox ────────────────────────────────────────────────────── -->
+{#if lightboxUrl}
+  <div class="lightbox-overlay" on:click={() => lightboxUrl = null} role="dialog">
+    <button class="lightbox-close" on:click={() => lightboxUrl = null}>×</button>
+    <img src={lightboxUrl} alt="Фотоотчет" class="lightbox-img" on:click|stopPropagation />
+  </div>
+{/if}
+
+<svelte:window on:click={() => { colPickerOpen = false }} />
 
 <style>
   /* ── Full-width overrides (stats page breaks the 600px wizard constraint) ── */
@@ -1876,4 +1987,109 @@
     border-top: 1px solid var(--border);
     background: var(--bg-muted, #f9fafb);
   }
+
+  /* ── Column chooser ──────────────────────────────────────────────────────── */
+  .col-picker-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all .12s;
+  }
+  .col-picker-btn:hover, .col-picker-btn.active { border-color: var(--navy); color: var(--navy); background: var(--navy-light, #eef2ff); }
+  .col-picker-drop {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.12);
+    z-index: 300;
+    min-width: 180px;
+    padding: 6px 0 8px;
+  }
+  .col-picker-title {
+    padding: 6px 14px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+  }
+  .col-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+  }
+  .col-picker-row:hover { background: var(--navy-light, #eef2ff); }
+  .col-picker-row input { cursor: pointer; accent-color: var(--navy); }
+
+  /* ── Photo thumbnail ─────────────────────────────────────────────────────── */
+  .photo-cell { text-align: center; padding: 4px 8px !important; vertical-align: middle !important; }
+  .photo-thumb-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: inline-block;
+    border-radius: 4px;
+    overflow: hidden;
+    line-height: 0;
+  }
+  .photo-thumb-btn:hover { opacity: .85; }
+  .photo-thumb {
+    width: 52px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 3px;
+    display: block;
+  }
+
+  /* ── Photo lightbox ──────────────────────────────────────────────────────── */
+  .lightbox-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.8);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .lightbox-img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.5);
+    object-fit: contain;
+  }
+  .lightbox-close {
+    position: fixed;
+    top: 20px;
+    right: 24px;
+    background: rgba(255,255,255,.15);
+    border: none;
+    color: #fff;
+    font-size: 28px;
+    line-height: 1;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .lightbox-close:hover { background: rgba(255,255,255,.25); }
 </style>
