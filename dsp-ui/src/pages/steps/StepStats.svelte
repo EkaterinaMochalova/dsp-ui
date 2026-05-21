@@ -36,16 +36,7 @@
   // ── Photo report helpers ─────────────────────────────────────────────────
   // The API may return the photo URL under various field names.
   function getPhotoUrl(row) {
-    return row.shotUrl
-      ?? row.photoUrl
-      ?? row.shot?.url
-      ?? row.shot?.fileUrl
-      ?? row.photoReport?.url
-      ?? row.photoReport?.fileUrl
-      ?? row.shots?.[0]?.url
-      ?? row.shots?.[0]?.fileUrl
-      ?? row.mediaShot?.url
-      ?? null
+    return row.impressionShot ?? null
   }
   let lightboxUrl = null  // currently shown full-size photo
 
@@ -447,8 +438,6 @@
       srvPages = data.totalPages ?? 1
       srvPage  = page
       viewPage = 0
-      // TEMP: log first row to find photo field name
-      if (allRows.length > 0) console.log('[imp row keys]', Object.keys(allRows[0]), allRows[0])
     } catch { impError = 'Не удалось загрузить показы' }
     impLoading = false
   }
