@@ -399,7 +399,21 @@
     // This handles: (a) backend not yet reflecting uploadMedia, (b) paginated response
     // parsed as empty, (c) any async race between save and reload.
     const prevIds = draft.creativeIds ?? []
-    const finalCreativeIds = [...new Set([...ids, ...prevIds])].filter(Boolean)
+    let finalCreativeIds = [...new Set([...ids, ...prevIds])].filter(Boolean)
+
+    // Recovery fallback: if campaign has no creatives server-side (e.g. saved before the
+    // adLayout.id fix was deployed) and the user hasn't re-selected anything locally,
+    // recover creative IDs from the vendor approval maps. These are scoped to the
+    // campaign's own segments' displayOwners so they're campaign-specific.
+    if (finalCreativeIds.length === 0 && Object.keys(vendorApprovedIds).length > 0) {
+      const recovered = [...new Set(
+        Object.values(vendorApprovedIds).flatMap(map => [...map.keys()])
+      )]
+      if (recovered.length > 0) {
+        console.warn('[reload] creative-names empty — recovering creativeIds from vendorApprovedIds:', recovered)
+        finalCreativeIds = recovered
+      }
+    }
 
     // Build creativeTargeting from segment medias (weather/jam params)
     const targetingFromSegs = {}
