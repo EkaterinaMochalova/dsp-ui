@@ -516,78 +516,36 @@
     }
   }
 
+  // Launch = pure activation of an already-saved campaign.
+  // Save first (Сохранить), then launch. No implicit save here.
   async function launchCampaign() {
-    if (saving || launching) return
-    if (!draft.name?.trim()) { saveError = 'Укажите название кампании'; return }
+    if (saving || launching || pausing) return
 
-    // ── Synchronous pre-checks (no await — instant feedback) ──────────
-    const creativeIds = draft.creativeIds ?? []
-    if (creativeIds.length === 0) {
-      saveError = 'Добавьте хотя бы один рекламный материал перед запуском.'
+    const id = draft.id != null && draft.id !== '' ? Number(draft.id) : null
+    if (!id) {
+      saveError = 'Сохраните кампанию перед запуском.'
       return
     }
+
+    const creativeIds = draft.creativeIds ?? []
+    if (creativeIds.length === 0) {
+      saveError = 'Добавьте хотя бы один рекламный материал и сохраните кампанию перед запуском.'
+      return
+    }
+
     const statuses = draft.creativeStatuses ?? {}
-    const allRejected = creativeIds.every(id => statuses[id] === 'REJECTED')
+    const allRejected = creativeIds.length > 0 && creativeIds.every(id => statuses[id] === 'REJECTED')
     if (allRejected) {
       saveError = 'Все рекламные материалы отклонены. Загрузите новые перед запуском.'
       return
     }
 
-    // Lock the button NOW — before any await — so the user can't double-click
-    // while vendor approval is being checked or the save is running.
     launching = true
     saveError = ''
-
     try {
-      // A campaign can launch if at least one vendor has approved any creative.
-      // Check vendorApprovedIds first (already loaded for existing campaigns).
-      // For new campaigns where it isn't populated yet, fetch segments on-demand.
-      const vendorMaps = Object.values(draft.vendorApprovedIds ?? {})
-      let hasVendorApproval = vendorMaps.some(m => creativeIds.some(id => m.has(id)))
-
-      if (!hasVendorApproval) {
-        try {
-          const segResults = await Promise.allSettled(creativeIds.map(id => api.creatives.segments(id)))
-          // Build vendorApprovedIds from the segments response so buildMediaSegments
-          // can correctly link creatives in the PUT payload (new campaign, cold cache).
-          const built = {}
-          for (const res of segResults) {
-            if (res.status !== 'fulfilled') continue
-            for (const item of res.value?.content ?? []) {
-              if (item.state !== 'APPROVED') continue
-              const cid = item.adLayout?.id
-              const vid = item.displayOwner?.id
-              if (cid == null || vid == null || item.id == null) continue
-              if (!built[vid]) built[vid] = new Map()
-              built[vid].set(cid, item.id)
-            }
-          }
-          if (Object.keys(built).length > 0) {
-            draft = { ...draft, vendorApprovedIds: { ...draft.vendorApprovedIds, ...built } }
-          }
-          hasVendorApproval = segResults.some(r =>
-            r.status === 'fulfilled' &&
-            (r.value?.content ?? []).some(s => s.state === 'APPROVED')
-          )
-        } catch { /* non-fatal — let the API decide */ }
-      }
-
-      const hasActive = creativeIds.some(id => statuses[id] === 'APPROVED') || hasVendorApproval
-      if (!hasActive) {
-        saveError = 'Рекламные материалы ещё на модерации. Дождитесь согласования хотя бы одним площадочником и попробуйте снова.'
-        return  // finally still runs → launching = false ✓
-      }
-
-      const id = await doSave()
       await api.campaigns.setState(id, 'ACTIVE')
       await reloadCampaign(id)
-      goToStep('summary')
-      // Silent URL update — same as in saveCampaign (no hashchange, no remount)
-      const newHash = `#/campaigns/${id}`
-      if (window.location.hash !== newHash) {
-        history.replaceState(null, '', newHash)
-        pageStore.set(`campaigns/${id}`)
-      }
+      goToStep('stats')
     } catch (e) {
       console.warn('[launch] error:', JSON.stringify(e))
       saveError = e?.status === 403
@@ -1005,17 +963,23 @@
       <div class="save-error">{saveError}</div>
     {/if}
     <div class="wizard-actions">
-      {#if !['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(draft.state)}
-        <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing || campLoading}>
-          {#if saving}Сохранение…{:else}Сохранить{/if}
-        </button>
-      {/if}
       {#if ['ACTIVE','ACTIVATED','ON_TARGETING_CREATION','ON_TARGETING_UPDATE','RESERVED','BOOKED'].includes(draft.state)}
+        <!-- Active: pause only — must pause before editing/saving -->
         <button class="btn-pause" on:click={pauseCampaign} disabled={pausing || saving || campLoading}>
           {#if pausing}Пауза…{:else}Пауза{/if}
         </button>
       {:else if !['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED'].includes(draft.state)}
-        <button class="btn-launch" class:ready={Object.keys(completedSteps).length >= STEPS.length - 1} on:click={launchCampaign} disabled={saving || launching || pausing || campLoading}>
+        <!-- Draft / stopped: save first, then launch -->
+        <button class="btn-save" on:click={saveCampaign} disabled={saving || pausing || campLoading}>
+          {#if saving}Сохранение…{:else}Сохранить{/if}
+        </button>
+        <button
+          class="btn-launch"
+          class:ready={!!draft.id}
+          on:click={launchCampaign}
+          disabled={saving || launching || pausing || campLoading || !draft.id}
+          title={!draft.id ? 'Сначала сохраните кампанию' : ''}
+        >
           {#if launching}Запуск…{:else}Запустить{/if}
         </button>
       {/if}
