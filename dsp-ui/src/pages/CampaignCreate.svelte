@@ -197,10 +197,16 @@
   function buildPayload() {
     const budgetBuyer = Number(draft.customBudgetTotal) || 0
     const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
-    // NEVER fall back to rawCamp.additionalCharge — the server default is 1.0 (= 100% markup
-    // in decimal), which causes the RTB engine to halve every effective bid → code 1000 failures.
-    // Only use an explicitly user-set markup; otherwise always send 0.
-    const additionalChargePct = markup ?? 0
+    // additionalCharge rules:
+    // 1. If the user explicitly typed a markup → always use that.
+    // 2. If the campaign has been launched (ACTIVE/STOPPED/etc.) → preserve the server value:
+    //    the backend rejects changes to additionalCharge after launch (400).
+    // 3. New/DRAFT campaigns → default to 0.
+    //    (Never inherit the server's 1.0 default on DRAFT campaigns — that value means
+    //    100% markup in the RTB engine and causes every bid to fail with code 1000.)
+    const LAUNCHED_STATES = new Set(['ACTIVE','ACTIVATED','STOPPED','PAUSED','COMPLETED','CANCELLED'])
+    const hasBeenLaunched = LAUNCHED_STATES.has(rawCamp?.state)
+    const additionalChargePct = markup ?? (hasBeenLaunched ? (rawCamp?.additionalCharge ?? 0) : 0)
     // budget = client-facing price (buyer price + markup); budgetBuyer = base buyer price
     const budget = Math.round(budgetBuyer * (1 + additionalChargePct / 100) * 100) / 100
 
