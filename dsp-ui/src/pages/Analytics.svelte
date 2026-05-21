@@ -10,6 +10,8 @@
 
   let allCampaigns  = []   // full unfiltered list with stats merged in
   let statsMap      = {}   // campaignId → { totalShowed, totalOts, totalBudgetShowed, cpm }
+  // Raw per-inventory stat rows — used for vendor/format breakdowns
+  let invRows       = []   // { vendorName, format, spent, showed, ots }
 
   // Filter options
   let stateOptions  = []
@@ -36,6 +38,11 @@
   }
   const TYPE_COLOR = {
     RTB: '#3b82f6', GUARANTEED: '#10b981', FLEX_GUARANTEED: '#8b5cf6', OPEN_RTB: '#f59e0b',
+  }
+  const FORMAT_COLOR = {
+    BILLBOARD: '#3b82f6', LED: '#10b981', INDOOR: '#8b5cf6',
+    CITYFORMAT: '#f59e0b', SUPERSITE: '#ef4444', DIGITAL: '#06b6d4',
+    PVZ_SCREEN: '#f97316', VIDEO: '#ec4899',
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -247,6 +254,41 @@
   })()
   $: statusMaxCount = Math.max(1, ...byStatus.map(s => s.count))
 
+  // ── Breakdown by vendor (displayOwner) ────────────────────────────────────
+  $: byVendor = (() => {
+    const m = {}
+    for (const r of invRows) {
+      if (!r.vendorName) continue
+      if (!m[r.vendorName]) m[r.vendorName] = { spent: 0, showed: 0, ots: 0, screens: 0 }
+      m[r.vendorName].spent   += r.spent
+      m[r.vendorName].showed  += r.showed
+      m[r.vendorName].ots     += r.ots
+      m[r.vendorName].screens++
+    }
+    return Object.entries(m)
+      .sort((a, b) => b[1].spent - a[1].spent)
+      .slice(0, 10)
+      .map(([name, v]) => ({ name, ...v }))
+  })()
+  $: vendorMaxSpent = Math.max(1, ...byVendor.map(v => v.spent))
+
+  // ── Breakdown by format ───────────────────────────────────────────────────
+  $: byFormat = (() => {
+    const m = {}
+    for (const r of invRows) {
+      if (!r.format) continue
+      if (!m[r.format]) m[r.format] = { spent: 0, showed: 0, ots: 0, screens: 0 }
+      m[r.format].spent   += r.spent
+      m[r.format].showed  += r.showed
+      m[r.format].ots     += r.ots
+      m[r.format].screens++
+    }
+    return Object.entries(m)
+      .sort((a, b) => b[1].spent - a[1].spent)
+      .map(([format, v]) => ({ format, ...v }))
+  })()
+  $: formatMaxSpent = Math.max(1, ...byFormat.map(f => f.spent))
+
   // ── Sorted table rows ─────────────────────────────────────────────────────
   $: tableRows = (() => {
     const list = filteredCampaigns.map(c => ({
@@ -306,6 +348,7 @@
     statsLoading = true
     const BATCH = 20
     const ids = allCampaigns.map(c => c.id)
+    const newInvRows = []
     for (let i = 0; i < ids.length; i += BATCH) {
       const batch = ids.slice(i, i + BATCH)
       try {
@@ -322,22 +365,35 @@
               totalBudgetShowed: r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0,
               cpm:               r.cpm ?? 0,
             }
-          } else if (!agg[cid]) {
-            agg[cid] = {
-              totalShowed:       r.totalShowed       ?? r.totalCountShowed ?? 0,
-              totalOts:          r.totalOpOts        ?? r.totalOts ?? 0,
-              totalBudgetShowed: r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0,
-              cpm:               r.cpm ?? 0,
-            }
           } else {
-            agg[cid].totalShowed       += r.totalShowed       ?? r.totalCountShowed ?? 0
-            agg[cid].totalOts          += r.totalOpOts        ?? r.totalOts ?? 0
-            agg[cid].totalBudgetShowed += r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0
+            // Per-inventory row — aggregate into campaign summary
+            if (!agg[cid]) {
+              agg[cid] = {
+                totalShowed:       r.totalShowed       ?? r.totalCountShowed ?? 0,
+                totalOts:          r.totalOpOts        ?? r.totalOts ?? 0,
+                totalBudgetShowed: r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0,
+                cpm:               r.cpm ?? 0,
+              }
+            } else {
+              agg[cid].totalShowed       += r.totalShowed       ?? r.totalCountShowed ?? 0
+              agg[cid].totalOts          += r.totalOpOts        ?? r.totalOts ?? 0
+              agg[cid].totalBudgetShowed += r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0
+            }
+            // Collect for vendor/format breakdown
+            const vendorName = r.displayOwner?.name ?? r.inventory?.displayOwner?.name ?? null
+            const format     = r.inventoryFormat ?? r.inventory?.type ?? r.inventory?.inventoryTypeAndCity?.type ?? null
+            const spent      = r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0
+            const showed     = r.totalShowed ?? r.totalCountShowed ?? 0
+            const ots        = r.totalOpOts  ?? r.totalOts ?? 0
+            if (vendorName || format) {
+              newInvRows.push({ vendorName, format, spent, showed, ots })
+            }
           }
         }
         statsMap = { ...statsMap, ...agg }
       } catch {}
     }
+    invRows = newInvRows
     statsLoading = false
   })
 </script>
@@ -826,6 +882,72 @@
 
   </div>
 
+  <!-- ── Breakdown by vendor / format ──────────────────────────────────────── -->
+  {#if !statsLoading || byVendor.length > 0 || byFormat.length > 0}
+  <div class="two-col">
+
+    <!-- By vendor -->
+    <div class="card">
+      <div class="card-title">По оператору</div>
+      {#if statsLoading && byVendor.length === 0}
+        <p class="empty-text">Статистика загружается…</p>
+      {:else if byVendor.length === 0}
+        <p class="empty-text">Нет данных по операторам</p>
+      {:else}
+        <div class="dim-list">
+          {#each byVendor as v}
+            <div class="dim-row">
+              <div class="dim-label" style="min-width:130px">
+                <span class="dim-dot" style="background:#6366f1;border-radius:2px"></span>
+                <span title={v.name}>{v.name}</span>
+              </div>
+              <div class="dim-bar-wrap">
+                <div class="dim-bar-fill" style="width:{(v.spent/vendorMaxSpent*100).toFixed(1)}%;background:#6366f1"></div>
+              </div>
+              <div class="dim-stats">
+                <span class="dim-count" title="Экранов">{v.screens}</span>
+                <span class="dim-spent">{formatMoney(v.spent)}</span>
+                <span class="dim-budget dim-muted">{fmt(v.showed)} пок.</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <!-- By format -->
+    <div class="card">
+      <div class="card-title">По формату</div>
+      {#if statsLoading && byFormat.length === 0}
+        <p class="empty-text">Статистика загружается…</p>
+      {:else if byFormat.length === 0}
+        <p class="empty-text">Нет данных по форматам</p>
+      {:else}
+        <div class="dim-list">
+          {#each byFormat as f}
+            {@const color = FORMAT_COLOR[f.format] ?? '#64748b'}
+            <div class="dim-row">
+              <div class="dim-label" style="min-width:130px">
+                <span class="dim-dot" style="background:{color};border-radius:2px"></span>
+                <span>{f.format}</span>
+              </div>
+              <div class="dim-bar-wrap">
+                <div class="dim-bar-fill" style="width:{(f.spent/formatMaxSpent*100).toFixed(1)}%;background:{color}"></div>
+              </div>
+              <div class="dim-stats">
+                <span class="dim-count" title="Экранов">{f.screens}</span>
+                <span class="dim-spent">{formatMoney(f.spent)}</span>
+                <span class="dim-budget dim-muted">{fmt(f.showed)} пок.</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+  </div>
+  {/if}
+
   {/if}
 </div>
 
@@ -1312,6 +1434,9 @@
     font-size: 11px;
     color: #3b82f6;
     white-space: nowrap;
+  }
+  .dim-muted {
+    color: var(--text-muted, #9ca3af) !important;
   }
   .empty-text {
     font-size: 13px;
