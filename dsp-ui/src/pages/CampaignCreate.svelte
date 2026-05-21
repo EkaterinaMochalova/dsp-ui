@@ -725,6 +725,29 @@
                 .filter(Boolean)
             )]
 
+        // ── Creatives (eager — reloadCampaign does the full refresh later) ──
+        // Populate creativeIds immediately from segments[].medias so the launch
+        // guard doesn't fire if the user clicks Запустить before reloadCampaign
+        // completes its async creative-names + listForVendor requests.
+        const resolvedCreativeIds = [...new Set(
+          (camp.segments ?? []).flatMap(s =>
+            (s.medias ?? []).map(m => m.adLayout?.id ?? m.adLayoutId).filter(Boolean)
+          )
+        )]
+        // Also pre-build vendorApprovedIds from segments[].medias so that
+        // buildMediaSegments can use approval record IDs without waiting for reload.
+        const resolvedVendorApprovedIds = {}
+        for (const seg of camp.segments ?? []) {
+          const vid = seg.displayOwner?.id
+          if (vid == null) continue
+          for (const m of seg.medias ?? []) {
+            const cid = m.adLayout?.id ?? m.adLayoutId
+            if (cid == null || m.id == null) continue
+            if (!resolvedVendorApprovedIds[vid]) resolvedVendorApprovedIds[vid] = new Map()
+            resolvedVendorApprovedIds[vid].set(cid, m.id)
+          }
+        }
+
         // ── Buyer markup ───────────────────────────────────────────────
         // additionalCharge is stored as a decimal multiplier (1.0 = 100% markup).
         // The server default for "no markup" appears to be 1.0, NOT 0.
@@ -764,6 +787,12 @@
           screenBids:          Object.keys(resolvedScreenBids).length ? resolvedScreenBids : (draft.screenBids ?? {}),
           cities:              resolvedCities,
           cityIds:             resolvedCityIds,
+          // Eagerly set creativeIds + vendorApprovedIds from segments so launch
+          // works immediately without waiting for reloadCampaign to finish.
+          creativeIds:         resolvedCreativeIds.length ? resolvedCreativeIds : draft.creativeIds,
+          vendorApprovedIds:   Object.keys(resolvedVendorApprovedIds).length
+                                 ? resolvedVendorApprovedIds
+                                 : (draft.vendorApprovedIds ?? {}),
           photoReportSettings: camp.photoReportSettings
             ? { ...DEFAULT_PHOTO_SETTINGS, ...camp.photoReportSettings }
             : { ...DEFAULT_PHOTO_SETTINGS },
