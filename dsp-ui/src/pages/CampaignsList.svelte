@@ -5,6 +5,30 @@
   import StatusBadge from '../components/StatusBadge.svelte'
   import Pagination from '../components/Pagination.svelte'
 
+  // ── Resizable columns ─────────────────────────────────────────────────────
+  // Статус | Кампания | Город | Начало | Конец | Бюджет | Бюджет/день | OTS | Выходы | Menu
+  const _CW_KEY = 'dsp_camp_col_w'
+  const _CW_DEF = [100, 220, 130, 95, 95, 120, 105, 75, 85, 36]
+  let colW = (() => {
+    try {
+      const s = JSON.parse(localStorage.getItem(_CW_KEY))
+      if (Array.isArray(s) && s.length === _CW_DEF.length) return s
+    } catch {}
+    return [..._CW_DEF]
+  })()
+  function rzStart(idx, e) {
+    e.preventDefault(); e.stopPropagation()
+    const x0 = e.clientX, w0 = colW[idx]
+    const onMove = ev => { colW = colW.map((v, i) => i === idx ? Math.max(40, w0 + ev.clientX - x0) : v) }
+    const onUp   = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      try { localStorage.setItem(_CW_KEY, JSON.stringify(colW)) } catch {}
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
   // Filters
   let filterType = ''
   let filterState = ''
@@ -452,10 +476,15 @@
 <div class="page-body">
 <div class="table-wrap">
   <table class="campaigns-table">
+    <colgroup>
+      {#each colW as w, i}
+        <col style="width:{w}px;min-width:{i === colW.length-1 ? w : 40}px">
+      {/each}
+    </colgroup>
     <thead>
       <tr>
-        <th style="width:100px">Статус</th>
-        <th>
+        <th style="position:relative">Статус<div class="rzh" on:mousedown={(e)=>rzStart(0,e)}></div></th>
+        <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('name')}>
             Кампания
             {#if si.name === 'up'}
@@ -466,9 +495,10 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
+          <div class="rzh" on:mousedown={(e)=>rzStart(1,e)}></div>
         </th>
-        <th style="width:130px;white-space:nowrap">Город</th>
-        <th style="width:95px">
+        <th style="position:relative;white-space:nowrap">Город<div class="rzh" on:mousedown={(e)=>rzStart(2,e)}></div></th>
+        <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('startDate')}>
             Начало
             {#if si.startDate === 'up'}
@@ -479,8 +509,9 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
+          <div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div>
         </th>
-        <th style="width:95px">
+        <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('endDate')}>
             Конец
             {#if si.endDate === 'up'}
@@ -491,8 +522,9 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
+          <div class="rzh" on:mousedown={(e)=>rzStart(4,e)}></div>
         </th>
-        <th style="width:120px">
+        <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('budget')}>
             Бюджет
             {#if si.budget === 'up'}
@@ -503,9 +535,10 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
+          <div class="rzh" on:mousedown={(e)=>rzStart(5,e)}></div>
         </th>
-        <th style="width:105px">Бюджет в день</th>
-        <th>
+        <th style="position:relative">Бюджет в день<div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div></th>
+        <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('otsCount')}>
             OTS
             {#if si.otsCount === 'up'}
@@ -516,8 +549,9 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
+          <div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div>
         </th>
-        <th>
+        <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('impressionsCount')}>
             Выходы
             {#if si.impressionsCount === 'up'}
@@ -528,8 +562,9 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
+          <div class="rzh" on:mousedown={(e)=>rzStart(8,e)}></div>
         </th>
-        <th style="width:36px"></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -819,6 +854,30 @@
     cursor: pointer;
   }
   .filter-apply-btn:hover { opacity: .88; }
+
+  /* Column resize handle */
+  .rzh {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 10;
+    user-select: none;
+  }
+  .rzh::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 25%;
+    bottom: 25%;
+    width: 2px;
+    border-radius: 1px;
+    background: transparent;
+    transition: background .15s;
+  }
+  .rzh:hover::after { background: rgba(17,40,83,.35); }
 
   /* Sort button in th */
   .sort-th {

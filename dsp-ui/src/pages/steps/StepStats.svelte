@@ -170,6 +170,29 @@
   let mapInited = false
 
   // ── Screens tab ───────────────────────────────────────────────────────────
+  // Resizable columns: Экран | GID | Город | Оператор | Формат | Выходы | OTS | Бюджет | CPM | Фото
+  const _SCR_CW_KEY = 'dsp_scrn_col_w'
+  const _SCR_CW_DEF = [200, 72, 100, 130, 100, 80, 80, 100, 72, 60]
+  let scrnColW = (() => {
+    try {
+      const s = JSON.parse(localStorage.getItem(_SCR_CW_KEY))
+      if (Array.isArray(s) && s.length === _SCR_CW_DEF.length) return s
+    } catch {}
+    return [..._SCR_CW_DEF]
+  })()
+  function scrnRzStart(idx, e) {
+    e.preventDefault(); e.stopPropagation()
+    const x0 = e.clientX, w0 = scrnColW[idx]
+    const onMove = ev => { scrnColW = scrnColW.map((v, i) => i === idx ? Math.max(40, w0 + ev.clientX - x0) : v) }
+    const onUp   = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      try { localStorage.setItem(_SCR_CW_KEY, JSON.stringify(scrnColW)) } catch {}
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
   let scrnSortCol = 'showed'
   let scrnSortDir = -1
 
@@ -1008,55 +1031,69 @@
           <div class="panel-empty">Нет данных по экранам.</div>
         {:else}
           <div class="tbl-wrap">
-            <table class="tbl">
+            <table class="tbl" style="table-layout:fixed">
+              <colgroup>
+                {#each scrnColW as w}
+                  <col style="width:{w}px;min-width:40px">
+                {/each}
+              </colgroup>
               <thead>
                 <tr>
-                  <th>
+                  <th style="position:relative">
                     <button class="th-sort-btn" on:click={() => toggleScrnSort('name')}>
                       Экран{#if scrnSortCol==='name'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(0,e)}></div>
                   </th>
-                  <th>
+                  <th style="position:relative">
                     <button class="th-sort-btn" on:click={() => toggleScrnSort('gid')}>
                       GID{#if scrnSortCol==='gid'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(1,e)}></div>
                   </th>
-                  <th>
+                  <th style="position:relative">
                     <button class="th-sort-btn" on:click={() => toggleScrnSort('city')}>
                       Город{#if scrnSortCol==='city'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(2,e)}></div>
                   </th>
-                  <th>
+                  <th style="position:relative">
                     <button class="th-sort-btn" on:click={() => toggleScrnSort('owner')}>
                       Оператор{#if scrnSortCol==='owner'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(3,e)}></div>
                   </th>
-                  <th>
+                  <th style="position:relative">
                     <button class="th-sort-btn" on:click={() => toggleScrnSort('format')}>
                       Формат{#if scrnSortCol==='format'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(4,e)}></div>
                   </th>
-                  <th class="num">
+                  <th class="num" style="position:relative">
                     <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('showed')}>
                       {#if scrnSortCol==='showed'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Выходы
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(5,e)}></div>
                   </th>
-                  <th class="num">
+                  <th class="num" style="position:relative">
                     <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('ots')}>
                       {#if scrnSortCol==='ots'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}OTS
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(6,e)}></div>
                   </th>
-                  <th class="num">
+                  <th class="num" style="position:relative">
                     <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('budget')}>
                       {#if scrnSortCol==='budget'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Бюджет
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(7,e)}></div>
                   </th>
-                  <th class="num">
+                  <th class="num" style="position:relative">
                     <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('cpm')}>
                       {#if scrnSortCol==='cpm'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}CPM, ₽
                     </button>
+                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(8,e)}></div>
                   </th>
-                  <th class="num">
+                  <th class="num" style="position:relative">
                     <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('shots')}>
                       {#if scrnSortCol==='shots'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Фото
                     </button>
@@ -1386,10 +1423,35 @@
     overflow-y: auto;
     max-height: 520px;   /* fixed height so the table scrolls instead of the whole page */
   }
+
+  /* Column resize handle */
+  .rzh {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 10;
+    user-select: none;
+  }
+  .rzh::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 25%;
+    bottom: 25%;
+    width: 2px;
+    border-radius: 1px;
+    background: transparent;
+    transition: background .15s;
+  }
+  .rzh:hover::after { background: rgba(17,40,83,.35); }
   .tbl {
     width: 100%;
     border-collapse: collapse;
     font-size: 12.5px;
+    min-width: max-content;
   }
   .tbl thead { position: sticky; top: 0; z-index: 2; }
   .tbl th {
