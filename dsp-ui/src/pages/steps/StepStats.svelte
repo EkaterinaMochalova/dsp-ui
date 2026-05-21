@@ -205,6 +205,33 @@
   let mapInited = false
 
   // ── Screens tab ───────────────────────────────────────────────────────────
+  // ── Resizable list/map split ──────────────────────────────────────────────
+  const _SPLIT_KEY = 'dsp_scrn_split_pct'
+  let splitPct = (() => {
+    try { const v = parseFloat(localStorage.getItem(_SPLIT_KEY)); if (v >= 15 && v <= 85) return v } catch {}
+    return 55
+  })()
+  let splitDragging = false
+  let splitContainerEl = null
+  function splitDragStart(e) {
+    e.preventDefault()
+    splitDragging = true
+    const onMove = ev => {
+      if (!splitContainerEl) return
+      const rect = splitContainerEl.getBoundingClientRect()
+      const pct = Math.min(85, Math.max(15, ((ev.clientX - rect.left) / rect.width) * 100))
+      splitPct = pct
+    }
+    const onUp = () => {
+      splitDragging = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      try { localStorage.setItem(_SPLIT_KEY, splitPct.toFixed(1)) } catch {}
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
   // Resizable columns: Экран | GID | Город | Оператор | Формат | Выходы | OTS | Бюджет | CPM | Фото
   const _SCR_CW_KEY = 'dsp_scrn_col_w'
   const _SCR_CW_DEF = [200, 72, 100, 130, 100, 80, 80, 100, 72, 60]
@@ -1218,9 +1245,9 @@
         {:else if invStats.length === 0}
           <div class="panel-empty">Нет данных по экранам.</div>
         {:else}
-          <div class="scrn-split">
+          <div class="scrn-split" bind:this={splitContainerEl} class:split-dragging={splitDragging}>
             <!-- Table side -->
-            <div class="scrn-table-side">
+            <div class="scrn-table-side" style="flex:0 0 {splitPct}%;width:{splitPct}%">
               <div class="tbl-wrap">
                 <table class="tbl" style="table-layout:fixed">
                   <colgroup>
@@ -1341,8 +1368,11 @@
               </div>
             </div>
 
+            <!-- Drag divider -->
+            <div class="scrn-split-handle" on:mousedown={splitDragStart}></div>
+
             <!-- Map side -->
-            <div class="scrn-map-side">
+            <div class="scrn-map-side" style="flex:1 1 0;min-width:0">
               <div bind:this={mapEl} class="scrn-map"></div>
             </div>
           </div>
@@ -1929,13 +1959,13 @@
     display: flex;
     height: 560px;
     overflow: hidden;
+    user-select: none;
   }
+  .scrn-split.split-dragging { cursor: col-resize; }
   .scrn-table-side {
-    flex: 1 1 55%;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--border);
     overflow: hidden;
   }
   .scrn-table-side .tbl-wrap {
@@ -1944,9 +1974,26 @@
     overflow-x: auto;
     overflow-y: auto;
   }
-  .scrn-map-side {
-    flex: 0 0 45%;
+  .scrn-split-handle {
+    flex: 0 0 5px;
+    cursor: col-resize;
+    background: var(--border, #e5e7eb);
     position: relative;
+    transition: background 0.15s;
+    z-index: 2;
+  }
+  .scrn-split-handle:hover,
+  .scrn-split.split-dragging .scrn-split-handle {
+    background: #93c5fd;
+  }
+  .scrn-split-handle::after {
+    content: '';
+    position: absolute;
+    inset: 0 -4px;
+  }
+  .scrn-map-side {
+    position: relative;
+    overflow: hidden;
   }
   .scrn-map {
     width: 100%;
