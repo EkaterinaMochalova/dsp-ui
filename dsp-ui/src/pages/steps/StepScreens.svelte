@@ -126,9 +126,10 @@
   let tableSearch = ''
 
   // Column filters — keyed by column id
+  // Dropdown filters store an array of selected values (multiselect); empty = no filter.
   let colFilters = {
-    // dropdown
-    owner: '', city: '', side: '', format: '', photoReport: '',
+    // dropdown (multiselect arrays)
+    owner: [], city: [], side: [], format: [], photoReport: [],
     // range (stored as { min: '', max: '' })
     minBid: { min: '', max: '' },
     ots:    { min: '', max: '' },
@@ -165,6 +166,21 @@
     dropdownSearch = ''
   }
 
+  // Toggle one option in a multiselect dropdown filter.
+  // Passing val='' clears the selection and closes the dropdown.
+  function toggleColFilterOpt(col, val) {
+    if (val === '') {
+      colFilters = { ...colFilters, [col]: [] }
+      openFilterCol = ''
+      dropdownSearch = ''
+      return
+    }
+    const current = colFilters[col] ?? []
+    const already = current.includes(val)
+    colFilters = { ...colFilters, [col]: already ? current.filter(v => v !== val) : [...current, val] }
+    // keep dropdown open for multi-selection
+  }
+
   // Columns whose dropdown should have a search box (when options > 6)
   const SEARCHABLE_COLS = new Set(['city', 'owner'])
 
@@ -192,10 +208,11 @@
     if (otsOverlay    && !(s.ots > 0))             return false
     if (cameraOverlay && !s.hasCamera)             return false
     if (activeOnly    && !(s.requestHourlyAvg > 1)) return false
-    if (colFilters.owner  && s.owner  !== colFilters.owner)  return false
-    if (colFilters.city   && s.city   !== colFilters.city)   return false
-    if (colFilters.side   && s.side   !== colFilters.side)   return false
-    if (colFilters.format && s.format !== colFilters.format) return false
+    if (colFilters.owner.length       && !colFilters.owner.includes(s.owner))             return false
+    if (colFilters.city.length        && !colFilters.city.includes(s.city))               return false
+    if (colFilters.side.length        && !colFilters.side.includes(s.side))               return false
+    if (colFilters.format.length      && !colFilters.format.includes(s.format))           return false
+    if (colFilters.photoReport.length && !colFilters.photoReport.includes(s.photoReport)) return false
     if (!inRange(s.minBid, colFilters.minBid)) return false
     if (!inRange(s.ots,    colFilters.ots))    return false
     if (!inRange(s.grp,    colFilters.grp))    return false
@@ -203,7 +220,6 @@
     if (!inRange(s.requestHourlyAvg, colFilters.requestHourlyAvg)) return false
     if (!inRange(s.lat, colFilters.lat)) return false
     if (!inRange(s.lon, colFilters.lon)) return false
-    if (colFilters.photoReport && s.photoReport !== colFilters.photoReport) return false
     if (!tableSearch) return true
     const q = tableSearch.toLowerCase()
     return s.address.toLowerCase().includes(q)
@@ -1126,7 +1142,7 @@
                     class:col-active={sortCol===col.id
                       || (col.filterType==='range'
                           ? (colFilters[col.id]?.min !== '' || colFilters[col.id]?.max !== '')
-                          : colFilters[col.id])}>
+                          : colFilters[col.id]?.length > 0)}>
                     {col.label}
                   </span>
                   <!-- Sort indicator -->
@@ -1143,7 +1159,7 @@
                       class="col-filter-btn"
                       class:col-filter-active={col.filterType==='range'
                         ? (colFilters[col.id]?.min !== '' || colFilters[col.id]?.max !== '')
-                        : colFilters[col.id]}
+                        : colFilters[col.id]?.length > 0}
                       title="Фильтр"
                       on:click|stopPropagation={(e) => toggleFilter(col.id, e)}
                     >
@@ -1178,11 +1194,13 @@
                               />
                             </div>
                           {/if}
-                          <button class="col-filter-opt" class:sel={!colFilters[col.id]} on:click={() => setColFilter(col.id, '')}>
+                          <button class="col-filter-opt" class:sel={!colFilters[col.id]?.length} on:click={() => toggleColFilterOpt(col.id, '')}>
+                            <span class="col-filter-check">{!colFilters[col.id]?.length ? '✓' : ''}</span>
                             Все
                           </button>
                           {#each (colOptions[col.id] ?? []).filter(o => !dropdownSearch || o.toLowerCase().includes(dropdownSearch.toLowerCase())) as opt}
-                            <button class="col-filter-opt" class:sel={colFilters[col.id]===opt} on:click={() => setColFilter(col.id, opt)}>
+                            <button class="col-filter-opt" class:sel={colFilters[col.id]?.includes(opt)} on:click={() => toggleColFilterOpt(col.id, opt)}>
+                              <span class="col-filter-check">{colFilters[col.id]?.includes(opt) ? '✓' : ''}</span>
                               {opt || '—'}
                             </button>
                           {/each}
@@ -1703,7 +1721,9 @@
   }
 
   .col-filter-opt {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     width: 100%;
     text-align: left;
     padding: 6px 10px;
@@ -1720,6 +1740,24 @@
   }
   .col-filter-opt:hover { background: var(--bg); }
   .col-filter-opt.sel { background: #EFF6FF; color: var(--navy); font-weight: 600; }
+  .col-filter-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid #ccc;
+    border-radius: 3px;
+    font-size: 10px;
+    flex-shrink: 0;
+    color: var(--navy);
+    background: #fff;
+  }
+  .col-filter-opt.sel .col-filter-check {
+    background: var(--navy);
+    border-color: var(--navy);
+    color: #fff;
+  }
 
   .col-filter-search-wrap {
     padding: 4px 4px 2px;
