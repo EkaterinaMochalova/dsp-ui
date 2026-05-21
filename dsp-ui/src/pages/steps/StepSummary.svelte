@@ -1,6 +1,8 @@
 <script>
-  import { createEventDispatcher } from 'svelte'
+  import { createEventDispatcher, tick } from 'svelte'
   import { formatDate } from '../../lib/utils.js'
+  import L from 'leaflet'
+  import 'leaflet/dist/leaflet.css'
   const dispatch = createEventDispatcher()
 
   export let draft
@@ -73,6 +75,50 @@
 
   // ── Share panel ───────────────────────────────────────────────────────────
   let showSharePanel = false
+
+  // ── Screen list ───────────────────────────────────────────────────────────
+  let screenListOpen = false
+  $: screens = (draft.screenObjects ?? []).filter(s => s && s.id)
+
+  // ── Map popup ─────────────────────────────────────────────────────────────
+  let mapOpen = false
+  let mapEl = null
+  let mapInstance = null
+
+  $: if (mapOpen) {
+    tick().then(initSummaryMap)
+  } else if (mapInstance) {
+    mapInstance.remove()
+    mapInstance = null
+  }
+
+  function initSummaryMap() {
+    if (!mapEl || mapInstance) return
+    const pts = screens.filter(s => !isNaN(s.lat) && !isNaN(s.lon) && s.lat && s.lon)
+    if (!pts.length) return
+
+    const map = L.map(mapEl, { scrollWheelZoom: true })
+    mapInstance = map
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(map)
+
+    const icon = L.divIcon({
+      className: '',
+      html: '<div style="width:11px;height:11px;border-radius:50%;background:#6366f1;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)"></div>',
+      iconSize: [11, 11], iconAnchor: [5, 5],
+    })
+
+    for (const s of pts) {
+      L.marker([s.lat, s.lon], { icon })
+        .addTo(map)
+        .bindPopup(`<b>${s.gid}</b><br>${s.address || ''}${s.city ? ', ' + s.city : ''}`)
+    }
+
+    map.fitBounds(L.latLngBounds(pts.map(s => [s.lat, s.lon])), { padding: [36, 36] })
+    map.invalidateSize()
+  }
 
   const SCREEN_COLS = [
     'Фото экрана','GID','Оператор','Город','Адрес',
@@ -263,7 +309,83 @@
     </div>
   </div>
 
+  <!-- ── Экраны ─────────────────────────────────────────────────────────── -->
+  <div class="sv-card">
+    <div class="sv-card-top">
+      <span class="sv-card-title">
+        Экраны
+        {#if draft.screenIds?.length}
+          <span class="sv-screen-count">{draft.screenIds.length}</span>
+        {/if}
+      </span>
+      <div class="sv-card-actions">
+        <button class="sv-edit-btn" on:click={() => mapOpen = true}>
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M12 1.586l-4 4v12.828l4-4V1.586zM3.707 3.293A1 1 0 002 4v10a1 1 0 00.293.707L6 18.414V5.586L3.707 3.293zm10.586 0L12 5.586v12.828l2.293 2.293A1 1 0 0016 20V10a1 1 0 00-.293-.707l-2-2V3.293z" clip-rule="evenodd"/>
+          </svg>
+          На карте
+        </button>
+        <button class="sv-edit-btn" on:click={() => dispatch('goto', 'screens')}>Редактировать</button>
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
+        <button class="sv-fold-btn" on:click={() => screenListOpen = !screenListOpen} aria-expanded={screenListOpen}>
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"
+            style="transition:transform .2s;transform:rotate({screenListOpen ? 180 : 0}deg)">
+            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    {#if screenListOpen}
+      {#if screens.length}
+        <div class="sv-screen-table-wrap">
+          <table class="sv-screen-table">
+            <thead>
+              <tr>
+                <th>GID</th>
+                <th>Город</th>
+                <th>Адрес</th>
+                <th>Оператор</th>
+                <th>Формат</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each screens as s}
+                <tr>
+                  <td class="sv-screen-gid">{s.gid}</td>
+                  <td>{s.city || '—'}</td>
+                  <td>{s.address || '—'}</td>
+                  <td>{s.owner || '—'}</td>
+                  <td>{s.format || '—'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {:else}
+        <div class="sv-screen-empty">Экраны не выбраны</div>
+      {/if}
+    {/if}
+  </div>
+
 </div>
+
+<!-- ── Map modal ──────────────────────────────────────────────────────────── -->
+{#if mapOpen}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <div class="sv-overlay sv-map-overlay" on:click={() => mapOpen = false} />
+  <div class="sv-map-modal">
+    <div class="sv-map-modal-header">
+      <span class="sv-map-modal-title">Карта экранов ({screens.length})</span>
+      <button class="sv-share-close" on:click={() => mapOpen = false}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div bind:this={mapEl} class="sv-map-el"></div>
+  </div>
+{/if}
 
 <!-- ── Share panel ────────────────────────────────────────────────────────── -->
 {#if showSharePanel}
@@ -628,4 +750,128 @@
     padding: 0;
   }
   @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+  /* ── Screen count badge ──────────────────────────────────────────────── */
+  .sv-screen-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--accent, #6366f1);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  /* ── Card actions row ────────────────────────────────────────────────── */
+  .sv-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* ── Fold toggle button ──────────────────────────────────────────────── */
+  .sv-fold-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    border: 1px solid var(--border, #e5e7eb);
+    background: transparent;
+    color: var(--text-muted, #6b7280);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .sv-fold-btn:hover { background: var(--bg-muted, #f3f4f6); }
+
+  /* ── Screen table ────────────────────────────────────────────────────── */
+  .sv-screen-table-wrap {
+    margin-top: 4px;
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid var(--border, #e5e7eb);
+  }
+  .sv-screen-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  .sv-screen-table thead th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--bg-muted, #f9fafb);
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    white-space: nowrap;
+  }
+  .sv-screen-table tbody td {
+    padding: 7px 12px;
+    color: var(--text, #374151);
+    border-bottom: 1px solid var(--border, #f3f4f6);
+    white-space: nowrap;
+  }
+  .sv-screen-table tbody tr:last-child td { border-bottom: none; }
+  .sv-screen-table tbody tr:hover td { background: var(--bg-muted, #f9fafb); }
+  .sv-screen-gid {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-muted, #6b7280);
+  }
+  .sv-screen-empty {
+    padding: 16px 0 4px;
+    font-size: 13px;
+    color: var(--text-muted, #9ca3af);
+    text-align: center;
+  }
+
+  /* ── Map modal ───────────────────────────────────────────────────────── */
+  .sv-map-overlay {
+    background: rgba(0,0,0,0.45);
+  }
+  .sv-map-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 50;
+    width: 820px;
+    max-width: 96vw;
+    height: 560px;
+    max-height: 90vh;
+    background: var(--card-bg, #fff);
+    border-radius: 14px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.22);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sv-map-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    flex-shrink: 0;
+  }
+  .sv-map-modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text, #111827);
+  }
+  .sv-map-el {
+    flex: 1;
+    min-height: 0;
+  }
 </style>
