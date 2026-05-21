@@ -452,35 +452,14 @@
   }
 
   // ── Table ─────────────────────────────────────────────────────────────────
-  // Strategy:
-  //   • Filters that the server understands (status, date range) are passed as query
-  //     params → one fast paginated request, no bulk-load needed.
-  //   • Filters the server cannot handle (free-text screen/creative, OTS range, etc.)
-  //     require the full dataset to be loaded first so client-side filtering works.
-  //   • loadImpressions() always passes the current server-capable filters and fetches
-  //     one page. applyFilter() decides whether a full-dataset load is also needed.
+  // The server does not support client-side filters (status, free-text, OTS range…).
+  // When any filter is active we must load the full dataset and filter locally.
+  // To avoid the "0 results while still loading" UX problem, loadAllForFilter()
+  // is PROGRESSIVE: it shows results from the first page immediately, then appends
+  // further pages as they arrive in parallel — filtered rows update in real time.
 
-  // Build query params that the server can filter on directly.
-  function serverFilterParams() {
-    const p = {}
-    // Status: SUCCESS maps 1-to-1; FAILED = "not SUCCESS" — can't express as single
-    // server param, so we leave it for client-side (handled by hasClientOnlyFilters).
-    if (filterStatus === 'SUCCESS') p.bidRequestState = 'SUCCESS'
-    // Date range — server accepts Unix-ms timestamps
-    if (filterDateFrom) p.startDate = dateToMs(filterDateFrom)
-    if (filterDateTo)   p.endDate   = dateToMs(filterDateTo) + 86_399_999  // end of day
-    return p
-  }
-
-  // Filters that the server cannot handle — require full dataset load.
-  function hasClientOnlyFilters() {
-    return !!(
-      filterStatus === 'FAILED' ||
-      filterLocal || filterScreen || filterCreative ||
-      filterFormat || filterReason ||
-      filterOtsMin || filterOtsMax || filterCostMin || filterCostMax
-    )
-  }
+  // Track the current bulk-load "run" so a stale run doesn't stomp a newer one.
+  let _loadGen = 0
 
   function anyFilterActive() {
     return !!(filterStatus || filterDateFrom || filterDateTo || filterLocal ||
@@ -490,10 +469,10 @@
 
   async function loadImpressions(page) {
     if (!campId) return
+    _loadGen++
     impLoading = true; impError = ''
     try {
-      const params = { page, size: SRV_NORMAL, sort: 'showTime,desc', ...serverFilterParams() }
-      const data = await api.stats.list(campId, params)
+      const data = await api.stats.list(campId, { page, size: SRV_NORMAL, sort: 'showTime,desc' })
       allRows  = data.content ?? []
       srvTotal = data.totalElements ?? 0
       srvPages = data.totalPages ?? 1
@@ -503,46 +482,53 @@
     impLoading = false
   }
 
-  // Load ALL server pages — only needed when client-side-only filters are active.
-  // Server-capable filters are still forwarded to reduce the dataset size.
+  // Progressive full-dataset load: show matching rows as each page arrives.
+  // Pages are fetched in parallel; each completion appends to allRows so
+  // filteredRows (and therefore the visible table) updates incrementally.
   async function loadAllForFilter() {
     if (!campId) return
+    const gen = ++_loadGen   // stamp this run
     impLoading = true; impError = ''
+    // Reset so the table shows "loading" immediately instead of stale data
+    allRows  = []
+    srvTotal = 0
+    srvPages = 1
+    srvPage  = 0
+    viewPage = 0
     try {
-      const base = { size: SRV_FILTER, sort: 'showTime,desc', ...serverFilterParams() }
-      const first = await api.stats.list(campId, { ...base, page: 0 })
+      const first = await api.stats.list(campId, { page: 0, size: SRV_FILTER, sort: 'showTime,desc' })
+      if (gen !== _loadGen) return   // superseded by a newer call
       const total = first.totalElements ?? 0
       const pages = first.totalPages ?? 1
-      let rows = first.content ?? []
+      srvTotal = total
+
+      // Show first page right away so filtered rows appear immediately
+      allRows = first.content ?? []
 
       if (pages > 1) {
-        const rest = await Promise.all(
+        // Fetch remaining pages in parallel; append each as it lands
+        await Promise.all(
           Array.from({ length: pages - 1 }, (_, i) =>
-            api.stats.list(campId, { ...base, page: i + 1 })
-              .then(d => d.content ?? []).catch(() => [])
+            api.stats.list(campId, { page: i + 1, size: SRV_FILTER, sort: 'showTime,desc' })
+              .then(d => {
+                if (gen !== _loadGen) return
+                allRows = [...allRows, ...(d.content ?? [])]
+              })
+              .catch(() => {})
           )
         )
-        rows = [...rows, ...rest.flat()]
       }
-
-      allRows  = rows
-      srvTotal = total
-      srvPages = 1
-      srvPage  = 0
-      viewPage = 0
     } catch { impError = 'Не удалось загрузить показы' }
-    impLoading = false
+    if (gen === _loadGen) impLoading = false
   }
 
   // Called by the top-level status pills and the Статус column dropdown
   function applyFilter() {
     viewPage = 0
-    if (hasClientOnlyFilters()) {
-      // Need full dataset for client-side filtering — but server pre-filters what it can
-      if (!hasFullDataset) loadAllForFilter()
-      // else: reactive filteredRows recomputes automatically from allRows
+    if (anyFilterActive()) {
+      // Always reload from scratch so the progressive load reflects the new filter
+      loadAllForFilter()
     } else {
-      // All active filters are server-side → just reload page 0 with new params
       loadImpressions(0)
     }
   }
@@ -553,9 +539,12 @@
     viewPage = 0
     clearTimeout(_colFilterTimer)
     _colFilterTimer = setTimeout(() => {
-      if (hasClientOnlyFilters() && !hasFullDataset) loadAllForFilter()
-      else if (!hasClientOnlyFilters()) loadImpressions(0)
-      // else: full dataset already loaded, reactive filteredRows handles it
+      if (anyFilterActive()) {
+        if (!hasFullDataset) loadAllForFilter()
+        // else: full dataset already loaded, reactive filteredRows handles it
+      } else {
+        loadImpressions(0)
+      }
     }, 220)
   }
 
@@ -773,7 +762,7 @@
         <div style="flex:1"></div>
         <span class="filter-count">
           {#if hasAnyFilter}
-            {fmt(filteredRows.length)} из {fmt(srvTotal)}{hasClientOnlyFilters() && !hasFullDataset ? ' ...' : ''}
+            {fmt(filteredRows.length)}{!hasFullDataset ? '+' : ''} из {fmt(srvTotal)}{!hasFullDataset ? '+' : ''}
             {#if impLoading}<span class="filter-loading">…</span>{/if}
           {:else}
             {fmt(srvTotal)} записей
