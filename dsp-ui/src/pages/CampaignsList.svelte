@@ -923,6 +923,8 @@
     font-family: inherit;
     font-size: inherit;
     font-weight: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
     color: inherit;
     cursor: pointer;
     display: inline-flex;

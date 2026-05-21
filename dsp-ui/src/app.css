@@ -342,6 +342,14 @@ thead th {
   white-space: nowrap;
   text-align: left;
 }
+/* Buttons inside th must inherit heading typography — browsers reset these */
+thead th button {
+  text-transform: inherit;
+  letter-spacing: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
 
 /* Group header row */
 .group-row td {
