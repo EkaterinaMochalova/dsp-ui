@@ -808,7 +808,21 @@
   const TERMINAL_STATES = ['COMPLETED','FINISHED','CANCELLED','REJECTED','ARCHIVED']
   $: isReadonly = TERMINAL_STATES.includes(draft.state)
 
-  function goToStep(id) { currentStep = id; if (id !== 'screens') screensView = 'selection' }
+  function goToStep(id) {
+    currentStep = id
+    if (id !== 'screens') screensView = 'selection'
+    // When landing on the stats tab, silently re-fetch campaign state so the
+    // sidebar badge + action buttons reflect reality (e.g. campaign stopped in
+    // another tab or via prod UI).
+    if (id === 'stats' && draft.id) {
+      api.campaigns.get(Number(draft.id)).then(camp => {
+        if (camp?.state && camp.state !== draft.state) {
+          draft = { ...draft, state: camp.state }
+          rawCamp = camp
+        }
+      }).catch(() => {})
+    }
+  }
 
   function completeStep(id) {
     completedSteps = { ...completedSteps, [id]: true }  // new object → Svelte sees the change
