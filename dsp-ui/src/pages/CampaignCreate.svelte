@@ -351,14 +351,24 @@
     })
 
     // Creatives currently in the campaign.
-    // seg.medias[] items: { id: <approvalRecordId>, adLayout: { id: <creativeId> }, state, ... }
-    // We need creative IDs (adLayout.id) for draft.creativeIds, not approval record IDs.
-    // NOTE: the backend may omit non-APPROVED medias from the GET response (SENT/PENDING drop
-    // adLayout or the whole item), so fall back to multiple field names.
-    // creative-names endpoint may return a plain array OR a paginated {content:[]} object.
+    // creative-names endpoint returns approval records:
+    //   { id: <approvalRecordId>, adLayout: { id: <creativeId> }, displayOwner: { id: vid }, ... }
+    // We need adLayout.id for draft.creativeIds — NOT the approval record id.
+    // Also use these records to enrich vendorApprovedIds (reliable, no extra requests needed).
+    // Response may be a plain array OR a paginated {content:[]} object.
     const rawNamesList = creativeNames.status === 'fulfilled' ? creativeNames.value : []
     const namesList = Array.isArray(rawNamesList) ? rawNamesList : (rawNamesList?.content ?? [])
-    const nameIds = namesList.map(c => c.id).filter(Boolean)
+    // Fix: map adLayout.id (creative ID), not c.id (approval record ID)
+    const nameIds = namesList.map(c => c.adLayout?.id).filter(Boolean)
+
+    // Enrich vendorApprovedIds from creative-names records (each record has displayOwner + approval id)
+    for (const item of namesList) {
+      const cid = item.adLayout?.id
+      const vid = item.displayOwner?.id
+      if (cid == null || vid == null || item.id == null) continue
+      if (!vendorApprovedIds[vid]) vendorApprovedIds[vid] = new Map()
+      vendorApprovedIds[vid].set(cid, item.id)
+    }
     const mediasIds = [...new Set(
       (camp.segments ?? []).flatMap(s =>
         (s.medias ?? []).map(m =>
