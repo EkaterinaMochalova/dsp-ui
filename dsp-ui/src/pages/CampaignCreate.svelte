@@ -233,14 +233,21 @@
       impressionIntervalInMinutes: rawCamp?.impressionIntervalInMinutes ?? null,
       impressionInterval:  rawCamp?.impressionInterval  ?? null,
       poi:                 rawCamp?.poi                 ?? null,
-      targetAudience:      rawCamp?.targetAudience
-        // Only inject dmpData when the user has actually configured DMP segments.
-        // Sending dmpData:[] on a campaign without DMP targeting causes the RTB engine
-        // to apply an empty DMP filter → 100% play failures (failureReasonCode 1000).
-        ? (draft.dmpData?.length > 0
-            ? { ...rawCamp.targetAudience, dmpData: draft.dmpData }
-            : rawCamp.targetAudience)
-        : (draft.dmpData?.length > 0 ? { enabled: true, dmpData: draft.dmpData } : null),
+      targetAudience:      (() => {
+        // NEVER pass dmpData:[] to the RTB engine — an empty array applies an empty DMP
+        // audience filter which causes 100% bid failures (failureReasonCode 1000).
+        // The backend persists targetAudience:{enabled:false,dmpData:[]} after first save,
+        // so we must actively strip dmpData when the user hasn't configured any DMP segments.
+        const hasDmp = draft.dmpData?.length > 0
+        if (!rawCamp?.targetAudience) {
+          return hasDmp ? { enabled: true, dmpData: draft.dmpData } : null
+        }
+        // Destructure out dmpData so we never propagate a server-returned empty array
+        const { dmpData: _ignored, ...restAudience } = rawCamp.targetAudience
+        return hasDmp
+          ? { ...restAudience, dmpData: draft.dmpData }
+          : restAudience
+      })(),
       photoReportSettings: draft.photoReportSettings ?? DEFAULT_PHOTO_SETTINGS,
       strategy:            rawCamp?.strategy            ?? 'STANDARD',
       strategyLimitType:   rawCamp?.strategyLimitType   ?? (draft.bidType === 'OTS' ? 'BY_OTS' : 'BY_PLAYS'),
