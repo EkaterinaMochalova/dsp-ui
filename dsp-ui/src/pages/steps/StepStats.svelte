@@ -447,6 +447,8 @@
       srvPages = data.totalPages ?? 1
       srvPage  = page
       viewPage = 0
+      // TEMP: log first row to find photo field name
+      if (allRows.length > 0) console.log('[imp row keys]', Object.keys(allRows[0]), allRows[0])
     } catch { impError = 'Не удалось загрузить показы' }
     impLoading = false
   }
