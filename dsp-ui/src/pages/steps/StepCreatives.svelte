@@ -54,6 +54,25 @@
       ])
       activeSegments = segsRes.status === 'fulfilled' ? (segsRes.value?.content ?? []) : []
       activeDetail   = detailRes.status === 'fulfilled' ? detailRes.value : null
+
+      // Pre-populate draft.vendorApprovedIds from segment approval records.
+      // This ensures that when save/launch runs, buildMediaSegments already has
+      // the vendor → approvalRecordId map and can attach creatives immediately,
+      // without waiting for a post-save reloadCampaign cycle.
+      const approvedItems = activeSegments.filter(s => s.state === 'APPROVED')
+      if (approvedItems.length > 0) {
+        const updates = {}
+        for (const item of approvedItems) {
+          const cid = item.adLayout?.id
+          const vid = item.displayOwner?.id
+          if (cid == null || vid == null || item.id == null) continue
+          if (!updates[vid]) updates[vid] = new Map(draft.vendorApprovedIds?.[vid] ?? [])
+          updates[vid].set(cid, item.id)
+        }
+        if (Object.keys(updates).length > 0) {
+          draft = { ...draft, vendorApprovedIds: { ...draft.vendorApprovedIds, ...updates } }
+        }
+      }
     } catch { /* non-fatal */ }
     finally { segmentsLoading = false }
   }
@@ -289,6 +308,11 @@
       draft.creativeIds = [...draft.creativeIds, id]
       const c = creatives.find(c => c.id === id)
       if (c) draft.creativeStatuses = { ...draft.creativeStatuses, [id]: statusKey(getState(c)) }
+      // Pre-fetch vendor approvals immediately on selection so that save/launch
+      // can attach creatives without waiting for a post-save reloadCampaign.
+      // loadActiveData already calls segments() — this just ensures it fires even
+      // if the user hasn't viewed (clicked) this creative yet.
+      if (activeId !== id) loadActiveData(id)
     }
   }
 
