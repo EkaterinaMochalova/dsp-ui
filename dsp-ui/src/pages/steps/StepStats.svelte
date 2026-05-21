@@ -196,6 +196,96 @@
   let scrnSortCol = 'showed'
   let scrnSortDir = -1
 
+  // ── Screens+Map combined filter ───────────────────────────────────────────
+  let scrnSearch   = ''
+  let scrnActivity = ''   // '' | 'high' | 'mid' | 'low' | 'none'
+  let highlightedInvId = null
+  let scrnRowEls = {}     // invId → <tr> DOM element
+
+  $: maxShowed = Math.max(...invStats.map(r => r.totalShowed ?? 0), 1)
+
+  function showedColor(n) {
+    if (n === 0) return '#EF4444'
+    const ratio = n / maxShowed
+    return ratio >= 0.67 ? '#22C55E' : ratio >= 0.33 ? '#EAB308' : '#F97316'
+  }
+  function activityTier(n) {
+    if (n === 0) return 'none'
+    const ratio = n / maxShowed
+    return ratio >= 0.67 ? 'high' : ratio >= 0.33 ? 'mid' : 'low'
+  }
+  $: scrnFilteredRows = scrnSortedRows.filter(row => {
+    const showed = row.totalShowed ?? 0
+    if (scrnActivity && activityTier(showed) !== scrnActivity) return false
+    if (scrnSearch.trim()) {
+      const s = screenObjMap.get(row.inventory?.id)
+      const q = scrnSearch.trim().toLowerCase()
+      const name = (row.inventory?.name ?? '').toLowerCase()
+      const addr = (s?.address ?? '').toLowerCase()
+      const gid  = (s?.gid  ?? '').toLowerCase()
+      const city = (s?.city ?? '').toLowerCase()
+      if (!name.includes(q) && !addr.includes(q) && !gid.includes(q) && !city.includes(q)) return false
+    }
+    return true
+  })
+
+  // Map marker layer — cleared & rebuilt when filter changes
+  let markerLayer = null
+  let markerByInvId = new Map()
+
+  function updateMapMarkers(rows) {
+    if (!map) return
+    if (!markerLayer) markerLayer = L.layerGroup().addTo(map)
+    else markerLayer.clearLayers()
+    markerByInvId.clear()
+
+    const valid = rows.filter(r => r.inventory?.location?.latitude)
+    for (const row of valid) {
+      const loc = row.inventory.location
+      const n   = row.totalShowed ?? 0
+      const s   = screenObjMap.get(row.inventory?.id)
+      const marker = L.circleMarker([loc.latitude, loc.longitude], {
+        radius: 8, fillColor: showedColor(n), color: '#fff', weight: 1.5, fillOpacity: 0.9,
+      })
+        .bindPopup(
+          `<b>${row.inventory.name ?? ''}</b><br>` +
+          (s?.address ? `<span style="font-size:11px;color:#666">${s.address}${s.city ? ', '+s.city : ''}</span><br>` : '') +
+          (s?.gid     ? `GID: ${s.gid}<br>` : '') +
+          `Показы: ${fmt(n)}<br>` +
+          `OTS: ${fmt(row.totalOpOts ?? row.totalOts ?? row.totalDmpOts)}<br>` +
+          `CPM: ${fmt(row.cpm, 2)} ₽<br>` +
+          `Стоимость: ${formatMoney(row.totalShowedBudget ?? row.showPrice ?? 0)}`
+        )
+        .on('click', () => {
+          highlightedInvId = row.inventory.id
+          const el = scrnRowEls[row.inventory.id]
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        })
+        .addTo(markerLayer)
+      markerByInvId.set(row.inventory.id, marker)
+    }
+
+    if (valid.length) {
+      map.fitBounds(
+        L.latLngBounds(valid.map(r => [r.inventory.location.latitude, r.inventory.location.longitude])),
+        { padding: [40, 40], maxZoom: 13 }
+      )
+    }
+  }
+
+  function selectRowOnMap(row) {
+    if (!row.inventory?.location?.latitude) return
+    highlightedInvId = row.inventory.id
+    const marker = markerByInvId.get(row.inventory.id)
+    if (marker && map) {
+      map.setView([row.inventory.location.latitude, row.inventory.location.longitude], 14, { animate: true })
+      setTimeout(() => marker.openPopup(), 300)
+    }
+  }
+
+  // Reactively update markers when filter changes (after map is ready)
+  $: if (map && scrnFilteredRows) updateMapMarkers(scrnFilteredRows)
+
   function toggleScrnSort(col) {
     if (scrnSortCol === col) scrnSortDir = -scrnSortDir
     else { scrnSortCol = col; scrnSortDir = -1 }
@@ -419,9 +509,9 @@
   function onTabChange(tab) {
     activeTab = tab
     if (tab === 'chart'   && !Object.keys(chartData).length) loadChart()
-    if (tab === 'map'     && !mapInited) scheduleMapLoad()
-    // Screens tab: load invStats if not yet populated (e.g. KPI failed to load)
-    if (tab === 'screens' && invStats.length === 0 && !mapLoading) scheduleMapLoad()
+    // Screens tab now hosts the map — init on first open
+    if (tab === 'screens' && !mapInited && !mapLoading) scheduleMapLoad()
+    else if (tab === 'screens' && map) setTimeout(() => map?.invalidateSize(), 150)
   }
 
   function setGroupType(type) {
@@ -511,50 +601,17 @@
 
   // ── Map ───────────────────────────────────────────────────────────────────
   function initMap() {
-    if (map) { map.remove(); map = null }
+    if (map) { map.remove(); map = null; markerLayer = null; markerByInvId.clear() }
     if (!mapEl) return
-    const valid = invStats.filter(r => r.inventory?.location?.latitude)
-    if (!valid.length) return
+    if (!invStats.filter(r => r.inventory?.location?.latitude).length) return
 
     map = L.map(mapEl, { center: [55.75, 37.62], zoom: 5, zoomControl: true })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap', maxZoom: 19,
     }).addTo(map)
 
-    const maxShowed = Math.max(...valid.map(r => r.totalShowed ?? 0), 1)
-    const layer = L.layerGroup().addTo(map)
-
-    for (const row of valid) {
-      const loc = row.inventory.location
-      const n   = row.totalShowed ?? 0
-      const r   = n / maxShowed
-      const color = n === 0 ? '#EF4444' : r >= 0.67 ? '#22C55E' : r >= 0.33 ? '#EAB308' : '#F97316'
-
-      L.circleMarker([loc.latitude, loc.longitude], {
-        radius: 8, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 0.9,
-      })
-        .bindPopup(
-          `<b>${row.inventory.name ?? ''}</b><br>` +
-          `Показы: ${fmt(n)}<br>` +
-          `OTS: ${fmt(row.totalOpOts ?? row.totalOts ?? row.totalDmpOts)}<br>` +
-          `CPM: ${fmt(row.cpm, 2)} ₽<br>` +
-          `Стоимость: ${formatMoney(row.totalShowedBudget ?? row.showPrice ?? 0)}`
-        )
-        .addTo(layer)
-    }
-
-    if (valid.length) {
-      map.fitBounds(
-        L.latLngBounds(valid.map(r => [r.inventory.location.latitude, r.inventory.location.longitude])),
-        { padding: [40, 40], maxZoom: 10 }
-      )
-    }
     mapInited = true
-  }
-
-  // Invalidate map size when map tab is re-shown
-  $: if (activeTab === 'map' && map) {
-    setTimeout(() => map?.invalidateSize(), 150)
+    updateMapMarkers(scrnFilteredRows)
   }
 </script>
 
@@ -610,7 +667,6 @@
       <button class="tab" class:active={activeTab==='table'}   on:click={() => onTabChange('table')}>Показы</button>
       <button class="tab" class:active={activeTab==='screens'} on:click={() => onTabChange('screens')}>Экраны</button>
       <button class="tab" class:active={activeTab==='chart'}   on:click={() => onTabChange('chart')}>Графики</button>
-      <button class="tab" class:active={activeTab==='map'}     on:click={() => onTabChange('map')}>Карта</button>
     </div>
 
     <!-- ── TABLE TAB ─────────────────────────────────────────────────────────── -->
@@ -1020,8 +1076,48 @@
         {/if}
       </div>
 
-    <!-- ── SCREENS TAB ──────────────────────────────────────────────────────────── -->
+    <!-- ── SCREENS + MAP TAB ──────────────────────────────────────────────────── -->
     {:else if activeTab === 'screens'}
+      <!-- Filter bar -->
+      <div class="scrn-filterbar">
+        <div class="scrn-search-wrap">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:var(--text-muted);flex-shrink:0">
+            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+          </svg>
+          <input
+            class="scrn-search-input"
+            type="text"
+            placeholder="Поиск по адресу, названию, GID…"
+            bind:value={scrnSearch}
+          />
+          {#if scrnSearch}
+            <button class="scrn-search-clear" on:click={() => scrnSearch = ''}>×</button>
+          {/if}
+        </div>
+        <div class="scrn-act-pills">
+          <button class="scrn-act-pill" class:active={scrnActivity===''} on:click={() => scrnActivity=''}>Все</button>
+          <button class="scrn-act-pill" class:active={scrnActivity==='high'} on:click={() => scrnActivity=scrnActivity==='high'?'':'high'}>
+            <span class="act-dot" style="background:#22C55E"></span>Высокая
+          </button>
+          <button class="scrn-act-pill" class:active={scrnActivity==='mid'} on:click={() => scrnActivity=scrnActivity==='mid'?'':'mid'}>
+            <span class="act-dot" style="background:#EAB308"></span>Средняя
+          </button>
+          <button class="scrn-act-pill" class:active={scrnActivity==='low'} on:click={() => scrnActivity=scrnActivity==='low'?'':'low'}>
+            <span class="act-dot" style="background:#F97316"></span>Низкая
+          </button>
+          <button class="scrn-act-pill" class:active={scrnActivity==='none'} on:click={() => scrnActivity=scrnActivity==='none'?'':'none'}>
+            <span class="act-dot" style="background:#EF4444"></span>Без показов
+          </button>
+        </div>
+        <span class="scrn-count">
+          {#if scrnSearch || scrnActivity}
+            {scrnFilteredRows.length} / {invStats.length}
+          {:else}
+            {invStats.length} экран{invStats.length===1?'':invStats.length<5?'а':'ов'}
+          {/if}
+        </span>
+      </div>
+
       <div class="step-card tab-panel" style="padding:0;overflow:hidden">
         {#if mapLoading}
           <div class="panel-loading"><div class="spinner"></div> Загрузка…</div>
@@ -1030,132 +1126,134 @@
         {:else if invStats.length === 0}
           <div class="panel-empty">Нет данных по экранам.</div>
         {:else}
-          <div class="tbl-wrap">
-            <table class="tbl" style="table-layout:fixed">
-              <colgroup>
-                {#each scrnColW as w}
-                  <col style="width:{w}px;min-width:40px">
-                {/each}
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style="position:relative">
-                    <button class="th-sort-btn" on:click={() => toggleScrnSort('name')}>
-                      Экран{#if scrnSortCol==='name'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(0,e)}></div>
-                  </th>
-                  <th style="position:relative">
-                    <button class="th-sort-btn" on:click={() => toggleScrnSort('gid')}>
-                      GID{#if scrnSortCol==='gid'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(1,e)}></div>
-                  </th>
-                  <th style="position:relative">
-                    <button class="th-sort-btn" on:click={() => toggleScrnSort('city')}>
-                      Город{#if scrnSortCol==='city'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(2,e)}></div>
-                  </th>
-                  <th style="position:relative">
-                    <button class="th-sort-btn" on:click={() => toggleScrnSort('owner')}>
-                      Оператор{#if scrnSortCol==='owner'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(3,e)}></div>
-                  </th>
-                  <th style="position:relative">
-                    <button class="th-sort-btn" on:click={() => toggleScrnSort('format')}>
-                      Формат{#if scrnSortCol==='format'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(4,e)}></div>
-                  </th>
-                  <th class="num" style="position:relative">
-                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('showed')}>
-                      {#if scrnSortCol==='showed'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Выходы
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(5,e)}></div>
-                  </th>
-                  <th class="num" style="position:relative">
-                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('ots')}>
-                      {#if scrnSortCol==='ots'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}OTS
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(6,e)}></div>
-                  </th>
-                  <th class="num" style="position:relative">
-                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('budget')}>
-                      {#if scrnSortCol==='budget'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Бюджет
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(7,e)}></div>
-                  </th>
-                  <th class="num" style="position:relative">
-                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('cpm')}>
-                      {#if scrnSortCol==='cpm'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}CPM, ₽
-                    </button>
-                    <div class="rzh" on:mousedown={(e)=>scrnRzStart(8,e)}></div>
-                  </th>
-                  <th class="num" style="position:relative">
-                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('shots')}>
-                      {#if scrnSortCol==='shots'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Фото
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each scrnSortedRows as row (row.inventory?.id)}
-                  {@const s = screenObjMap.get(row.inventory?.id)}
-                  {@const showed = row.totalShowed ?? 0}
-                  {@const ots = row.totalOpOts ?? row.totalOts ?? row.totalEstimatedOts ?? 0}
-                  {@const budget = row.totalShowedBudget ?? row.customerStats?.budgetShowed ?? 0}
-                  <tr class:scrn-zero={showed === 0}>
-                    <td>
-                      <span class="inv-name">{row.inventory?.name ?? '—'}</span>
-                      {#if s?.address}<span class="inv-addr">{s.address}{s.city ? ', ' + s.city : ''}</span>{/if}
-                    </td>
-                    <td class="dim mono">{s?.gid ?? '—'}</td>
-                    <td class="dim">{s?.city ?? '—'}</td>
-                    <td class="dim">{s?.owner ?? (row.displayOwner?.name ?? '—')}</td>
-                    <td class="dim">{s?.format ?? '—'}</td>
-                    <td class="num mono">
-                      {#if showed > 0}
-                        <span class="scrn-plays">{fmt(showed)}</span>
-                      {:else}
-                        <span class="scrn-zero-lbl">Нет</span>
-                      {/if}
-                    </td>
-                    <td class="num mono">{#if ots > 0}{fmt(ots)}{:else}<span class="dim">—</span>{/if}</td>
-                    <td class="num mono">{#if budget > 0}{formatMoney(budget)}{:else}<span class="dim">—</span>{/if}</td>
-                    <td class="num mono">{#if (row.cpm ?? 0) > 0}{fmt(row.cpm, 2)}{:else}<span class="dim">—</span>{/if}</td>
-                    <td class="num mono">{#if (row.shotCount ?? 0) > 0}<span class="scrn-shots">📷 {row.shotCount}</span>{:else}<span class="dim">—</span>{/if}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-          <div class="scrn-footer">
-            {invStats.length} экран{invStats.length === 1 ? '' : invStats.length < 5 ? 'а' : 'ов'} ·
-            {fmt(invStats.filter(r => (r.totalShowed ?? 0) > 0).length)} с показами
-          </div>
-        {/if}
-      </div>
+          <div class="scrn-split">
+            <!-- Table side -->
+            <div class="scrn-table-side">
+              <div class="tbl-wrap">
+                <table class="tbl" style="table-layout:fixed">
+                  <colgroup>
+                    {#each scrnColW as w}
+                      <col style="width:{w}px;min-width:40px">
+                    {/each}
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style="position:relative">
+                        <button class="th-sort-btn" on:click={() => toggleScrnSort('name')}>
+                          Экран{#if scrnSortCol==='name'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(0,e)}></div>
+                      </th>
+                      <th style="position:relative">
+                        <button class="th-sort-btn" on:click={() => toggleScrnSort('gid')}>
+                          GID{#if scrnSortCol==='gid'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(1,e)}></div>
+                      </th>
+                      <th style="position:relative">
+                        <button class="th-sort-btn" on:click={() => toggleScrnSort('city')}>
+                          Город{#if scrnSortCol==='city'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(2,e)}></div>
+                      </th>
+                      <th style="position:relative">
+                        <button class="th-sort-btn" on:click={() => toggleScrnSort('owner')}>
+                          Оператор{#if scrnSortCol==='owner'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(3,e)}></div>
+                      </th>
+                      <th style="position:relative">
+                        <button class="th-sort-btn" on:click={() => toggleScrnSort('format')}>
+                          Формат{#if scrnSortCol==='format'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(4,e)}></div>
+                      </th>
+                      <th class="num" style="position:relative">
+                        <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('showed')}>
+                          {#if scrnSortCol==='showed'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Выходы
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(5,e)}></div>
+                      </th>
+                      <th class="num" style="position:relative">
+                        <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('ots')}>
+                          {#if scrnSortCol==='ots'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}OTS
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(6,e)}></div>
+                      </th>
+                      <th class="num" style="position:relative">
+                        <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('budget')}>
+                          {#if scrnSortCol==='budget'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Бюджет
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(7,e)}></div>
+                      </th>
+                      <th class="num" style="position:relative">
+                        <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('cpm')}>
+                          {#if scrnSortCol==='cpm'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}CPM, ₽
+                        </button>
+                        <div class="rzh" on:mousedown={(e)=>scrnRzStart(8,e)}></div>
+                      </th>
+                      <th class="num" style="position:relative">
+                        <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('shots')}>
+                          {#if scrnSortCol==='shots'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Фото
+                        </button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each scrnFilteredRows as row (row.inventory?.id)}
+                      {@const s      = screenObjMap.get(row.inventory?.id)}
+                      {@const showed = row.totalShowed ?? 0}
+                      {@const ots    = row.totalOpOts ?? row.totalOts ?? row.totalEstimatedOts ?? 0}
+                      {@const budget = row.totalShowedBudget ?? row.customerStats?.budgetShowed ?? 0}
+                      {@const isHL   = highlightedInvId === row.inventory?.id}
+                      <tr
+                        class:scrn-zero={showed === 0}
+                        class:scrn-hl={isHL}
+                        style="cursor:pointer"
+                        bind:this={scrnRowEls[row.inventory?.id]}
+                        on:click={() => selectRowOnMap(row)}
+                      >
+                        <td>
+                          <span class="inv-name">
+                            <span class="act-dot-sm" style="background:{showedColor(showed)}"></span>
+                            {row.inventory?.name ?? '—'}
+                          </span>
+                          {#if s?.address}<span class="inv-addr">{s.address}{s.city ? ', ' + s.city : ''}</span>{/if}
+                        </td>
+                        <td class="dim mono">{s?.gid ?? '—'}</td>
+                        <td class="dim">{s?.city ?? '—'}</td>
+                        <td class="dim">{s?.owner ?? (row.displayOwner?.name ?? '—')}</td>
+                        <td class="dim">{s?.format ?? '—'}</td>
+                        <td class="num mono">
+                          {#if showed > 0}
+                            <span class="scrn-plays">{fmt(showed)}</span>
+                          {:else}
+                            <span class="scrn-zero-lbl">Нет</span>
+                          {/if}
+                        </td>
+                        <td class="num mono">{#if ots > 0}{fmt(ots)}{:else}<span class="dim">—</span>{/if}</td>
+                        <td class="num mono">{#if budget > 0}{formatMoney(budget)}{:else}<span class="dim">—</span>{/if}</td>
+                        <td class="num mono">{#if (row.cpm ?? 0) > 0}{fmt(row.cpm, 2)}{:else}<span class="dim">—</span>{/if}</td>
+                        <td class="num mono">{#if (row.shotCount ?? 0) > 0}<span class="scrn-shots">📷 {row.shotCount}</span>{:else}<span class="dim">—</span>{/if}</td>
+                      </tr>
+                    {/each}
+                    {#if scrnFilteredRows.length === 0}
+                      <tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">Нет экранов, соответствующих фильтру</td></tr>
+                    {/if}
+                  </tbody>
+                </table>
+              </div>
+              <div class="scrn-footer">
+                {scrnFilteredRows.filter(r => (r.totalShowed ?? 0) > 0).length} с показами ·
+                {fmt(invStats.filter(r => (r.totalShowed ?? 0) === 0).length)} без показов
+              </div>
+            </div>
 
-    <!-- ── MAP TAB ─────────────────────────────────────────────────────────────── -->
-    {:else if activeTab === 'map'}
-      <div class="step-card tab-panel" style="padding:0;overflow:hidden">
-        {#if mapLoading}
-          <div class="panel-loading"><div class="spinner"></div> Загрузка карты…</div>
-        {:else if mapError}
-          <div class="panel-error">{mapError}</div>
-        {:else}
-          <div class="map-legend">
-            <span class="leg-dot" style="background:#22C55E"></span> Высокая активность
-            <span class="leg-dot" style="background:#EAB308;margin-left:12px"></span> Средняя
-            <span class="leg-dot" style="background:#F97316;margin-left:12px"></span> Низкая
-            <span class="leg-dot" style="background:#EF4444;margin-left:12px"></span> Нет показов
+            <!-- Map side -->
+            <div class="scrn-map-side">
+              <div bind:this={mapEl} class="scrn-map"></div>
+            </div>
           </div>
-          <div bind:this={mapEl} class="stats-map"></div>
-          {#if invStats.length === 0 && !mapLoading}
-            <div class="map-empty">Нет данных по экранам.</div>
-          {/if}
         {/if}
       </div>
     {/if}
@@ -1637,41 +1735,122 @@
   .cs-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }
   .cs-val   { font-size: 15px; font-weight: 700; color: var(--text); }
 
-  /* ── Map ─────────────────────────────────────────────────────────────────── */
-  .map-legend {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 16px;
-    font-size: 12px;
-    color: var(--text-muted);
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-muted, #f9fafb);
-    flex-wrap: wrap;
-  }
-  .leg-dot {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .stats-map {
-    height: 420px;
-    width: 100%;
-  }
-
-  .map-empty {
-    padding: 20px;
-    text-align: center;
-    font-size: 13px;
-    color: var(--text-muted);
-  }
-
   /* ── Leaflet overrides ───────────────────────────────────────────────────── */
   :global(.leaflet-popup-content b) { font-size: 13px; }
   :global(.leaflet-popup-content)   { font-size: 12px; line-height: 1.7; }
+
+  /* ── Screens+Map combined layout ─────────────────────────────────────────── */
+  .scrn-filterbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 0 10px;
+  }
+  .scrn-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #fff;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 10px;
+    min-width: 220px;
+    flex: 1;
+    max-width: 320px;
+  }
+  .scrn-search-wrap:focus-within { border-color: var(--navy); }
+  .scrn-search-input {
+    border: none;
+    outline: none;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    flex: 1;
+    background: transparent;
+  }
+  .scrn-search-clear {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--text-muted);
+    padding: 0;
+    line-height: 1;
+  }
+  .scrn-act-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+  .scrn-act-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all .12s;
+  }
+  .scrn-act-pill.active {
+    border-color: var(--navy);
+    background: var(--navy);
+    color: #fff;
+  }
+  .scrn-act-pill:hover:not(.active) { border-color: #9ca3af; color: var(--text); }
+  .act-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .act-dot-sm {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .scrn-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin-left: auto;
+  }
+  .scrn-split {
+    display: flex;
+    height: 560px;
+    overflow: hidden;
+  }
+  .scrn-table-side {
+    flex: 1 1 55%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .scrn-table-side .tbl-wrap {
+    flex: 1;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: auto;
+  }
+  .scrn-map-side {
+    flex: 0 0 45%;
+    position: relative;
+  }
+  .scrn-map {
+    width: 100%;
+    height: 100%;
+  }
+  .tbl tr.scrn-hl td { background: #eff6ff !important; }
 
   /* ── Screens tab ─────────────────────────────────────────────────────────── */
   .tbl tr.scrn-zero td { color: #9ca3af; }
