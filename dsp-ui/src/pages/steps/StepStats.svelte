@@ -169,6 +169,40 @@
   let mapError = ''
   let mapInited = false
 
+  // ── Screens tab ───────────────────────────────────────────────────────────
+  let scrnSortCol = 'showed'
+  let scrnSortDir = -1
+
+  function toggleScrnSort(col) {
+    if (scrnSortCol === col) scrnSortDir = -scrnSortDir
+    else { scrnSortCol = col; scrnSortDir = -1 }
+  }
+
+  // Cross-reference map: inventoryId → screenObject (from draft)
+  $: screenObjMap = new Map(
+    (draft.screenObjects ?? []).filter(s => s?.id).map(s => [s.id, s])
+  )
+
+  function scrnSortVal(r, col) {
+    const s = screenObjMap.get(r.inventory?.id)
+    if (col === 'name')   return r.inventory?.name ?? ''
+    if (col === 'gid')    return s?.gid ?? ''
+    if (col === 'city')   return s?.city ?? ''
+    if (col === 'owner')  return s?.owner ?? ''
+    if (col === 'format') return s?.format ?? ''
+    if (col === 'showed') return r.totalShowed ?? 0
+    if (col === 'budget') return r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0
+    if (col === 'ots')    return r.totalOpOts ?? r.totalOts ?? r.totalEstimatedOts ?? 0
+    if (col === 'cpm')    return r.cpm ?? 0
+    if (col === 'shots')  return r.shotCount ?? 0
+    return ''
+  }
+
+  $: scrnSortedRows = [...invStats].sort((a, b) => {
+    const av = scrnSortVal(a, scrnSortCol), bv = scrnSortVal(b, scrnSortCol)
+    return av < bv ? -scrnSortDir : av > bv ? scrnSortDir : 0
+  })
+
   // ── Helpers ───────────────────────────────────────────────────────────────
   function fmt(n, dec = 0) {
     if (n == null || n === '') return '—'
@@ -229,6 +263,7 @@
     try {
       const rows = await api.stats.inventoryStats(campId)
       if (!Array.isArray(rows) || !rows.length) { kpiLoading = false; return }
+      invStats = rows   // shared with map + screens tabs — avoids a duplicate API call
       let showed = 0, ots = 0, budget = 0, cpmSum = 0, cpmCount = 0
       for (const r of rows) {
         showed  += r.totalShowed ?? 0
@@ -360,8 +395,10 @@
 
   function onTabChange(tab) {
     activeTab = tab
-    if (tab === 'chart' && !Object.keys(chartData).length) loadChart()
-    if (tab === 'map'   && !mapInited) scheduleMapLoad()
+    if (tab === 'chart'   && !Object.keys(chartData).length) loadChart()
+    if (tab === 'map'     && !mapInited) scheduleMapLoad()
+    // Screens tab: load invStats if not yet populated (e.g. KPI failed to load)
+    if (tab === 'screens' && invStats.length === 0 && !mapLoading) scheduleMapLoad()
   }
 
   function setGroupType(type) {
@@ -380,11 +417,14 @@
 
   async function scheduleMapLoad() {
     if (!campId || mapLoading) return
-    mapLoading = true; mapError = ''
-    try {
-      invStats = await api.stats.inventoryStats(campId) ?? []
-    } catch { mapError = 'Не удалось загрузить данные карты'; invStats = [] }
-    mapLoading = false
+    // Reuse invStats already populated by loadKpi() — avoids a duplicate fetch.
+    if (invStats.length === 0) {
+      mapLoading = true; mapError = ''
+      try {
+        invStats = await api.stats.inventoryStats(campId) ?? []
+      } catch { mapError = 'Не удалось загрузить данные карты'; invStats = [] }
+      mapLoading = false
+    }
     await tick()
     initMap()
   }
@@ -544,9 +584,10 @@
   <!-- ── Tabs ───────────────────────────────────────────────────────────────── -->
   {#if campId}
     <div class="tabs">
-      <button class="tab" class:active={activeTab==='table'} on:click={() => onTabChange('table')}>Показы</button>
-      <button class="tab" class:active={activeTab==='chart'} on:click={() => onTabChange('chart')}>Графики</button>
-      <button class="tab" class:active={activeTab==='map'}   on:click={() => onTabChange('map')}>Карта</button>
+      <button class="tab" class:active={activeTab==='table'}   on:click={() => onTabChange('table')}>Показы</button>
+      <button class="tab" class:active={activeTab==='screens'} on:click={() => onTabChange('screens')}>Экраны</button>
+      <button class="tab" class:active={activeTab==='chart'}   on:click={() => onTabChange('chart')}>Графики</button>
+      <button class="tab" class:active={activeTab==='map'}     on:click={() => onTabChange('map')}>Карта</button>
     </div>
 
     <!-- ── TABLE TAB ─────────────────────────────────────────────────────────── -->
@@ -952,6 +993,110 @@
               <span class="cs-label">Точек данных</span>
               <span class="cs-val">{chartPoints.length}</span>
             </div>
+          </div>
+        {/if}
+      </div>
+
+    <!-- ── SCREENS TAB ──────────────────────────────────────────────────────────── -->
+    {:else if activeTab === 'screens'}
+      <div class="step-card tab-panel" style="padding:0;overflow:hidden">
+        {#if mapLoading}
+          <div class="panel-loading"><div class="spinner"></div> Загрузка…</div>
+        {:else if mapError}
+          <div class="panel-error">{mapError}</div>
+        {:else if invStats.length === 0}
+          <div class="panel-empty">Нет данных по экранам.</div>
+        {:else}
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>
+                    <button class="th-sort-btn" on:click={() => toggleScrnSort('name')}>
+                      Экран{#if scrnSortCol==='name'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                    </button>
+                  </th>
+                  <th>
+                    <button class="th-sort-btn" on:click={() => toggleScrnSort('gid')}>
+                      GID{#if scrnSortCol==='gid'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                    </button>
+                  </th>
+                  <th>
+                    <button class="th-sort-btn" on:click={() => toggleScrnSort('city')}>
+                      Город{#if scrnSortCol==='city'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                    </button>
+                  </th>
+                  <th>
+                    <button class="th-sort-btn" on:click={() => toggleScrnSort('owner')}>
+                      Оператор{#if scrnSortCol==='owner'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                    </button>
+                  </th>
+                  <th>
+                    <button class="th-sort-btn" on:click={() => toggleScrnSort('format')}>
+                      Формат{#if scrnSortCol==='format'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}
+                    </button>
+                  </th>
+                  <th class="num">
+                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('showed')}>
+                      {#if scrnSortCol==='showed'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Выходы
+                    </button>
+                  </th>
+                  <th class="num">
+                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('ots')}>
+                      {#if scrnSortCol==='ots'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}OTS
+                    </button>
+                  </th>
+                  <th class="num">
+                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('budget')}>
+                      {#if scrnSortCol==='budget'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Бюджет
+                    </button>
+                  </th>
+                  <th class="num">
+                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('cpm')}>
+                      {#if scrnSortCol==='cpm'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}CPM, ₽
+                    </button>
+                  </th>
+                  <th class="num">
+                    <button class="th-sort-btn" style="justify-content:flex-end" on:click={() => toggleScrnSort('shots')}>
+                      {#if scrnSortCol==='shots'}<span class="th-arr">{scrnSortDir>0?'↑':'↓'}</span>{/if}Фото
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each scrnSortedRows as row (row.inventory?.id)}
+                  {@const s = screenObjMap.get(row.inventory?.id)}
+                  {@const showed = row.totalShowed ?? 0}
+                  {@const ots = row.totalOpOts ?? row.totalOts ?? row.totalEstimatedOts ?? 0}
+                  {@const budget = row.totalShowedBudget ?? row.customerStats?.budgetShowed ?? 0}
+                  <tr class:scrn-zero={showed === 0}>
+                    <td>
+                      <span class="inv-name">{row.inventory?.name ?? '—'}</span>
+                      {#if s?.address}<span class="inv-addr">{s.address}{s.city ? ', ' + s.city : ''}</span>{/if}
+                    </td>
+                    <td class="dim mono">{s?.gid ?? '—'}</td>
+                    <td class="dim">{s?.city ?? '—'}</td>
+                    <td class="dim">{s?.owner ?? (row.displayOwner?.name ?? '—')}</td>
+                    <td class="dim">{s?.format ?? '—'}</td>
+                    <td class="num mono">
+                      {#if showed > 0}
+                        <span class="scrn-plays">{fmt(showed)}</span>
+                      {:else}
+                        <span class="scrn-zero-lbl">Нет</span>
+                      {/if}
+                    </td>
+                    <td class="num mono">{#if ots > 0}{fmt(ots)}{:else}<span class="dim">—</span>{/if}</td>
+                    <td class="num mono">{#if budget > 0}{formatMoney(budget)}{:else}<span class="dim">—</span>{/if}</td>
+                    <td class="num mono">{#if (row.cpm ?? 0) > 0}{fmt(row.cpm, 2)}{:else}<span class="dim">—</span>{/if}</td>
+                    <td class="num mono">{#if (row.shotCount ?? 0) > 0}<span class="scrn-shots">📷 {row.shotCount}</span>{:else}<span class="dim">—</span>{/if}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          <div class="scrn-footer">
+            {invStats.length} экран{invStats.length === 1 ? '' : invStats.length < 5 ? 'а' : 'ов'} ·
+            {fmt(invStats.filter(r => (r.totalShowed ?? 0) > 0).length)} с показами
           </div>
         {/if}
       </div>
@@ -1465,4 +1610,29 @@
   /* ── Leaflet overrides ───────────────────────────────────────────────────── */
   :global(.leaflet-popup-content b) { font-size: 13px; }
   :global(.leaflet-popup-content)   { font-size: 12px; line-height: 1.7; }
+
+  /* ── Screens tab ─────────────────────────────────────────────────────────── */
+  .tbl tr.scrn-zero td { color: #9ca3af; }
+  .tbl tr.scrn-zero:hover td { background: var(--bg-muted, #f9fafb); }
+
+  .scrn-plays {
+    font-weight: 700;
+    color: #166534;
+  }
+  .scrn-zero-lbl {
+    font-size: 11px;
+    color: #9ca3af;
+    font-weight: 400;
+  }
+  .scrn-shots {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .scrn-footer {
+    padding: 9px 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    background: var(--bg-muted, #f9fafb);
+  }
 </style>
