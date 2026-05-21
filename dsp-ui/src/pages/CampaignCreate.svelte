@@ -197,7 +197,10 @@
   function buildPayload() {
     const budgetBuyer = Number(draft.customBudgetTotal) || 0
     const markup = draft.buyerMarkup !== '' ? Number(draft.buyerMarkup) : null
-    const additionalChargePct = markup ?? rawCamp?.additionalCharge ?? 0
+    // NEVER fall back to rawCamp.additionalCharge — the server default is 1.0 (= 100% markup
+    // in decimal), which causes the RTB engine to halve every effective bid → code 1000 failures.
+    // Only use an explicitly user-set markup; otherwise always send 0.
+    const additionalChargePct = markup ?? 0
     // budget = client-facing price (buyer price + markup); budgetBuyer = base buyer price
     const budget = Math.round(budgetBuyer * (1 + additionalChargePct / 100) * 100) / 100
 
@@ -723,8 +726,11 @@
             )]
 
         // ── Buyer markup ───────────────────────────────────────────────
-        // Real API field is camp.additionalCharge (e.g. 50 = 50%)
-        const resolvedMarkup = camp.additionalCharge != null
+        // additionalCharge is stored as a decimal multiplier (1.0 = 100% markup).
+        // The server default for "no markup" appears to be 1.0, NOT 0.
+        // Only inherit as buyerMarkup if the value is > 1 (a real admin-set fee above
+        // the neutral default). Values ≤ 1 are treated as "no extra markup".
+        const resolvedMarkup = (camp.additionalCharge != null && camp.additionalCharge > 1)
           ? String(camp.additionalCharge)
           : (camp.buyerMarkup ?? camp.markup ?? '')
 
