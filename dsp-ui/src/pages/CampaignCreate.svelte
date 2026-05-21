@@ -794,7 +794,25 @@
         // ── Background parallel jobs ───────────────────────────────────
         // 1. Prefetch all screens so StepScreens gets a cache hit instead of
         //    starting a slow multi-page load from scratch.
-        api.inventories.allMapped().catch(() => {})
+        //    Once loaded, enrich screenObjects with full data (owner, format, gid, etc.)
+        //    which may be missing from the sparse segment inventory objects returned by
+        //    the campaign API.
+        api.inventories.allMapped().then(allScreens => {
+          const byId = new Map(allScreens.map(s => [s.id, s]))
+          const enriched = draft.screenObjects.map(s => {
+            const full = byId.get(s.id)
+            if (!full) return s
+            // Merge: keep segment-specific fields (bid etc.) but fill in missing metadata
+            return {
+              ...full,
+              // Preserve any bid/schedule overrides that may live on the segment object
+              ...(s.bid != null ? { bid: s.bid } : {}),
+            }
+          })
+          if (enriched.some((s, i) => s !== draft.screenObjects[i])) {
+            draft = { ...draft, screenObjects: enriched }
+          }
+        }).catch(() => {})
 
         // 2. Load creative/vendor data (non-terminal campaigns only).
         //    Fire-and-forget — StepCreatives will show a loading state if needed.
