@@ -452,14 +452,48 @@
   }
 
   // ── Table ─────────────────────────────────────────────────────────────────
-  // Normal mode: load one server page (SRV_NORMAL rows).
-  // Filter mode: fetch ALL pages in parallel and concatenate — ensures filtered
-  // results span the entire dataset, not just the first batch.
+  // Strategy:
+  //   • Filters that the server understands (status, date range) are passed as query
+  //     params → one fast paginated request, no bulk-load needed.
+  //   • Filters the server cannot handle (free-text screen/creative, OTS range, etc.)
+  //     require the full dataset to be loaded first so client-side filtering works.
+  //   • loadImpressions() always passes the current server-capable filters and fetches
+  //     one page. applyFilter() decides whether a full-dataset load is also needed.
+
+  // Build query params that the server can filter on directly.
+  function serverFilterParams() {
+    const p = {}
+    // Status: SUCCESS maps 1-to-1; FAILED = "not SUCCESS" — can't express as single
+    // server param, so we leave it for client-side (handled by hasClientOnlyFilters).
+    if (filterStatus === 'SUCCESS') p.bidRequestState = 'SUCCESS'
+    // Date range — server accepts Unix-ms timestamps
+    if (filterDateFrom) p.startDate = dateToMs(filterDateFrom)
+    if (filterDateTo)   p.endDate   = dateToMs(filterDateTo) + 86_399_999  // end of day
+    return p
+  }
+
+  // Filters that the server cannot handle — require full dataset load.
+  function hasClientOnlyFilters() {
+    return !!(
+      filterStatus === 'FAILED' ||
+      filterLocal || filterScreen || filterCreative ||
+      filterFormat || filterReason ||
+      filterOtsMin || filterOtsMax || filterCostMin || filterCostMax
+    )
+  }
+
+  function anyFilterActive() {
+    return !!(filterStatus || filterDateFrom || filterDateTo || filterLocal ||
+              filterScreen || filterFormat || filterCreative || filterReason ||
+              filterOtsMin || filterOtsMax || filterCostMin || filterCostMax)
+  }
+
   async function loadImpressions(page) {
     if (!campId) return
     impLoading = true; impError = ''
     try {
-      const data = await api.stats.list(campId, { page, size: SRV_NORMAL, sort: 'showTime,desc' })
+      const params = { page, size: SRV_NORMAL, sort: 'showTime,desc', ...serverFilterParams() }
+      const data = await api.stats.list(campId, params)
       allRows  = data.content ?? []
       srvTotal = data.totalElements ?? 0
       srvPages = data.totalPages ?? 1
@@ -469,15 +503,14 @@
     impLoading = false
   }
 
-  // Load ALL server pages in parallel and concatenate — used when a filter is active
-  // so client-side filtering covers the full dataset (e.g. 6 successes spread across
-  // 1541 total rows that span multiple pages).
+  // Load ALL server pages — only needed when client-side-only filters are active.
+  // Server-capable filters are still forwarded to reduce the dataset size.
   async function loadAllForFilter() {
     if (!campId) return
     impLoading = true; impError = ''
     try {
-      // Page 0 first so we know totalPages
-      const first = await api.stats.list(campId, { page: 0, size: SRV_FILTER, sort: 'showTime,desc' })
+      const base = { size: SRV_FILTER, sort: 'showTime,desc', ...serverFilterParams() }
+      const first = await api.stats.list(campId, { ...base, page: 0 })
       const total = first.totalElements ?? 0
       const pages = first.totalPages ?? 1
       let rows = first.content ?? []
@@ -485,7 +518,7 @@
       if (pages > 1) {
         const rest = await Promise.all(
           Array.from({ length: pages - 1 }, (_, i) =>
-            api.stats.list(campId, { page: i + 1, size: SRV_FILTER, sort: 'showTime,desc' })
+            api.stats.list(campId, { ...base, page: i + 1 })
               .then(d => d.content ?? []).catch(() => [])
           )
         )
@@ -494,29 +527,22 @@
 
       allRows  = rows
       srvTotal = total
-      srvPages = 1     // all data is now local, no further server paging needed
+      srvPages = 1
       srvPage  = 0
       viewPage = 0
     } catch { impError = 'Не удалось загрузить показы' }
     impLoading = false
   }
 
-  // Compute "has any active filter" from current variable values directly.
-  // We cannot use the reactive $: hasAnyFilter here because Svelte batches reactive
-  // updates — reading $: vars immediately after setting a dependency gives stale values.
-  function anyFilterActive() {
-    return !!(filterStatus || filterDateFrom || filterDateTo || filterLocal ||
-              filterScreen || filterFormat || filterCreative || filterReason ||
-              filterOtsMin || filterOtsMax || filterCostMin || filterCostMax)
-  }
-
   // Called by the top-level status pills and the Статус column dropdown
   function applyFilter() {
     viewPage = 0
-    if (anyFilterActive()) {
+    if (hasClientOnlyFilters()) {
+      // Need full dataset for client-side filtering — but server pre-filters what it can
       if (!hasFullDataset) loadAllForFilter()
       // else: reactive filteredRows recomputes automatically from allRows
     } else {
+      // All active filters are server-side → just reload page 0 with new params
       loadImpressions(0)
     }
   }
@@ -527,8 +553,9 @@
     viewPage = 0
     clearTimeout(_colFilterTimer)
     _colFilterTimer = setTimeout(() => {
-      if (anyFilterActive() && !hasFullDataset) loadAllForFilter()
-      // else: reactive filteredRows recomputes automatically
+      if (hasClientOnlyFilters() && !hasFullDataset) loadAllForFilter()
+      else if (!hasClientOnlyFilters()) loadImpressions(0)
+      // else: full dataset already loaded, reactive filteredRows handles it
     }, 220)
   }
 
@@ -746,10 +773,11 @@
         <div style="flex:1"></div>
         <span class="filter-count">
           {#if hasAnyFilter}
-            {fmt(filteredRows.length)} из {fmt(srvTotal)}
+            {fmt(filteredRows.length)} из {fmt(srvTotal)}{hasClientOnlyFilters() && !hasFullDataset ? ' ...' : ''}
             {#if impLoading}<span class="filter-loading">…</span>{/if}
           {:else}
             {fmt(srvTotal)} записей
+            {#if impLoading}<span class="filter-loading">…</span>{/if}
           {/if}
         </span>
         {#if hasAnyFilter}
