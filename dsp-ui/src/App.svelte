@@ -9,6 +9,7 @@
   import CampaignTypeSelect from './pages/CampaignTypeSelect.svelte'
   import CampaignCreate   from './pages/CampaignCreate.svelte'
   import Overview         from './pages/Overview.svelte'
+  import Analytics        from './pages/Analytics.svelte'
   // import ChatPanel from './components/ChatPanel.svelte'
 
   onMount(async () => {
@@ -55,6 +56,8 @@
         <Overview />
       {:else if $page === 'campaigns'}
         <CampaignsList />
+      {:else if $page === 'analytics'}
+        <Analytics />
       {:else}
         <div style="padding:32px;color:var(--text-muted);font-size:14px">
           Страница в разработке
