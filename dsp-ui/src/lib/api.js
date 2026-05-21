@@ -8,14 +8,29 @@ function getToken() {
 
 async function request(path, options = {}) {
   const token = getToken()
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  })
+  // Abort after 45 s so a hung server never freezes the UI indefinitely.
+  // The caller's finally-block always sets saving/loading back to false once the
+  // AbortError propagates, so the button un-freezes and an error message is shown.
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 45_000)
+  let res
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+    })
+  } catch (err) {
+    // Rethrow AbortError as a friendly timeout object so callers can show a message
+    if (err?.name === 'AbortError') throw { status: 408, message: 'Превышено время ожидания сервера (45 с). Попробуйте ещё раз.' }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (res.status === 401) {
     localStorage.removeItem('dsp_token')

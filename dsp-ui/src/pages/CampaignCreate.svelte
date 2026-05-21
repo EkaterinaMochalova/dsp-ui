@@ -455,6 +455,7 @@
   function extractApiError(e, fallback) {
     if (!e) return fallback
     if (e?.status === 403) return null  // caller handles 403 separately
+    if (e?.status === 408) return e.message  // timeout — already human-readable
 
     const fieldMsgs  = (e?.data?.errors?.field  ?? []).map(f => f.message).filter(Boolean)
     const globalMsgs = (e?.data?.errors?.global ?? []).map(g => g.message).filter(Boolean)
@@ -866,9 +867,6 @@
       <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>
     </button>
     <div class="sidebar-icon-spacer"></div>
-    <button class="icon-nav-btn" title="Выйти" on:click={logout}>
-      <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h7a1 1 0 000-2H4V5h6a1 1 0 000-2H3zm11.293 4.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L15.586 11H9a1 1 0 010-2h6.586l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-    </button>
     <button class="sidebar-expand-btn">
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
