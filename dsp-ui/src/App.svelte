@@ -8,6 +8,7 @@
   import CampaignsList    from './pages/CampaignsList.svelte'
   import CampaignTypeSelect from './pages/CampaignTypeSelect.svelte'
   import CampaignCreate   from './pages/CampaignCreate.svelte'
+  import Overview         from './pages/Overview.svelte'
   // import ChatPanel from './components/ChatPanel.svelte'
 
   onMount(async () => {
@@ -15,7 +16,7 @@
       try { currentUser.set(await api.me()) } catch {}
     }
     if (!$token && $page !== 'login') window.location.hash = '#/login'
-    if ($token && $page === 'login') window.location.hash = '#/campaigns'
+    if ($token && $page === 'login') window.location.hash = '#/overview'
   })
 
   // Parse campaign type from routes like "campaigns/create/rtb"
@@ -50,7 +51,9 @@
   <div class="layout">
     <Sidebar />
     <div class="main-content">
-      {#if $page === 'campaigns' || $page === ''}
+      {#if $page === 'overview' || $page === ''}
+        <Overview />
+      {:else if $page === 'campaigns'}
         <CampaignsList />
       {:else}
         <div style="padding:32px;color:var(--text-muted);font-size:14px">
