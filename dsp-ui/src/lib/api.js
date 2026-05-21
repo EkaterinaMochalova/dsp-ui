@@ -193,13 +193,20 @@ export const api = {
   impressions: {
     // GET /clients/impressions/campaigns-stats?campaignIds=id1,id2,...&priceMode=...
     // Returns array of per-inventory stats; items with no inventory field are campaign-level aggregates.
-    campaignStats(campaignIds, priceMode = 'CUSTOMER_CHARGE_EXCLUDED') {
+    // Optional: startDate / endDate as Unix ms timestamps to scope to a date range (e.g. today).
+    campaignStats(campaignIds, priceMode = 'CUSTOMER_CHARGE_EXCLUDED', dateRange = {}) {
       const ids = Array.isArray(campaignIds) ? campaignIds.join(',') : String(campaignIds)
-      return request(`/clients/impressions/campaigns-stats?campaignIds=${ids}&priceMode=${priceMode}`)
+      const q = new URLSearchParams({ campaignIds: ids, priceMode })
+      if (dateRange.startDate != null) q.set('startDate', dateRange.startDate)
+      if (dateRange.endDate   != null) q.set('endDate',   dateRange.endDate)
+      return request(`/clients/impressions/campaigns-stats?${q}`)
     },
     // Single campaign stats — same endpoint with one ID
-    singleCampaignStats(campaignId, priceMode = 'CUSTOMER_CHARGE_EXCLUDED') {
-      return request(`/clients/impressions/campaigns-stats?campaignIds=${campaignId}&priceMode=${priceMode}`)
+    singleCampaignStats(campaignId, priceMode = 'CUSTOMER_CHARGE_EXCLUDED', dateRange = {}) {
+      const q = new URLSearchParams({ campaignIds: String(campaignId), priceMode })
+      if (dateRange.startDate != null) q.set('startDate', dateRange.startDate)
+      if (dateRange.endDate   != null) q.set('endDate',   dateRange.endDate)
+      return request(`/clients/impressions/campaigns-stats?${q}`)
     },
   },
 

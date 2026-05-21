@@ -67,6 +67,9 @@
   // Stats keyed by campaign ID: { totalShowed, totalOts, totalBudgetShowed, cpm }
   let statsMap = {}
 
+  // Today's spend keyed by campaign ID (budget spent on current calendar day)
+  let todayMap = {}
+
   // Cities keyed by campaign ID: string[]
   let citiesMap = {}
 
@@ -120,6 +123,7 @@
       if (campaigns.length > 0) {
         const ids = campaigns.map(c => c.id)
         loadStats(ids)
+        loadTodayStats(ids)
         loadCities(ids)
       }
     } catch (e) {
@@ -167,6 +171,30 @@
       statsMap = agg
     } catch {
       // Stats are non-critical — silently ignore errors
+    }
+  }
+
+  async function loadTodayStats(ids) {
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10)   // "2026-05-21"
+      const startDate = new Date(todayStr + 'T00:00:00').getTime()
+      const endDate   = new Date(todayStr + 'T23:59:59').getTime()
+      const rows = await api.impressions.campaignStats(ids, 'CUSTOMER_CHARGE_EXCLUDED', { startDate, endDate })
+      if (!Array.isArray(rows)) return
+      const agg = {}
+      for (const r of rows) {
+        const cid = r.campaign?.id
+        if (!cid) continue
+        const spent = r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0
+        if (!r.inventory) {
+          agg[cid] = spent
+        } else {
+          agg[cid] = (agg[cid] ?? 0) + spent
+        }
+      }
+      todayMap = agg
+    } catch {
+      // non-critical — leave todayMap empty
     }
   }
 
@@ -305,13 +333,6 @@
       impressionsCount: icon('impressionsCount'),
     }
   })()
-
-  // Budget per day derived from total budget ÷ campaign duration
-  function budgetDay(c) {
-    if (!c.budget || !c.startDate || !c.endDate) return null
-    const days = Math.max(1, Math.round((new Date(c.endDate) - new Date(c.startDate)) / 86400000) + 1)
-    return c.budget / days
-  }
 
   // Row context menu
   let openRowMenu = null
@@ -537,7 +558,7 @@
           </button>
           <div class="rzh" on:mousedown={(e)=>rzStart(5,e)}></div>
         </th>
-        <th style="position:relative">Бюджет в день<div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div></th>
+        <th style="position:relative"><span class="sort-th" style="cursor:default">Сегодня</span><div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div></th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('otsCount')}>
             OTS
@@ -650,9 +671,20 @@
                   {/if}
                 </td>
                 <td class="budget-cell">
-                  <div class="budget-main" style="font-size:12px">
-                    {budgetDay(c) != null ? formatMoney(budgetDay(c)) : '—'}
-                  </div>
+                  {#if todayMap[c.id] != null && todayMap[c.id] > 0}
+                    <div class="budget-main">{formatMoney(todayMap[c.id])}</div>
+                    {#if c.budget > 0}
+                      {@const dayPct = Math.min(100, Math.round(todayMap[c.id] / (c.budget / Math.max(1, Math.round((new Date(c.endDate) - new Date(c.startDate)) / 86400000) + 1)) * 100))}
+                      <div class="budget-sub">
+                        <span class="budget-pct">{dayPct}%</span>
+                        <div class="budget-bar-track">
+                          <div class="budget-bar-fill" style="width:{dayPct}%"></div>
+                        </div>
+                      </div>
+                    {/if}
+                  {:else}
+                    <div class="budget-main" style="color:var(--text-muted)">—</div>
+                  {/if}
                 </td>
                 <td style="font-size:12px;color:var(--text-muted)">
                   {#if statsMap[c.id]}
@@ -726,7 +758,11 @@
               <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
             </td>
             <td class="budget-cell">
-              <div class="budget-main" style="font-size:12px">—</div>
+              {#if todayMap[c.id] > 0}
+                <div class="budget-main">{formatMoney(todayMap[c.id])}</div>
+              {:else}
+                <div class="budget-main" style="color:var(--text-muted)">—</div>
+              {/if}
             </td>
             <td style="font-size:12px;color:var(--text-muted)">{c.otsCount ?? c.ots ?? '—'}</td>
             <td style="font-size:12px;color:var(--text-muted)">{c.impressionsCount ?? c.impressionCount ?? '—'}</td>
