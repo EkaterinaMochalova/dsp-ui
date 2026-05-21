@@ -477,13 +477,19 @@
       // NOTE: do NOT set saving=false here — keep the lock until the full flow completes.
       // Setting it early created a race: a second save could start during reloadCampaign,
       // and if that second PUT hung (server errors), saving would stay true forever.
+      let reloadFailed = false
       try {
         await reloadCampaign(savedId)
       } catch (reloadErr) {
-        // Non-fatal: campaign is already saved; proceed to summary even if reload fails
+        // Non-fatal: the PUT succeeded; show a visible warning but still navigate to summary
         console.warn('[save] reloadCampaign failed (non-fatal):', reloadErr)
+        reloadFailed = true
       }
       goToStep('summary')
+      if (reloadFailed) {
+        // Give the user a visible hint that the displayed data may not reflect the latest server state
+        saveError = 'Кампания сохранена, но не удалось перечитать данные с сервера. Данные на экране могут быть устаревшими — обновите страницу.'
+      }
       // Update the URL silently (history.replaceState does NOT fire hashchange, so App.svelte
       // won't destroy+remount this component mid-save showing a blank "Черновик" flash).
       const newHash = `#/campaigns/${savedId}`
