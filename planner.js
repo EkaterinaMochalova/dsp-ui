@@ -2083,9 +2083,28 @@ async function buildMediaPlanBlob() {
   }
 
   // ── Group screens by region → format ───────────────────────────
+  // Use the same fuzzy matching as pool-building so screen keys align
+  // with perReg region names (e.g. DSP returns "Краснодарский край"
+  // but user selected "городской округ Геленджик").
+  const _perRegKeys = perReg.map(r => r.region);
+  function _matchScreenRegion(s) {
+    const sReg  = String(s.region || "").trim();
+    const sCity = String(s.city   || "").trim();
+    for (const r of _perRegKeys) {
+      if (sReg === r || sCity === r) return r;
+      const rn = normalizeGeoName(r);
+      if (!rn) continue;
+      const srn = normalizeGeoName(sReg);
+      const scn = normalizeGeoName(sCity);
+      if (srn === rn || scn === rn) return r;
+      if ((srn && (srn.includes(rn) || rn.includes(srn))) ||
+          (scn && (scn.includes(rn) || rn.includes(scn)))) return r;
+    }
+    return sReg || sCity || "—";
+  }
   const rfMap = {};
   for (const s of screens) {
-    const reg  = String(s.region || s.city || "—").trim();
+    const reg  = _matchScreenRegion(s);
     const fmt_ = String(s.format || "—").trim();
     if (!rfMap[reg]) rfMap[reg] = {};
     if (!rfMap[reg][fmt_]) rfMap[reg][fmt_] = [];
