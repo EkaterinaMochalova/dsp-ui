@@ -210,33 +210,34 @@
 
   // ── Targeting helpers ─────────────────────────────────────────────────
   function getTargeting(id) {
-    if (!draft.creativeTargeting[id]) {
-      draft.creativeTargeting[id] = {
-        documents: [],
-        externalConditionParamsId: null,
-        gender:    [],
-        ageMin:    18,
-        ageMax:    80,
-        income:    [],
-        interests: [],
-        minOts:    0,
-        weekdays:  [1,2,3,4,5,6,7],
-        timeFrom:  '00:00',
-        timeTo:    '23:59',
-        weatherParams: {
-          enabled:   false,
-          temp:      { enabled: false, start: -40, end: 40  },
-          condition: { enabled: false, values: []            },
-          wind:      { enabled: false, start: 0,  end: 32   },
-          uvIndex:   { enabled: false, start: 0,  end: 11   },
-          aqIndex:   { enabled: false, start: 0,  end: 500  },
-        },
-        jamParams: {
-          level: { enabled: false, start: 1, end: 4 },
-        },
-      }
-      draft.creativeTargeting = { ...draft.creativeTargeting }
+    const DEFAULTS = {
+      documents: [],
+      externalConditionParamsId: null,
+      gender:    [],
+      ageMin:    18,
+      ageMax:    80,
+      income:    [],
+      interests: [],
+      minOts:    0,
+      weekdays:  [1,2,3,4,5,6,7],
+      timeFrom:  '00:00',
+      timeTo:    '23:59',
+      weatherParams: {
+        enabled:   false,
+        temp:      { enabled: false, start: -40, end: 40  },
+        condition: { enabled: false, values: []            },
+        wind:      { enabled: false, start: 0,  end: 32   },
+        uvIndex:   { enabled: false, start: 0,  end: 11   },
+        aqIndex:   { enabled: false, start: 0,  end: 500  },
+      },
+      jamParams: {
+        level: { enabled: false, start: 1, end: 4 },
+      },
     }
+    // Always merge with defaults so partially-loaded objects (e.g. from server reload
+    // that only has weatherParams/jamParams) still have gender/income/interests/etc.
+    draft.creativeTargeting[id] = { ...DEFAULTS, ...draft.creativeTargeting[id] }
+    draft.creativeTargeting = { ...draft.creativeTargeting }
     return draft.creativeTargeting[id]
   }
 
