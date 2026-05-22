@@ -2,7 +2,7 @@
   "buildCommand": "npm install && npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://proddsp.omniboard360.io/api/:path*" },
+    { "source": "/api/:path*", "destination": "/api/proxy" },
     { "source": "/((?!planner/).*)", "destination": "/index.html" }
   ]
 }
