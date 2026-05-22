@@ -6,6 +6,7 @@
   import RightBar from '../components/RightBar.svelte'
   import StatusBadge from '../components/StatusBadge.svelte'
   import StepStart        from './steps/StepStart.svelte'
+  import StepPlanner      from './steps/StepPlanner.svelte'
   import StepBasicParams  from './steps/StepBasicParams.svelte'
   import StepBudget       from './steps/StepBudget.svelte'
   import StepScreens      from './steps/StepScreens.svelte'
@@ -865,6 +866,34 @@
     status: completedSteps[s.id] ? 'done' : currentStep === s.id ? 'active' : 'pending',
   }))
 
+  // ── Planner integration ────────────────────────────────────────────────────
+  function applyPlannerResult(result) {
+    const { chosen = [], meta = {}, brief = {} } = result
+
+    // Screen IDs — the CSV's `id` column is the numeric DSP inventory ID
+    const screenIds = chosen.map(s => Number(s.id)).filter(Boolean)
+    if (screenIds.length) {
+      draft = { ...draft, screenIds }
+    }
+
+    // Dates from the planner brief
+    if (brief.dates?.start) draft = { ...draft, startDate: brief.dates.start }
+    if (brief.dates?.end)   draft = { ...draft, endDate:   brief.dates.end }
+
+    // Total budget (round to integer)
+    if (meta.totalBudget) {
+      draft = { ...draft, customBudgetTotal: String(Math.round(meta.totalBudget)) }
+    }
+
+    // Cities from chosen screens (for display + segment grouping)
+    const cities = [...new Set(chosen.map(s => s.city).filter(Boolean))]
+    if (cities.length) draft = { ...draft, cities }
+
+    // Mark screens step as pre-filled and navigate to basic params
+    completeStep('screens')
+    goToStep('basic')
+  }
+
   function formatDateRange() {
     if (!draft.startDate || !draft.endDate) return null
     const fmt = d => new Date(d).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'2-digit' }).replace(/\./g, '.')
@@ -1063,7 +1092,16 @@
         <span>Загрузка кампании…</span>
       </div>
     {:else if currentStep === 'start'}
-      <StepStart on:start={() => goToStep('basic')} on:explore={() => goToStep('screens')} />
+      <StepStart
+        on:start={() => goToStep('basic')}
+        on:explore={() => goToStep('screens')}
+        on:autoplan={() => goToStep('planner')}
+      />
+    {:else if currentStep === 'planner'}
+      <StepPlanner
+        on:back={() => goToStep('start')}
+        on:apply={(e) => applyPlannerResult(e.detail)}
+      />
     {:else if currentStep === 'basic'}
       <StepBasicParams bind:draft on:next={() => completeStep('basic')} on:back={() => goToStep('start')} />
     {:else if currentStep === 'budget'}

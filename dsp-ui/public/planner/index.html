@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Планировщик размещения</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      background: #f8fafc;
+      color: #111827;
+    }
+    #planner-root {
+      min-height: 100vh;
+    }
+    /* Tighten up planner chrome when embedded */
+    .planner-root {
+      padding: 0 !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="planner-root"></div>
+
+  <script>
+    // Disable DSP auth — use the CDN inventory CSV so screen IDs are numeric
+    // DSP inventory IDs and match draft.screenIds expected by CampaignCreate.
+    window.DSP_AUTH_ENABLED = false;
+
+    // Mark as embedded so the planner can adjust behaviour if needed
+    window.PLANNER_EMBEDDED = true;
+
+    // Bridge: relay calc-done event to the parent DSP frame via postMessage
+    window.addEventListener('planner:calc-done', function(e) {
+      try {
+        var detail = e.detail || {};
+        var chosen = (detail.chosen || []).map(function(s) {
+          return {
+            id:        s.id        !== undefined ? Number(s.id) : null,
+            screen_id: s.screen_id || s.gid || '',
+            city:      s.city      || '',
+            format:    s.format    || '',
+            address:   s.address   || '',
+            ots:       s.ots       || 0,
+          };
+        }).filter(function(s) { return s.id; });
+
+        var meta = detail.meta || {};
+        var brief = (window.PLANNER && window.PLANNER.lastCalc && window.PLANNER.lastCalc.brief) || {};
+
+        window.parent.postMessage({
+          type:   'planner:calc-done',
+          chosen: chosen,
+          meta:   meta,
+          brief:  {
+            dates:    brief.dates    || {},
+            budget:   brief.budget   || {},
+            geo:      brief.geo      || {},
+            schedule: brief.schedule || {},
+          },
+        }, '*');
+      } catch(err) {
+        console.error('[planner-bridge] postMessage failed:', err);
+      }
+    });
+  </script>
+
+  <script src="/planner/widget-init.js"></script>
+</body>
+</html>
