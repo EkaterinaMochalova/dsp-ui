@@ -672,17 +672,19 @@
                   {formatDate(c.endDate)}
                 </td>
                 <td class="budget-cell">
-                  {@const totalSpent = statsMap[c.id]?.totalBudgetShowed > 0 ? statsMap[c.id].totalBudgetShowed : (todayStatsMap[c.id]?.spend ?? 0)}
-                  <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
-                  {#if totalSpent > 0 && c.budget > 0}
-                    {@const pct = Math.min(100, Math.round(totalSpent / c.budget * 100))}
-                    <div class="budget-sub">
-                      <span class="budget-pct">{pct}%</span>
-                      <div class="budget-bar-track">
-                        <div class="budget-bar-fill" style="width:{pct}%"></div>
+                  {#if true}
+                    {@const totalSpent = statsMap[c.id]?.totalBudgetShowed > 0 ? statsMap[c.id].totalBudgetShowed : (todayStatsMap[c.id]?.spend ?? 0)}
+                    <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
+                    {#if totalSpent > 0 && c.budget > 0}
+                      {@const pct = Math.min(100, Math.round(totalSpent / c.budget * 100))}
+                      <div class="budget-sub">
+                        <span class="budget-pct">{pct}%</span>
+                        <div class="budget-bar-track">
+                          <div class="budget-bar-fill" style="width:{pct}%"></div>
+                        </div>
+                        <span style="font-size:11px;color:var(--text-muted)">{formatMoney(totalSpent)}</span>
                       </div>
-                      <span style="font-size:11px;color:var(--text-muted)">{formatMoney(totalSpent)}</span>
-                    </div>
+                    {/if}
                   {/if}
                 </td>
                 <td class="budget-cell">
@@ -702,26 +704,30 @@
                   {/if}
                 </td>
                 <td style="font-size:12px;color:var(--text-muted)">
-                  {@const otsVal = statsMap[c.id]?.totalOts ?? todayStatsMap[c.id]?.ots ?? null}
-                  {@const otsPlanned = c.otsCount ?? c.ots ?? null}
-                  {#if otsVal != null && otsVal > 0}
-                    {otsVal.toLocaleString('ru-RU')}
-                  {:else if otsPlanned}
-                    <span style="color:#d1d5db">{otsPlanned.toLocaleString('ru-RU')}</span>
-                  {:else}
-                    —
+                  {#if true}
+                    {@const otsVal = statsMap[c.id]?.totalOts ?? todayStatsMap[c.id]?.ots ?? null}
+                    {@const otsPlanned = c.otsCount ?? c.ots ?? null}
+                    {#if otsVal != null && otsVal > 0}
+                      {otsVal.toLocaleString('ru-RU')}
+                    {:else if otsPlanned}
+                      <span style="color:#d1d5db">{otsPlanned.toLocaleString('ru-RU')}</span>
+                    {:else}
+                      —
+                    {/if}
                   {/if}
                 </td>
                 <td style="font-size:12px;color:var(--text-muted)">
-                  {@const showedVal = statsMap[c.id]?.totalShowed ?? todayStatsMap[c.id]?.showed ?? null}
-                  {@const cpmVal = statsMap[c.id]?.cpm ?? 0}
-                  {#if showedVal != null && showedVal > 0}
-                    <div>{showedVal.toLocaleString('ru-RU')}</div>
-                    {#if cpmVal > 0}
-                      <div style="font-size:11px;color:var(--text-muted)">CPM {cpmVal.toFixed(0)} ₽</div>
+                  {#if true}
+                    {@const showedVal = statsMap[c.id]?.totalShowed ?? todayStatsMap[c.id]?.showed ?? null}
+                    {@const cpmVal = statsMap[c.id]?.cpm ?? 0}
+                    {#if showedVal != null && showedVal > 0}
+                      <div>{showedVal.toLocaleString('ru-RU')}</div>
+                      {#if cpmVal > 0}
+                        <div style="font-size:11px;color:var(--text-muted)">CPM {cpmVal.toFixed(0)} ₽</div>
+                      {/if}
+                    {:else}
+                      —
                     {/if}
-                  {:else}
-                    —
                   {/if}
                 </td>
                 <td style="position:relative">
@@ -776,17 +782,19 @@
               {formatDate(c.endDate)}
             </td>
             <td class="budget-cell">
-              {@const totalSpent = statsMap[c.id]?.totalBudgetShowed > 0 ? statsMap[c.id].totalBudgetShowed : (todayStatsMap[c.id]?.spend ?? 0)}
-              <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
-              {#if totalSpent > 0 && c.budget > 0}
-                {@const pct = Math.min(100, Math.round(totalSpent / c.budget * 100))}
-                <div class="budget-sub">
-                  <span class="budget-pct">{pct}%</span>
-                  <div class="budget-bar-track">
-                    <div class="budget-bar-fill" style="width:{pct}%"></div>
+              {#if true}
+                {@const totalSpent = statsMap[c.id]?.totalBudgetShowed > 0 ? statsMap[c.id].totalBudgetShowed : (todayStatsMap[c.id]?.spend ?? 0)}
+                <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
+                {#if totalSpent > 0 && c.budget > 0}
+                  {@const pct = Math.min(100, Math.round(totalSpent / c.budget * 100))}
+                  <div class="budget-sub">
+                    <span class="budget-pct">{pct}%</span>
+                    <div class="budget-bar-track">
+                      <div class="budget-bar-fill" style="width:{pct}%"></div>
+                    </div>
+                    <span style="font-size:11px;color:var(--text-muted)">{formatMoney(totalSpent)}</span>
                   </div>
-                  <span style="font-size:11px;color:var(--text-muted)">{formatMoney(totalSpent)}</span>
-                </div>
+                {/if}
               {/if}
             </td>
             <td class="budget-cell">
@@ -806,26 +814,30 @@
               {/if}
             </td>
             <td style="font-size:12px;color:var(--text-muted)">
-              {@const otsVal = statsMap[c.id]?.totalOts ?? todayStatsMap[c.id]?.ots ?? null}
-              {@const otsPlanned = c.otsCount ?? c.ots ?? null}
-              {#if otsVal != null && otsVal > 0}
-                {otsVal.toLocaleString('ru-RU')}
-              {:else if otsPlanned}
-                <span style="color:#d1d5db">{otsPlanned.toLocaleString('ru-RU')}</span>
-              {:else}
-                —
+              {#if true}
+                {@const otsVal = statsMap[c.id]?.totalOts ?? todayStatsMap[c.id]?.ots ?? null}
+                {@const otsPlanned = c.otsCount ?? c.ots ?? null}
+                {#if otsVal != null && otsVal > 0}
+                  {otsVal.toLocaleString('ru-RU')}
+                {:else if otsPlanned}
+                  <span style="color:#d1d5db">{otsPlanned.toLocaleString('ru-RU')}</span>
+                {:else}
+                  —
+                {/if}
               {/if}
             </td>
             <td style="font-size:12px;color:var(--text-muted)">
-              {@const showedVal = statsMap[c.id]?.totalShowed ?? todayStatsMap[c.id]?.showed ?? null}
-              {@const cpmVal = statsMap[c.id]?.cpm ?? 0}
-              {#if showedVal != null && showedVal > 0}
-                <div>{showedVal.toLocaleString('ru-RU')}</div>
-                {#if cpmVal > 0}
-                  <div style="font-size:11px;color:var(--text-muted)">CPM {cpmVal.toFixed(0)} ₽</div>
+              {#if true}
+                {@const showedVal = statsMap[c.id]?.totalShowed ?? todayStatsMap[c.id]?.showed ?? null}
+                {@const cpmVal = statsMap[c.id]?.cpm ?? 0}
+                {#if showedVal != null && showedVal > 0}
+                  <div>{showedVal.toLocaleString('ru-RU')}</div>
+                  {#if cpmVal > 0}
+                    <div style="font-size:11px;color:var(--text-muted)">CPM {cpmVal.toFixed(0)} ₽</div>
+                  {/if}
+                {:else}
+                  —
                 {/if}
-              {:else}
-                —
               {/if}
             </td>
             <td style="position:relative">
