@@ -284,6 +284,19 @@
     window.location.hash = '#/campaigns/' + id
   }
 
+  async function duplicateCampaign(id) {
+    try {
+      const result = await api.campaigns.copy(id)
+      if (result?.id) {
+        window.location.hash = '#/campaigns/' + result.id
+      } else {
+        await load(currentPage)
+      }
+    } catch (e) {
+      console.error('[duplicateCampaign]', e)
+    }
+  }
+
   function formatCities(c) {
     const names = citiesMap[c.id] ?? []
     if (!names.length) return '—'
@@ -749,7 +762,7 @@
                           Запустить
                         </button>
                       {/if}
-                      <button class="dropdown-item" on:click={closeRowMenu}>
+                      <button class="dropdown-item" on:click={() => { duplicateCampaign(c.id); closeRowMenu() }}>
                         <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"/><path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z"/></svg>
                         Дублировать
                       </button>
@@ -859,7 +872,7 @@
                       Запустить
                     </button>
                   {/if}
-                  <button class="dropdown-item" on:click={closeRowMenu}>
+                  <button class="dropdown-item" on:click={() => { duplicateCampaign(c.id); closeRowMenu() }}>
                     <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"/><path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z"/></svg>
                     Дублировать
                   </button>
