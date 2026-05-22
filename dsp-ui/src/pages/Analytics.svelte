@@ -292,17 +292,10 @@
 
     if (!allCampaigns.length) return
 
-    // Load screens cache in parallel — gives us owner/format/city per inventory ID
-    const screenMap = new Map()
-    api.inventories.allMapped().then(screens => {
-      for (const s of screens) screenMap.set(s.id, s)
-    }).catch(() => {})
-
-    // Batch-load stats in chunks of 20
+    // ── Phase 1: campaign-level KPI stats (fast, batch) ──────────────────────
     statsLoading = true
     const BATCH = 20
     const ids = allCampaigns.map(c => c.id)
-    const newInvRows = []
     for (let i = 0; i < ids.length; i += BATCH) {
       const batch = ids.slice(i, i + BATCH)
       try {
@@ -312,40 +305,59 @@
         for (const r of rows) {
           const cid = r.campaign?.id
           if (!cid) continue
-          if (!r.inventory) {
-            // Campaign-level summary row
-            agg[cid] = {
-              totalShowed:       r.totalCountShowed  ?? r.totalShowed  ?? 0,
-              totalOts:          r.otsCountShowed    ?? r.totalOpOts   ?? 0,
-              totalBudgetShowed: r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0,
-              cpm:               r.cpm ?? 0,
-            }
-          } else {
-            // Per-inventory row — aggregate into campaign summary
-            const spent  = r.totalShowedBudget ?? r.customerStats?.budgetShowed ?? 0
-            const showed = r.totalShowed ?? r.totalCountShowed ?? 0
-            const ots    = r.totalOpOts  ?? r.totalOts ?? 0
-            if (!agg[cid]) {
-              agg[cid] = { totalShowed: showed, totalOts: ots, totalBudgetShowed: spent, cpm: r.cpm ?? 0 }
-            } else {
-              agg[cid].totalShowed       += showed
-              agg[cid].totalOts          += ots
-              agg[cid].totalBudgetShowed += spent
-            }
-            // Join with screens cache for owner / format / city
-            const invId  = r.inventory?.id
-            const screen = invId ? screenMap.get(invId) : null
-            const owner  = screen?.owner  || r.displayOwner?.name || r.inventory?.displayOwner?.name || null
-            const format = screen?.format || r.inventoryFormat    || r.inventory?.type || null
-            const city   = screen?.city   || null
-            newInvRows.push({ invId, owner, format, city, spent, showed, ots })
+          // campaignStats only returns campaign-level summary rows (no r.inventory)
+          agg[cid] = {
+            totalShowed:       r.totalCountShowed  ?? r.totalShowed  ?? 0,
+            totalOts:          r.otsCountShowed    ?? r.totalOpOts   ?? 0,
+            totalBudgetShowed: r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0,
+            cpm:               r.cpm ?? 0,
           }
         }
         statsMap = { ...statsMap, ...agg }
       } catch {}
     }
-    invRows = newInvRows
     statsLoading = false
+
+    // ── Phase 2: per-inventory breakdown for dimension cards ─────────────────
+    // Only load for campaigns that have actual spend (avoids useless API calls)
+    const spendIds = allCampaigns
+      .filter(c => (statsMap[c.id]?.totalBudgetShowed ?? 0) > 0)
+      .map(c => c.id)
+
+    if (!spendIds.length) return
+
+    // Await screens cache — needed for owner/format/city join
+    const screenMap = new Map()
+    try {
+      const screens = await api.inventories.allMapped()
+      for (const s of screens) screenMap.set(s.id, s)
+    } catch {}
+
+    // Load impression-inventory-stats per campaign (10 in parallel at a time)
+    const BATCH_INV = 10
+    const newInvRows = []
+    for (let i = 0; i < spendIds.length; i += BATCH_INV) {
+      const batchIds = spendIds.slice(i, i + BATCH_INV)
+      const results = await Promise.all(
+        batchIds.map(id => api.stats.inventoryStats(id).catch(() => []))
+      )
+      for (const rows of results) {
+        if (!Array.isArray(rows)) continue
+        for (const r of rows) {
+          const invId  = r.inventory?.id
+          const screen = invId ? screenMap.get(invId) : null
+          const owner  = screen?.owner  || null
+          const format = screen?.format || null
+          const city   = screen?.city   || null
+          const spent  = r.customerStats?.budgetShowed ?? r.totalShowedBudget ?? 0
+          const showed = r.totalShowed ?? 0
+          const ots    = r.totalOpOts  ?? r.totalOts ?? 0
+          newInvRows.push({ invId, owner, format, city, spent, showed, ots })
+        }
+      }
+      // Update progressively so cards fill in as data arrives
+      invRows = [...newInvRows]
+    }
   })
 </script>
 
