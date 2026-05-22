@@ -115,6 +115,9 @@ export const api = {
     preCampaignResult(data) {
       return request('/clients/campaigns/pre-campaign-result', { method: 'POST', body: JSON.stringify(data) })
     },
+    copy(id) {
+      return request(`/clients/campaigns/${id}/copy`, { method: 'POST' })
+    },
   },
 
   customers: {

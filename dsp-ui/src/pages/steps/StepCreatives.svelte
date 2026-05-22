@@ -210,31 +210,35 @@
 
   // ── Targeting helpers ─────────────────────────────────────────────────
   function getTargeting(id) {
-    if (!draft.creativeTargeting[id]) {
-      draft.creativeTargeting[id] = {
-        documents: [],
-        externalConditionParamsId: null,
-        gender:    [],
-        ageMin:    18,
-        ageMax:    80,
-        income:    [],
-        interests: [],
-        minOts:    0,
-        weekdays:  [1,2,3,4,5,6,7],
-        timeFrom:  '00:00',
-        timeTo:    '23:59',
-        weatherParams: {
-          enabled:   false,
-          temp:      { enabled: false, start: -40, end: 40  },
-          condition: { enabled: false, values: []            },
-          wind:      { enabled: false, start: 0,  end: 32   },
-          uvIndex:   { enabled: false, start: 0,  end: 11   },
-          aqIndex:   { enabled: false, start: 0,  end: 500  },
-        },
-        jamParams: {
-          level: { enabled: false, start: 1, end: 4 },
-        },
-      }
+    const DEFAULTS = {
+      documents: [],
+      externalConditionParamsId: null,
+      gender:    [],
+      ageMin:    18,
+      ageMax:    80,
+      income:    [],
+      interests: [],
+      minOts:    0,
+      weekdays:  [1,2,3,4,5,6,7],
+      timeFrom:  '00:00',
+      timeTo:    '23:59',
+      weatherParams: {
+        enabled:   false,
+        temp:      { enabled: false, start: -40, end: 40  },
+        condition: { enabled: false, values: []            },
+        wind:      { enabled: false, start: 0,  end: 32   },
+        uvIndex:   { enabled: false, start: 0,  end: 11   },
+        aqIndex:   { enabled: false, start: 0,  end: 500  },
+      },
+      jamParams: {
+        level: { enabled: false, start: 1, end: 4 },
+      },
+    }
+    // Merge with defaults only when fields are missing (e.g. partial server reload data).
+    // Avoid unconditional mutation — that would trigger infinite Svelte reactivity loops.
+    const existing = draft.creativeTargeting[id]
+    if (!existing || !Array.isArray(existing.gender)) {
+      draft.creativeTargeting[id] = { ...DEFAULTS, ...existing }
       draft.creativeTargeting = { ...draft.creativeTargeting }
     }
     return draft.creativeTargeting[id]
@@ -243,8 +247,8 @@
   $: tg = activeId ? getTargeting(activeId) : null
   // Depend on draft.creativeTargeting (replaced by mutate()) not just tg
   // so Svelte re-runs when weatherParams / jamParams change in-place.
-  $: wp = draft.creativeTargeting?.[activeId]?.weatherParams ?? tg?.weatherParams
-  $: jp = draft.creativeTargeting?.[activeId]?.jamParams     ?? tg?.jamParams
+  $: wp = draft.creativeTargeting?.[activeId]?.weatherParams ?? tg?.weatherParams ?? { enabled: false, temp: { enabled: false }, wind: { enabled: false }, uvIndex: { enabled: false }, aqIndex: { enabled: false } }
+  $: jp = draft.creativeTargeting?.[activeId]?.jamParams     ?? tg?.jamParams     ?? { enabled: false, level: { enabled: false } }
 
   function mutate() { draft.creativeTargeting = { ...draft.creativeTargeting } }
 
