@@ -1,5 +1,8 @@
 {
   "buildCommand": "npm install && npm run build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/((?!planner/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://proddsp.omniboard360.io/api/:path*" },
+    { "source": "/((?!planner/).*)", "destination": "/index.html" }
+  ]
 }
