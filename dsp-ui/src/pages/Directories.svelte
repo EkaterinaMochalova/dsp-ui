@@ -143,12 +143,19 @@
     modalMode = 'edit'
     modalForm = {
       name:        row.name ?? '',
-      shortName:   row.shortName ?? '',
       description: row.description ?? '',
       agencyId:    row.agency?.id ?? row.agencyId ?? '',
       customerId:  row.customer?.id ?? row.customerId ?? '',
       email:       row.email ?? '',
       enabled:     row.enabled ?? true,
+      // customer-specific
+      monthlyBudget:     row.monthlyBudget    ?? 0,
+      additionalCharge:  row.additionalCharge ?? 0,
+      keepBalance:       row.keepBalance      ?? false,
+      accFullName:       row.accountDetails?.fullName           ?? '',
+      accInn:            row.accountDetails?.inn                ?? '',
+      accKpp:            row.accountDetails?.kpp                ?? '',
+      accAddress:        row.accountDetails?.registeredAddress  ?? '',
     }
     modalError = ''; editingId = row.id; modalOpen = true
   }
@@ -157,11 +164,34 @@
     modalSaving = true; modalError = ''
     try {
       const d = modalForm
-      if      (subView === 'agencies')  modalMode === 'create' ? await api.agencies.create(d)          : await api.agencies.update(editingId, d)
-      else if (subView === 'customers') modalMode === 'create' ? await api.customers.create(d)         : await api.customers.update(editingId, d)
-      else if (subView === 'brands')    modalMode === 'create' ? await api.brands.create(d)            : await api.brands.update(editingId, d)
-      else if (subView === 'users')     modalMode === 'create' ? await api.users.create(d)             : await api.users.update(editingId, d)
-      else if (subView === 'ssp')       modalMode === 'create' ? await api.ssp.create(d)               : await api.ssp.update(editingId, d)
+      if (subView === 'agencies') {
+        const body = { name: d.name, description: d.description }
+        modalMode === 'create' ? await api.agencies.create(body) : await api.agencies.update(editingId, body)
+      } else if (subView === 'customers') {
+        const body = {
+          name:             d.name,
+          agencyId:         d.agencyId || null,
+          description:      d.description || '',
+          monthlyBudget:    Number(d.monthlyBudget)   || 0,
+          additionalCharge: Number(d.additionalCharge) || 0,
+          keepBalance:      d.keepBalance || false,
+          accountDetails: {
+            fullName:           d.accFullName  || '',
+            inn:                d.accInn       || '',
+            kpp:                d.accKpp       || '',
+            registeredAddress:  d.accAddress   || '',
+          },
+        }
+        modalMode === 'create' ? await api.customers.create(body) : await api.customers.update(editingId, body)
+      } else if (subView === 'brands') {
+        const body = { name: d.name, description: d.description }
+        modalMode === 'create' ? await api.brands.create(body) : await api.brands.update(editingId, body)
+      } else if (subView === 'users') {
+        modalMode === 'create' ? await api.users.create(d) : await api.users.update(editingId, d)
+      } else if (subView === 'ssp') {
+        const body = { name: d.name, url: d.url }
+        modalMode === 'create' ? await api.ssp.create(body) : await api.ssp.update(editingId, body)
+      }
       modalOpen = false
       await loadSection(subView)
       loadCounts()
@@ -355,9 +385,10 @@
         <thead>
           <tr>
             <th style="width:64px">ID</th>
-            <th>Наименование</th>
-            <th>Описание</th>
+            <th>Название</th>
+            <th>ИНН</th>
             <th>Агентство</th>
+            <th>Бюджет/мес</th>
             <th style="width:80px"></th>
           </tr>
         </thead>
@@ -365,9 +396,13 @@
           {#each filtered as r (r.id)}
             <tr class="dir-row">
               <td class="td-id">{r.id}</td>
-              <td class="td-name">{r.shortName ?? r.name ?? '—'}</td>
-              <td class="td-muted">{r.description ?? '—'}</td>
+              <td class="td-name">
+                <div>{r.name ?? '—'}</div>
+                {#if r.accountDetails?.fullName}<div class="td-sub">{r.accountDetails.fullName}</div>{/if}
+              </td>
+              <td class="td-muted">{r.accountDetails?.inn || '—'}</td>
               <td class="td-muted">{r.agency?.name ?? '—'}</td>
+              <td class="td-muted">{r.monthlyBudget ? r.monthlyBudget.toLocaleString('ru-RU') + ' ₽' : '—'}</td>
               <td class="td-actions">
                 <button class="act-btn" title="Редактировать" on:click={() => openEdit(r)}>
                   <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
@@ -519,10 +554,11 @@
           <input class="field-input" type="text" bind:value={modalForm.name} placeholder="Введите название" />
         {/if}
 
-        <!-- ShortName + agency (customers) -->
+        <!-- Customers form -->
         {#if subView === 'customers'}
-          <label class="field-label">Краткое наименование <span class="req">*</span></label>
-          <input class="field-input" type="text" bind:value={modalForm.shortName} placeholder="Краткое наименование" />
+          <label class="field-label">Название <span class="req">*</span></label>
+          <input class="field-input" type="text" bind:value={modalForm.name} placeholder="Название рекламодателя" />
+
           <label class="field-label" style="margin-top:12px">Агентство</label>
           <select class="field-input" bind:value={modalForm.agencyId}>
             <option value="">— не выбрано —</option>
@@ -530,6 +566,43 @@
               <option value={a.id}>{a.name}</option>
             {/each}
           </select>
+
+          <div class="field-section-title">Юридические данные</div>
+
+          <label class="field-label">Полное наименование</label>
+          <input class="field-input" type="text" bind:value={modalForm.accFullName} placeholder="ООО «Пример»" />
+
+          <div class="field-row-2">
+            <div>
+              <label class="field-label">ИНН</label>
+              <input class="field-input" type="text" bind:value={modalForm.accInn} placeholder="7700000000" maxlength="12" />
+            </div>
+            <div>
+              <label class="field-label">КПП</label>
+              <input class="field-input" type="text" bind:value={modalForm.accKpp} placeholder="770001001" maxlength="9" />
+            </div>
+          </div>
+
+          <label class="field-label" style="margin-top:12px">Юридический адрес</label>
+          <input class="field-input" type="text" bind:value={modalForm.accAddress} placeholder="г. Москва, ул. Примерная, д. 1" />
+
+          <div class="field-section-title">Финансы</div>
+
+          <div class="field-row-2">
+            <div>
+              <label class="field-label">Месячный бюджет, ₽</label>
+              <input class="field-input" type="number" min="0" bind:value={modalForm.monthlyBudget} placeholder="0" />
+            </div>
+            <div>
+              <label class="field-label">Доп. надбавка, %</label>
+              <input class="field-input" type="number" min="0" step="0.1" bind:value={modalForm.additionalCharge} placeholder="0" />
+            </div>
+          </div>
+
+          <label class="field-label" style="margin-top:12px">
+            <input type="checkbox" bind:checked={modalForm.keepBalance} style="margin-right:6px" />
+            Сохранять баланс
+          </label>
         {/if}
 
         <!-- Users form -->
@@ -563,10 +636,15 @@
           <input class="field-input" type="text" bind:value={modalForm.url} placeholder="https://…" />
         {/if}
 
-        <!-- Description (agencies, customers, brands) -->
-        {#if subView !== 'users' && subView !== 'ssp'}
+        <!-- Description (agencies, brands only — customers have their own section) -->
+        {#if subView === 'agencies' || subView === 'brands'}
           <label class="field-label" style="margin-top:12px">Описание</label>
           <textarea class="field-input" rows="3" bind:value={modalForm.description} placeholder="Необязательно"></textarea>
+        {/if}
+        <!-- Description for customers comes inside their section -->
+        {#if subView === 'customers'}
+          <label class="field-label" style="margin-top:12px">Описание</label>
+          <textarea class="field-input" rows="2" bind:value={modalForm.description} placeholder="Необязательно"></textarea>
         {/if}
 
         {#if modalError}
@@ -958,6 +1036,27 @@
   }
   .field-input:focus { border-color: #3b82f6; }
   select.field-input { cursor: pointer; }
+  .field-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted, #6b7280);
+    margin: 18px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+  }
+  .field-row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .td-sub {
+    font-size: 11px;
+    color: var(--text-muted, #9ca3af);
+    margin-top: 2px;
+  }
   .modal-error {
     margin-top: 12px;
     padding: 9px 12px;

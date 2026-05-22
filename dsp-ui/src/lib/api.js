@@ -122,9 +122,13 @@ export const api = {
       const q = new URLSearchParams(params)
       return request(`/clients/customers?${q}`)
     },
+    get(id)          { return request(`/clients/customers/${id}`) },
     brands(customerId) {
       return request(`/clients/customers/${customerId}/brands`)
     },
+    create(data)     { return request('/clients/customers',     { method: 'POST',   body: JSON.stringify(data) }) },
+    update(id, data) { return request(`/clients/customers/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
+    delete(id)       { return request(`/clients/customers/${id}`, { method: 'DELETE' }) },
   },
 
   agencies: {
