@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     })
 
     // Forward status + headers (skip hop-by-hop)
-    const skip = new Set(['transfer-encoding', 'connection', 'keep-alive'])
+    const skip = new Set(['transfer-encoding', 'connection', 'keep-alive', 'content-encoding'])
     upstream.headers.forEach((val, key) => {
       if (!skip.has(key.toLowerCase())) res.setHeader(key, val)
     })
