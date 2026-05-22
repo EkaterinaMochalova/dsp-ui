@@ -148,14 +148,20 @@
       customerId:  row.customer?.id ?? row.customerId ?? '',
       email:       row.email ?? '',
       enabled:     row.enabled ?? true,
+      // agency/customer shared
+      monthlyBudget:        row.monthlyBudget ?? 0,
+      // agency-specific (photoReportSettings)
+      photoSaveAll:         row.photoReportSettings?.saveAll            ?? false,
+      photoSaveMode:        row.photoReportSettings?.saveMode           ?? 'BY_CAMPAIGN',
+      photoCountPerDisplay: row.photoReportSettings?.countPerDisplay    ?? 1,
+      photoExplicitlySet:   row.photoReportSettings?.explicitlySetPhoto ?? false,
       // customer-specific
-      monthlyBudget:     row.monthlyBudget    ?? 0,
-      additionalCharge:  row.additionalCharge ?? 0,
-      keepBalance:       row.keepBalance      ?? false,
-      accFullName:       row.accountDetails?.fullName           ?? '',
-      accInn:            row.accountDetails?.inn                ?? '',
-      accKpp:            row.accountDetails?.kpp                ?? '',
-      accAddress:        row.accountDetails?.registeredAddress  ?? '',
+      additionalCharge:    row.additionalCharge ?? 0,
+      keepBalance:         row.keepBalance      ?? false,
+      accFullName:         row.accountDetails?.fullName           ?? '',
+      accInn:              row.accountDetails?.inn                ?? '',
+      accKpp:              row.accountDetails?.kpp                ?? '',
+      accAddress:          row.accountDetails?.registeredAddress  ?? '',
     }
     modalError = ''; editingId = row.id; modalOpen = true
   }
@@ -165,7 +171,17 @@
     try {
       const d = modalForm
       if (subView === 'agencies') {
-        const body = { name: d.name, description: d.description }
+        const body = {
+          name:         d.name,
+          description:  d.description || '',
+          monthlyBudget: Number(d.monthlyBudget) || 0,
+          photoReportSettings: {
+            saveAll:           d.photoSaveAll    || false,
+            saveMode:          d.photoSaveMode   || 'BY_CAMPAIGN',
+            countPerDisplay:   Number(d.photoCountPerDisplay) || 1,
+            explicitlySetPhoto: d.photoExplicitlySet || false,
+          },
+        }
         modalMode === 'create' ? await api.agencies.create(body) : await api.agencies.update(editingId, body)
       } else if (subView === 'customers') {
         const body = {
@@ -258,22 +274,25 @@
 
   <div class="dir-grid">
     {#each SECTIONS as s}
-      <button class="dir-card" on:click={() => nav(s.key)}>
-        <div class="dir-card-icon" style="background:{s.bg};color:{s.color}">
-          <svg width="22" height="22" viewBox="0 0 20 20" fill="currentColor">
-            {@html s.icon}
+      <button class="dir-card" on:click={() => nav(s.key)} style="--card-color:{s.color};--card-bg:{s.bg}">
+        <div class="dir-card-top">
+          <div class="dir-card-icon">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+              {@html s.icon}
+            </svg>
+          </div>
+          <div class="dir-card-count">
+            {counts[s.key] != null ? counts[s.key].toLocaleString('ru-RU') : '—'}
+          </div>
+        </div>
+        <div class="dir-card-label">{s.label}</div>
+        <div class="dir-card-desc">{s.desc}</div>
+        <div class="dir-card-cta">
+          Открыть
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
           </svg>
         </div>
-        <div class="dir-card-body">
-          <div class="dir-card-label">{s.label}</div>
-          <div class="dir-card-count" style="color:{s.color}">
-            {counts[s.key] != null ? counts[s.key] : '—'}
-          </div>
-          <div class="dir-card-desc">{s.desc}</div>
-        </div>
-        <svg class="dir-card-arrow" width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
-        </svg>
       </button>
     {/each}
   </div>
@@ -548,8 +567,44 @@
       </div>
 
       <div class="modal-body">
-        <!-- Name field (agencies, brands) -->
-        {#if subView === 'agencies' || subView === 'brands'}
+        <!-- Agencies form -->
+        {#if subView === 'agencies'}
+          <label class="field-label">Название <span class="req">*</span></label>
+          <input class="field-input" type="text" bind:value={modalForm.name} placeholder="Введите название" />
+
+          <label class="field-label" style="margin-top:12px">Описание</label>
+          <textarea class="field-input" rows="2" bind:value={modalForm.description} placeholder="Необязательно"></textarea>
+
+          <div class="field-section-title">Финансы</div>
+          <label class="field-label">Месячный бюджет, ₽</label>
+          <input class="field-input" type="number" min="0" bind:value={modalForm.monthlyBudget} placeholder="0" />
+
+          <div class="field-section-title">Фоторепортаж</div>
+
+          <label class="field-label">Режим сохранения</label>
+          <select class="field-input" bind:value={modalForm.photoSaveMode}>
+            <option value="BY_CAMPAIGN">По кампании</option>
+            <option value="BY_ADVERTISER">По рекламодателю</option>
+            <option value="ALL">Все</option>
+          </select>
+
+          <label class="field-label" style="margin-top:12px">Снимков на дисплей</label>
+          <input class="field-input" type="number" min="1" bind:value={modalForm.photoCountPerDisplay} placeholder="1" />
+
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+            <label class="field-label" style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
+              <input type="checkbox" bind:checked={modalForm.photoSaveAll} />
+              Сохранять все снимки
+            </label>
+            <label class="field-label" style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
+              <input type="checkbox" bind:checked={modalForm.photoExplicitlySet} />
+              Явная настройка фото
+            </label>
+          </div>
+        {/if}
+
+        <!-- Name field (brands only) -->
+        {#if subView === 'brands'}
           <label class="field-label">Название <span class="req">*</span></label>
           <input class="field-input" type="text" bind:value={modalForm.name} placeholder="Введите название" />
         {/if}
@@ -636,8 +691,8 @@
           <input class="field-input" type="text" bind:value={modalForm.url} placeholder="https://…" />
         {/if}
 
-        <!-- Description (agencies, brands only — customers have their own section) -->
-        {#if subView === 'agencies' || subView === 'brands'}
+        <!-- Description (brands only — agencies have their own section, customers have theirs) -->
+        {#if subView === 'brands'}
           <label class="field-label" style="margin-top:12px">Описание</label>
           <textarea class="field-input" rows="3" bind:value={modalForm.description} placeholder="Необязательно"></textarea>
         {/if}
@@ -666,14 +721,13 @@
 <style>
   /* ── Landing ─────────────────────────────────────────────────────────────── */
   .dir-home {
-    padding: 28px 32px 48px;
-    max-width: 900px;
+    padding: 32px 36px 56px;
   }
   .dir-home-header {
-    margin-bottom: 28px;
+    margin-bottom: 32px;
   }
   .dir-home-title {
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 700;
     color: var(--text, #111827);
     margin: 0 0 6px;
@@ -685,65 +739,92 @@
   }
   .dir-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
   }
   .dir-card {
     display: flex;
-    align-items: center;
-    gap: 16px;
+    flex-direction: column;
+    gap: 0;
     background: #fff;
     border: 1px solid var(--border, #e5e7eb);
-    border-radius: 12px;
-    padding: 20px;
+    border-radius: 14px;
+    padding: 24px 22px 20px;
     cursor: pointer;
     text-align: left;
-    transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s;
+    transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s;
     font-family: inherit;
     width: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .dir-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--card-color, #3b82f6);
+    opacity: 0;
+    transition: opacity 0.18s;
   }
   .dir-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,.08);
+    box-shadow: 0 6px 24px rgba(0,0,0,.1);
     border-color: #d1d5db;
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+  }
+  .dir-card:hover::before {
+    opacity: 1;
+  }
+  .dir-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 16px;
   }
   .dir-card-icon {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     border-radius: 10px;
+    background: var(--card-bg, #eff6ff);
+    color: var(--card-color, #3b82f6);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
-  .dir-card-body {
-    flex: 1;
-    min-width: 0;
+  .dir-card-count {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--card-color, #3b82f6);
+    line-height: 1;
+    letter-spacing: -0.5px;
   }
   .dir-card-label {
     font-size: 14px;
     font-weight: 600;
     color: var(--text, #111827);
-    margin-bottom: 2px;
-  }
-  .dir-card-count {
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1.2;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
+    line-height: 1.3;
   }
   .dir-card-desc {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted, #9ca3af);
-    line-height: 1.4;
+    line-height: 1.45;
+    flex: 1;
+    margin-bottom: 16px;
   }
-  .dir-card-arrow {
-    color: #d1d5db;
-    flex-shrink: 0;
-    transition: color 0.15s;
+  .dir-card-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--card-color, #3b82f6);
+    opacity: 0;
+    transition: opacity 0.15s;
   }
-  .dir-card:hover .dir-card-arrow {
-    color: #9ca3af;
+  .dir-card:hover .dir-card-cta {
+    opacity: 1;
   }
 
   /* ── List page ───────────────────────────────────────────────────────────── */
@@ -980,9 +1061,10 @@
     background: #fff;
     border-radius: 12px;
     width: 100%;
-    max-width: 480px;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    overflow: hidden;
   }
   .modal-header {
     display: flex;
@@ -1101,6 +1183,9 @@
   .btn-save:hover:not(:disabled) { opacity: 0.88; }
 
   /* ── Responsive ──────────────────────────────────────────────────────────── */
+  @media (max-width: 1200px) {
+    .dir-grid { grid-template-columns: repeat(3, 1fr); }
+  }
   @media (max-width: 800px) {
     .dir-grid { grid-template-columns: 1fr 1fr; }
     .dir-home { padding: 16px; }
