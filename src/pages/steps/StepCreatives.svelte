@@ -234,10 +234,13 @@
         level: { enabled: false, start: 1, end: 4 },
       },
     }
-    // Always merge with defaults so partially-loaded objects (e.g. from server reload
-    // that only has weatherParams/jamParams) still have gender/income/interests/etc.
-    draft.creativeTargeting[id] = { ...DEFAULTS, ...draft.creativeTargeting[id] }
-    draft.creativeTargeting = { ...draft.creativeTargeting }
+    // Merge with defaults only when fields are missing (e.g. partial server reload data).
+    // Avoid unconditional mutation — that would trigger infinite Svelte reactivity loops.
+    const existing = draft.creativeTargeting[id]
+    if (!existing || !Array.isArray(existing.gender)) {
+      draft.creativeTargeting[id] = { ...DEFAULTS, ...existing }
+      draft.creativeTargeting = { ...draft.creativeTargeting }
+    }
     return draft.creativeTargeting[id]
   }
 
