@@ -27,10 +27,6 @@
   let minBudget     = ''
   let maxBudget     = ''
 
-  // Table sort
-  let sortCol = 'budget'
-  let sortDir = 1  // 1 = desc, -1 = asc
-
   // ── Constants ─────────────────────────────────────────────────────────────
   const COLOR_MAP = {
     green: '#16a34a', blue: '#3b82f6', yellow: '#f59e0b',
@@ -55,15 +51,6 @@
 
   function stateColor(state) {
     return COLOR_MAP[STATE_COLOR[state] ?? 'gray'] ?? '#9ca3af'
-  }
-
-  function toggleSort(col) {
-    if (sortCol === col) {
-      sortDir = sortDir === 1 ? -1 : 1
-    } else {
-      sortCol = col
-      sortDir = 1
-    }
   }
 
   function toggleState(s) {
@@ -278,35 +265,6 @@
   $: vendorMaxSpent = Math.max(1, ...byVendor.map(v => v.spent))
   $: formatMaxSpent = Math.max(1, ...byFormat.map(f => f.spent))
   $: cityMaxSpent   = Math.max(1, ...byCity.map(c => c.spent))
-
-  // ── Sorted table rows ─────────────────────────────────────────────────────
-  $: tableRows = (() => {
-    const list = filteredCampaigns.map(c => ({
-      ...c,
-      _spent:       c._stats.totalBudgetShowed ?? 0,
-      _impressions: c._stats.totalShowed ?? 0,
-      _ots:         c._stats.totalOts ?? 0,
-      _cpm:         c._stats.cpm ?? 0,
-      _spendPct:    c.budget > 0 ? ((c._stats.totalBudgetShowed ?? 0) / c.budget) * 100 : 0,
-    }))
-
-    const colMap = {
-      budget: '_budget',
-      spent: '_spent',
-      spendPct: '_spendPct',
-      impressions: '_impressions',
-      ots: '_ots',
-      cpm: '_cpm',
-    }
-    const key = colMap[sortCol] ?? '_budget'
-
-    list.sort((a, b) => {
-      const va = a[key] ?? a.budget ?? 0
-      const vb = b[key] ?? b.budget ?? 0
-      return (vb - va) * sortDir
-    })
-    return list
-  })()
 
   // ── Data loading ──────────────────────────────────────────────────────────
   onMount(async () => {
@@ -688,8 +646,8 @@
   </div>
   {/if}
 
-  <!-- ── Breakdown table ───────────────────────────────────────────────────── -->
-  <div class="card card--full">
+  <!-- ── Breakdown table removed — see Кампании list ─────────────────────── -->
+  <!-- <div class="card card--full">
     <div class="card-title">Детализация по кампаниям</div>
     <div class="table-wrap">
       <table class="breakdown-table">
@@ -811,12 +769,7 @@
                   Статистика загружается…
                 </td>
               </tr>
-            {/if}
-          {/if}
-        </tbody>
-      </table>
-    </div>
-  </div>
+  --> <!-- end commented-out table -->
 
   <!-- ── Breakdown by dimension ─────────────────────────────────────────── -->
   <div class="two-col">
@@ -1242,155 +1195,6 @@
     width: 10px; height: 10px;
     border-radius: 2px;
     flex-shrink: 0;
-  }
-
-  /* ── Breakdown table ────────────────────────────────────────────────────── */
-  .table-wrap {
-    overflow-x: auto;
-  }
-  .breakdown-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  .breakdown-table thead th {
-    padding: 0 10px 10px;
-    text-align: left;
-    white-space: nowrap;
-    border-bottom: 1px solid var(--border, #e5e7eb);
-    vertical-align: bottom;
-  }
-  .breakdown-table thead th button {
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .breakdown-table thead th button:hover {
-    color: #3b82f6;
-  }
-  .breakdown-table tbody tr.tr-row {
-    border-bottom: 1px solid #f3f4f6;
-    transition: background 0.1s;
-  }
-  .breakdown-table tbody tr.tr-row:hover {
-    background: #f9fafb;
-  }
-  .breakdown-table td {
-    padding: 8px 10px;
-    vertical-align: middle;
-    color: var(--text, #374151);
-  }
-  .td-loading {
-    text-align: center;
-    padding: 28px;
-    color: var(--text-muted, #9ca3af);
-    font-size: 13px;
-    animation: pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-  .td-stats-loading {
-    text-align: center;
-    padding: 10px;
-    color: #f59e0b;
-    font-size: 12px;
-  }
-  .td-loading-inline {
-    color: #9ca3af;
-  }
-  .td-name { min-width: 180px; max-width: 260px; }
-  .td-name-link {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text, #111827);
-    text-decoration: none;
-    display: block;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .td-name-link:hover { color: #3b82f6; text-decoration: underline; }
-  .td-badges {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 3px;
-  }
-  .badge-state {
-    font-size: 11px;
-    font-weight: 600;
-  }
-  .badge-type {
-    font-size: 10px;
-    font-weight: 600;
-    color: #fff;
-    border-radius: 3px;
-    padding: 1px 5px;
-    white-space: nowrap;
-  }
-  .td-period {
-    font-size: 12px;
-    color: var(--text-muted, #6b7280);
-    white-space: nowrap;
-  }
-  .period-sep {
-    margin: 0 2px;
-    color: #d1d5db;
-  }
-  .td-money {
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .td-spent { min-width: 140px; }
-  .td-spent-val {
-    font-weight: 600;
-    white-space: nowrap;
-    margin-bottom: 3px;
-  }
-  .mini-bar {
-    height: 4px;
-    background: #f3f4f6;
-    border-radius: 2px;
-    overflow: hidden;
-    width: 100px;
-  }
-  .mini-bar-fill {
-    height: 100%;
-    background: #3b82f6;
-    border-radius: 2px;
-    transition: width 0.4s ease;
-    min-width: 1px;
-  }
-  .td-pct {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted, #9ca3af);
-    white-space: nowrap;
-  }
-  .td-pct.pct-mid { color: #f59e0b; }
-  .td-pct.pct-high { color: #16a34a; }
-  .td-num {
-    font-size: 13px;
-    white-space: nowrap;
-  }
-  .td-status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-  }
-  .status-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .status-label {
-    font-size: 12px;
-    color: var(--text-muted, #6b7280);
   }
 
   /* ── Dimension breakdown ────────────────────────────────────────────────── */
