@@ -67,8 +67,11 @@
   // Stats keyed by campaign ID: { totalShowed, totalOts, totalBudgetShowed, cpm }
   let statsMap = {}
 
-  // Today's spend keyed by campaign ID (budget spent on current calendar day)
-  let todayMap = {}
+  // Today's stats keyed by campaign ID: { spend, ots, showed }
+  // Used as a real-time fallback when all-time statsMap hasn't populated yet
+  // (all-time aggregate stats have a processing delay; today's data is real-time)
+  let todayMap = {}   // still kept as shorthand for spend only (for backward compat)
+  let todayStatsMap = {} // full today stats: { spend, ots, showed }
 
   // Cities keyed by campaign ID: string[]
   let citiesMap = {}
@@ -176,25 +179,36 @@
 
   async function loadTodayStats(ids) {
     try {
-      const todayStr = new Date().toISOString().slice(0, 10)   // "2026-05-21"
+      const todayStr = new Date().toISOString().slice(0, 10)
       const startDate = new Date(todayStr + 'T00:00:00').getTime()
       const endDate   = new Date(todayStr + 'T23:59:59').getTime()
       const rows = await api.impressions.campaignStats(ids, 'CUSTOMER_CHARGE_EXCLUDED', { startDate, endDate })
       if (!Array.isArray(rows)) return
-      const agg = {}
+      const aggSpend = {}
+      const aggFull  = {}
       for (const r of rows) {
         const cid = r.campaign?.id
         if (!cid) continue
-        const spent = r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0
+        const spend  = r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0
+        const ots    = r.otsCountShowed    ?? r.totalOpOts    ?? 0
+        const showed = r.totalCountShowed  ?? r.totalShowed   ?? 0
         if (!r.inventory) {
-          agg[cid] = spent
+          // Campaign-level summary row
+          aggSpend[cid] = spend
+          aggFull[cid]  = { spend, ots, showed }
         } else {
-          agg[cid] = (agg[cid] ?? 0) + spent
+          // Per-inventory row — accumulate
+          aggSpend[cid] = (aggSpend[cid] ?? 0) + spend
+          if (!aggFull[cid]) aggFull[cid] = { spend: 0, ots: 0, showed: 0 }
+          aggFull[cid].spend  += spend
+          aggFull[cid].ots    += ots
+          aggFull[cid].showed += showed
         }
       }
-      todayMap = agg
+      todayMap      = aggSpend
+      todayStatsMap = aggFull
     } catch {
-      // non-critical — leave todayMap empty
+      // non-critical — leave maps empty
     }
   }
 
@@ -658,15 +672,16 @@
                   {formatDate(c.endDate)}
                 </td>
                 <td class="budget-cell">
+                  {@const totalSpent = statsMap[c.id]?.totalBudgetShowed > 0 ? statsMap[c.id].totalBudgetShowed : (todayStatsMap[c.id]?.spend ?? 0)}
                   <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
-                  {#if statsMap[c.id]?.totalBudgetShowed > 0 && c.budget > 0}
-                    {@const pct = Math.min(100, Math.round(statsMap[c.id].totalBudgetShowed / c.budget * 100))}
+                  {#if totalSpent > 0 && c.budget > 0}
+                    {@const pct = Math.min(100, Math.round(totalSpent / c.budget * 100))}
                     <div class="budget-sub">
                       <span class="budget-pct">{pct}%</span>
                       <div class="budget-bar-track">
                         <div class="budget-bar-fill" style="width:{pct}%"></div>
                       </div>
-                      <span style="font-size:11px;color:var(--text-muted)">{formatMoney(statsMap[c.id].totalBudgetShowed)}</span>
+                      <span style="font-size:11px;color:var(--text-muted)">{formatMoney(totalSpent)}</span>
                     </div>
                   {/if}
                 </td>
@@ -687,20 +702,26 @@
                   {/if}
                 </td>
                 <td style="font-size:12px;color:var(--text-muted)">
-                  {#if statsMap[c.id]}
-                    {statsMap[c.id].totalOts.toLocaleString('ru-RU')}
+                  {@const otsVal = statsMap[c.id]?.totalOts ?? todayStatsMap[c.id]?.ots ?? null}
+                  {@const otsPlanned = c.otsCount ?? c.ots ?? null}
+                  {#if otsVal != null && otsVal > 0}
+                    {otsVal.toLocaleString('ru-RU')}
+                  {:else if otsPlanned}
+                    <span style="color:#d1d5db">{otsPlanned.toLocaleString('ru-RU')}</span>
                   {:else}
-                    {(c.otsCount ?? c.ots)?.toLocaleString('ru-RU') ?? '—'}
+                    —
                   {/if}
                 </td>
                 <td style="font-size:12px;color:var(--text-muted)">
-                  {#if statsMap[c.id]}
-                    <div>{statsMap[c.id].totalShowed.toLocaleString('ru-RU')}</div>
-                    {#if statsMap[c.id].cpm}
-                      <div style="font-size:11px;color:var(--text-muted)">CPM {statsMap[c.id].cpm.toFixed(0)} ₽</div>
+                  {@const showedVal = statsMap[c.id]?.totalShowed ?? todayStatsMap[c.id]?.showed ?? null}
+                  {@const cpmVal = statsMap[c.id]?.cpm ?? 0}
+                  {#if showedVal != null && showedVal > 0}
+                    <div>{showedVal.toLocaleString('ru-RU')}</div>
+                    {#if cpmVal > 0}
+                      <div style="font-size:11px;color:var(--text-muted)">CPM {cpmVal.toFixed(0)} ₽</div>
                     {/if}
                   {:else}
-                    {(c.impressionsCount ?? c.impressionCount)?.toLocaleString('ru-RU') ?? '—'}
+                    —
                   {/if}
                 </td>
                 <td style="position:relative">
@@ -755,15 +776,16 @@
               {formatDate(c.endDate)}
             </td>
             <td class="budget-cell">
+              {@const totalSpent = statsMap[c.id]?.totalBudgetShowed > 0 ? statsMap[c.id].totalBudgetShowed : (todayStatsMap[c.id]?.spend ?? 0)}
               <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
-              {#if statsMap[c.id]?.totalBudgetShowed > 0 && c.budget > 0}
-                {@const pct = Math.min(100, Math.round(statsMap[c.id].totalBudgetShowed / c.budget * 100))}
+              {#if totalSpent > 0 && c.budget > 0}
+                {@const pct = Math.min(100, Math.round(totalSpent / c.budget * 100))}
                 <div class="budget-sub">
                   <span class="budget-pct">{pct}%</span>
                   <div class="budget-bar-track">
                     <div class="budget-bar-fill" style="width:{pct}%"></div>
                   </div>
-                  <span style="font-size:11px;color:var(--text-muted)">{formatMoney(statsMap[c.id].totalBudgetShowed)}</span>
+                  <span style="font-size:11px;color:var(--text-muted)">{formatMoney(totalSpent)}</span>
                 </div>
               {/if}
             </td>
@@ -784,20 +806,26 @@
               {/if}
             </td>
             <td style="font-size:12px;color:var(--text-muted)">
-              {#if statsMap[c.id]}
-                {statsMap[c.id].totalOts.toLocaleString('ru-RU')}
+              {@const otsVal = statsMap[c.id]?.totalOts ?? todayStatsMap[c.id]?.ots ?? null}
+              {@const otsPlanned = c.otsCount ?? c.ots ?? null}
+              {#if otsVal != null && otsVal > 0}
+                {otsVal.toLocaleString('ru-RU')}
+              {:else if otsPlanned}
+                <span style="color:#d1d5db">{otsPlanned.toLocaleString('ru-RU')}</span>
               {:else}
-                {(c.otsCount ?? c.ots)?.toLocaleString('ru-RU') ?? '—'}
+                —
               {/if}
             </td>
             <td style="font-size:12px;color:var(--text-muted)">
-              {#if statsMap[c.id]}
-                <div>{statsMap[c.id].totalShowed.toLocaleString('ru-RU')}</div>
-                {#if statsMap[c.id].cpm}
-                  <div style="font-size:11px;color:var(--text-muted)">CPM {statsMap[c.id].cpm.toFixed(0)} ₽</div>
+              {@const showedVal = statsMap[c.id]?.totalShowed ?? todayStatsMap[c.id]?.showed ?? null}
+              {@const cpmVal = statsMap[c.id]?.cpm ?? 0}
+              {#if showedVal != null && showedVal > 0}
+                <div>{showedVal.toLocaleString('ru-RU')}</div>
+                {#if cpmVal > 0}
+                  <div style="font-size:11px;color:var(--text-muted)">CPM {cpmVal.toFixed(0)} ₽</div>
                 {/if}
               {:else}
-                {(c.impressionsCount ?? c.impressionCount)?.toLocaleString('ru-RU') ?? '—'}
+                —
               {/if}
             </td>
             <td style="position:relative">
