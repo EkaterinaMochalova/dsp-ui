@@ -269,6 +269,11 @@
   $: allVisible = tabRows.length > 0 && tabRows.every(s => draft.screenIds.includes(s.id))
   $: someVisible = tabRows.some(s => draft.screenIds.includes(s.id))
 
+  // Keep draft.screenObjects in sync so StepSummary can display screen details
+  $: if (screens.length > 0) {
+    draft.screenObjects = screens.filter(s => draft.screenIds.includes(s.id))
+  }
+
   onMount(() => {
     loadScreens()
   })
