@@ -11,6 +11,7 @@
   import Overview         from './pages/Overview.svelte'
   import Analytics        from './pages/Analytics.svelte'
   import Directories      from './pages/Directories.svelte'
+  import Notifications    from './pages/Notifications.svelte'
   // import ChatPanel from './components/ChatPanel.svelte'
 
   onMount(async () => {
@@ -61,6 +62,8 @@
         <Analytics />
       {:else if $page === 'directories' || $page.startsWith('directories/')}
         <Directories />
+      {:else if $page === 'notifications'}
+        <Notifications />
       {:else}
         <div style="padding:32px;color:var(--text-muted);font-size:14px">
           Страница в разработке

@@ -174,6 +174,20 @@ export const api = {
     delete(id)       { return request(`/clients/ssp-systems/${id}`, { method: 'DELETE' }) },
   },
 
+  notifications: {
+    list(params = {}) {
+      const q = new URLSearchParams({ page: 0, size: 50, ...params })
+      return request(`/clients/notifications?${q}`)
+    },
+    // Mark a list of notification IDs as read. Body: { ids: [id, ...] }
+    markRead(ids) {
+      return request('/clients/notifications/read', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+    },
+  },
+
   filters: {
     states()           { return request('/clients/filters/campaign-states') },
     types()            { return request('/clients/filters/campaign-types') },
