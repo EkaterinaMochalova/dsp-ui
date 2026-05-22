@@ -756,18 +756,75 @@
             </td>
             <td class="budget-cell">
               <div class="budget-main">{formatMoney(c.budget ?? 0)}</div>
+              {#if statsMap[c.id]?.totalBudgetShowed > 0 && c.budget > 0}
+                {@const pct = Math.min(100, Math.round(statsMap[c.id].totalBudgetShowed / c.budget * 100))}
+                <div class="budget-sub">
+                  <span class="budget-pct">{pct}%</span>
+                  <div class="budget-bar-track">
+                    <div class="budget-bar-fill" style="width:{pct}%"></div>
+                  </div>
+                  <span style="font-size:11px;color:var(--text-muted)">{formatMoney(statsMap[c.id].totalBudgetShowed)}</span>
+                </div>
+              {/if}
             </td>
             <td class="budget-cell">
-              {#if todayMap[c.id] > 0}
+              {#if todayMap[c.id] != null && todayMap[c.id] > 0}
                 <div class="budget-main">{formatMoney(todayMap[c.id])}</div>
+                {#if c.budget > 0}
+                  {@const dayPct = Math.min(100, Math.round(todayMap[c.id] / (c.budget / Math.max(1, Math.round((new Date(c.endDate) - new Date(c.startDate)) / 86400000) + 1)) * 100))}
+                  <div class="budget-sub">
+                    <span class="budget-pct">{dayPct}%</span>
+                    <div class="budget-bar-track">
+                      <div class="budget-bar-fill" style="width:{dayPct}%"></div>
+                    </div>
+                  </div>
+                {/if}
               {:else}
                 <div class="budget-main" style="color:var(--text-muted)">—</div>
               {/if}
             </td>
-            <td style="font-size:12px;color:var(--text-muted)">{c.otsCount ?? c.ots ?? '—'}</td>
-            <td style="font-size:12px;color:var(--text-muted)">{c.impressionsCount ?? c.impressionCount ?? '—'}</td>
-            <td>
-              <button class="row-menu-btn" title="Действия">⋮</button>
+            <td style="font-size:12px;color:var(--text-muted)">
+              {#if statsMap[c.id]}
+                {statsMap[c.id].totalOts.toLocaleString('ru-RU')}
+              {:else}
+                {(c.otsCount ?? c.ots)?.toLocaleString('ru-RU') ?? '—'}
+              {/if}
+            </td>
+            <td style="font-size:12px;color:var(--text-muted)">
+              {#if statsMap[c.id]}
+                <div>{statsMap[c.id].totalShowed.toLocaleString('ru-RU')}</div>
+                {#if statsMap[c.id].cpm}
+                  <div style="font-size:11px;color:var(--text-muted)">CPM {statsMap[c.id].cpm.toFixed(0)} ₽</div>
+                {/if}
+              {:else}
+                {(c.impressionsCount ?? c.impressionCount)?.toLocaleString('ru-RU') ?? '—'}
+              {/if}
+            </td>
+            <td style="position:relative">
+              <button class="row-menu-btn" title="Действия" on:click={(e) => toggleRowMenu(c.id, e)}>⋮</button>
+              {#if openRowMenu === c.id}
+                <div class="row-menu-dropdown">
+                  <button class="dropdown-item" on:click={() => { openCampaign(c.id); closeRowMenu() }}>
+                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+                    Открыть
+                  </button>
+                  {#if STOPPABLE.includes(c.state)}
+                    <button class="dropdown-item dropdown-item--warn" on:click={closeRowMenu}>
+                      <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"/></svg>
+                      Остановить
+                    </button>
+                  {:else if STARTABLE.includes(c.state)}
+                    <button class="dropdown-item dropdown-item--green" on:click={closeRowMenu}>
+                      <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
+                      Запустить
+                    </button>
+                  {/if}
+                  <button class="dropdown-item" on:click={closeRowMenu}>
+                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"/><path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z"/></svg>
+                    Дублировать
+                  </button>
+                </div>
+              {/if}
             </td>
           </tr>
         {/each}
