@@ -564,6 +564,11 @@
     launching = true
     saveError = ''
     try {
+      // Re-save before activating so that vendorApprovedIds (populated by the most
+      // recent reloadCampaign) are flushed into the segment mediaSegments on the server.
+      // Without this, a campaign saved before the creative reload would have empty
+      // mediaSegments and the backend would reject activation with "no active creative".
+      await doSave()
       await api.campaigns.setState(id, 'ACTIVE')
       await reloadCampaign(id)
       goToStep('stats')
