@@ -128,9 +128,46 @@ export const api = {
   },
 
   agencies: {
-    list() {
-      return request('/clients/agencies')
+    list(params = {}) {
+      const entries = Object.entries(params).filter(([, v]) => v != null && v !== '')
+      if (!entries.length) return request('/clients/agencies')
+      const q = new URLSearchParams(params)
+      return request(`/clients/agencies?${q}`)
     },
+    create(data)        { return request('/clients/agencies', { method: 'POST', body: JSON.stringify(data) }) },
+    update(id, data)    { return request(`/clients/agencies/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
+    delete(id)          { return request(`/clients/agencies/${id}`, { method: 'DELETE' }) },
+  },
+
+  brands: {
+    list(params = {}) {
+      const q = new URLSearchParams({ page: 0, size: -1, ...params })
+      return request(`/clients/brands?${q}`)
+    },
+    create(data)     { return request('/clients/brands', { method: 'POST', body: JSON.stringify(data) }) },
+    update(id, data) { return request(`/clients/brands/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
+    delete(id)       { return request(`/clients/brands/${id}`, { method: 'DELETE' }) },
+  },
+
+  users: {
+    list(params = {}) {
+      const q = new URLSearchParams({ page: 0, size: -1, ...params })
+      return request(`/clients/users?${q}`)
+    },
+    create(data)     { return request('/clients/users', { method: 'POST', body: JSON.stringify(data) }) },
+    update(id, data) { return request(`/clients/users/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
+    toggle(id)       { return request(`/clients/users/${id}/toggle`, { method: 'POST' }) },
+    delete(id)       { return request(`/clients/users/${id}`, { method: 'DELETE' }) },
+  },
+
+  ssp: {
+    list(params = {}) {
+      const q = new URLSearchParams({ page: 0, size: -1, ...params })
+      return request(`/clients/ssp-systems?${q}`)
+    },
+    create(data)     { return request('/clients/ssp-systems', { method: 'POST', body: JSON.stringify(data) }) },
+    update(id, data) { return request(`/clients/ssp-systems/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
+    delete(id)       { return request(`/clients/ssp-systems/${id}`, { method: 'DELETE' }) },
   },
 
   filters: {
