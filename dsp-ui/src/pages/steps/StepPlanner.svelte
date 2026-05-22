@@ -19,6 +19,21 @@
     }
   }
 
+  function onIframeLoad() {
+    iframeLoaded = true
+    // Inject the DSP token into the iframe's sessionStorage.
+    // Same-origin access is allowed because the iframe is served from /planner/index.html.
+    // The planner's getDspToken() reads from sessionStorage, so this enables live inventory.
+    try {
+      const token = localStorage.getItem('dsp_token')
+      if (token) {
+        iframeEl.contentWindow.sessionStorage.setItem('dsp_token', token)
+      }
+    } catch (err) {
+      console.warn('[StepPlanner] could not inject token into iframe:', err)
+    }
+  }
+
   onMount(() => {
     window.addEventListener('message', handleMessage)
   })
@@ -61,7 +76,7 @@
       class="planner-iframe"
       class:loaded={iframeLoaded}
       title="Планировщик размещения"
-      on:load={() => (iframeLoaded = true)}
+      on:load={onIframeLoad}
     ></iframe>
   </div>
 

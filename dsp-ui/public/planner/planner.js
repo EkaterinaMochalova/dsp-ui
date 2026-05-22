@@ -5234,7 +5234,11 @@ function avgEffectiveBid(screens, bidMode, fallback) {
 // ===== DSP API AUTH + INVENTORY =====
 // Включается через: window.DSP_AUTH_ENABLED = true; в HTML Tilda перед виджетом
 
-const DSP_API = "https://proddsp.omniboard360.io";
+// When embedded in the DSP UI, DSP_API_OVERRIDE="" makes all API calls
+// relative (e.g. /api/v1.0/…) so they route through the same proxy/origin.
+const DSP_API = (window.DSP_API_OVERRIDE !== undefined)
+  ? window.DSP_API_OVERRIDE
+  : "https://proddsp.omniboard360.io";
 const DSP_PAGE_SIZE = 200; // reduced from 500 to avoid ERR_INCOMPLETE_CHUNKED_ENCODING
 const DSP_PAGE_BATCH = 2; // параллельных запросов за раз (меньше = меньше 500-ок от сервера)
 const DSP_BATCH_DELAY_MS = 300; // пауза между батчами

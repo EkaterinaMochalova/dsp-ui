@@ -26,9 +26,24 @@
   <div id="planner-root"></div>
 
   <script>
-    // Disable DSP auth — use the CDN inventory CSV so screen IDs are numeric
-    // DSP inventory IDs and match draft.screenIds expected by CampaignCreate.
-    window.DSP_AUTH_ENABLED = false;
+    // Use live DSP inventory via the API instead of the CDN CSV.
+    window.DSP_AUTH_ENABLED = true;
+
+    // Empty string = relative URLs → requests route through the same proxy/origin.
+    window.DSP_API_OVERRIDE = "";
+
+    // The planner calls getDspToken() (reads sessionStorage) during init — before any
+    // on:load event fires in the parent.  Since we're same-origin, we can copy the
+    // token from the parent frame's localStorage right now, synchronously.
+    try {
+      var _parentStorage = (window.parent !== window)
+        ? window.parent.localStorage
+        : window.localStorage;
+      var _tok = _parentStorage.getItem('dsp_token');
+      if (_tok) sessionStorage.setItem('dsp_token', _tok);
+    } catch (_e) {
+      console.warn('[planner] could not read parent token:', _e);
+    }
 
     // Mark as embedded so the planner can adjust behaviour if needed
     window.PLANNER_EMBEDDED = true;
