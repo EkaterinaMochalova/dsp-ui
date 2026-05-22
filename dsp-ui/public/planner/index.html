@@ -53,9 +53,12 @@
       try {
         var detail = e.detail || {};
         var chosen = (detail.chosen || []).map(function(s) {
+          // CSV mode:  numeric DSP id lives in s.id
+          // API mode:  numeric DSP id lives in s._dspId  (s.id is undefined)
+          var numericId = Number(s._dspId !== undefined ? s._dspId : s.id) || null;
           return {
-            id:        s.id        !== undefined ? Number(s.id) : null,
-            screen_id: s.screen_id || s.gid || '',
+            id:        numericId,
+            screen_id: s.screen_id || s.gid || String(s._dspId || s.id || ''),
             city:      s.city      || '',
             format:    s.format    || '',
             address:   s.address   || '',
