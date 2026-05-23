@@ -294,6 +294,8 @@
       }
     } catch (e) {
       console.error('[duplicateCampaign]', e)
+      const msg = e?.data?.message ?? e?.data ?? e?.message ?? 'Ошибка при дублировании кампании'
+      alert(msg)
     }
   }
 
@@ -475,7 +477,7 @@
       </svg>
     </button>
     {#if openChip === 'budget'}
-      <div class="dropdown" style="min-width:240px;padding:12px">
+      <div class="dropdown" style="min-width:240px;padding:12px;left:auto;right:0">
         <div class="filter-row-label">Бюджет от (₽)</div>
         <div class="filter-row">
           <input class="chip-input" type="number" min="0" placeholder="0" bind:value={filterBudgetMin} style="flex:1" />
