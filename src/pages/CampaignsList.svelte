@@ -100,8 +100,7 @@
         ...(filterSearch    ? { name: filterSearch }           : {}),
         ...(filterDateFrom  ? { startDate: filterDateFrom }   : {}),
         ...(filterDateTo    ? { endDate: filterDateTo }       : {}),
-        ...(filterBudgetMin ? { budgetFrom: filterBudgetMin } : {}),
-        ...(filterBudgetMax ? { budgetTo:   filterBudgetMax } : {}),
+        // Budget filter is applied client-side (backend ignores these params)
       }
       const data = await api.campaigns.list(params)
       let rows = data.content ?? []
@@ -306,8 +305,16 @@
     return names.slice(0, 2).join(', ') + `, +${names.length - 2}`
   }
 
+  // Client-side budget filter (backend ignores budgetFrom/budgetTo params)
+  $: visibleCampaigns = campaigns.filter(c => {
+    const b = c.budget ?? 0
+    if (filterBudgetMin !== '' && filterBudgetMin != null && b < Number(filterBudgetMin)) return false
+    if (filterBudgetMax !== '' && filterBudgetMax != null && b > Number(filterBudgetMax)) return false
+    return true
+  })
+
   // Group campaigns by customer name for display
-  $: groups = groupCampaigns(campaigns)
+  $: groups = groupCampaigns(visibleCampaigns)
 
   function groupCampaigns(list) {
     const map = {}
@@ -778,7 +785,7 @@
 
       {:else}
         <!-- Flat "all" tab -->
-        {#each campaigns as c (c.id)}
+        {#each visibleCampaigns as c (c.id)}
           <tr class="campaign-row">
             <td>
               <StatusBadge state={c.state} />
