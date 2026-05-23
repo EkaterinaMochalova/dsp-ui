@@ -285,9 +285,53 @@
 
   async function duplicateCampaign(id) {
     try {
-      const result = await api.campaigns.copy(id)
-      if (result?.id) {
-        window.location.hash = '#/campaigns/' + result.id
+      // Backend has no /copy endpoint — implement client-side:
+      // 1. Fetch full campaign  2. Build create payload  3. POST new campaign
+      const camp = await api.campaigns.get(id)
+
+      // Strip dmpData:[] to avoid RTB bid failures (code 1000)
+      let targetAudience = null
+      if (camp.targetAudience) {
+        const { dmpData, ...rest } = camp.targetAudience
+        targetAudience = (dmpData?.length > 0) ? { ...rest, dmpData } : rest
+      }
+
+      const payload = {
+        name:             'Копия: ' + (camp.name ?? ''),
+        description:      camp.description ?? '',
+        brandId:          camp.brand?.id      ?? camp.brandId      ?? null,
+        customerId:       camp.customer?.id   ?? camp.customerId   ?? null,
+        type:             camp.type,
+        bidType:          camp.bidType,
+        startDate:        camp.startDate,
+        endDate:          camp.endDate,
+        budget:           camp.budget           ?? 0,
+        budgetBuyer:      camp.budgetBuyer       ?? 0,
+        dailyBudget:      camp.dailyBudget       ?? null,
+        dailyBudgetBuyer: camp.dailyBudgetBuyer  ?? null,
+        hourlyBudget:     camp.hourlyBudget      ?? null,
+        hourlyBudgetBuyer:camp.hourlyBudgetBuyer ?? null,
+        additionalCharge: camp.additionalCharge  ?? null,
+        maxImpressionsCount:       camp.maxImpressionsCount      ?? 0,
+        maxDailyImpressionsCount:  camp.maxDailyImpressionsCount ?? 0,
+        maxHourlyImpressionsCount: camp.maxHourlyImpressionsCount?? 0,
+        ots:              camp.ots              ?? null,
+        dailyOts:         camp.dailyOts         ?? null,
+        hourlyOts:        camp.hourlyOts         ?? null,
+        targetAudience,
+        photoReportSettings: camp.photoReportSettings ?? null,
+        strategy:            camp.strategy            ?? 'STANDARD',
+        strategyLimitType:   camp.strategyLimitType   ?? null,
+        // Copy segments but strip IDs and mediaSegments (creatives need re-upload)
+        segments: (camp.segments ?? []).map(({ id: _sid, mediaSegments: _ms, ...seg }) => ({
+          ...seg,
+          inventories: (seg.inventories ?? []).map(inv => ({ id: inv.id ?? inv })),
+        })),
+      }
+
+      const created = await api.campaigns.create(payload)
+      if (created?.id) {
+        window.location.hash = '#/campaigns/' + created.id
       } else {
         await load(currentPage)
       }
