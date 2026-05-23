@@ -322,10 +322,10 @@
         photoReportSettings: camp.photoReportSettings ?? null,
         strategy:            camp.strategy            ?? 'STANDARD',
         strategyLimitType:   camp.strategyLimitType   ?? null,
-        // Copy segments — strip segment IDs but keep mediaSegments (required non-nullable by backend)
+        // Copy segments — strip IDs; always send mediaSegments:[] (required non-nullable, creatives re-added by user)
         segments: (camp.segments ?? []).map(({ id: _sid, ...seg }) => ({
           ...seg,
-          mediaSegments: seg.mediaSegments ?? [],
+          mediaSegments: [],
           inventories: (seg.inventories ?? []).map(inv => ({ id: inv.id ?? inv })),
         })),
       }
