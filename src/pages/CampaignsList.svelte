@@ -322,9 +322,10 @@
         photoReportSettings: camp.photoReportSettings ?? null,
         strategy:            camp.strategy            ?? 'STANDARD',
         strategyLimitType:   camp.strategyLimitType   ?? null,
-        // Copy segments but strip IDs and mediaSegments (creatives need re-upload)
-        segments: (camp.segments ?? []).map(({ id: _sid, mediaSegments: _ms, ...seg }) => ({
+        // Copy segments — strip segment IDs but keep mediaSegments (required non-nullable by backend)
+        segments: (camp.segments ?? []).map(({ id: _sid, ...seg }) => ({
           ...seg,
+          mediaSegments: seg.mediaSegments ?? [],
           inventories: (seg.inventories ?? []).map(inv => ({ id: inv.id ?? inv })),
         })),
       }
