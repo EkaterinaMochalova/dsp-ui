@@ -322,11 +322,19 @@
         photoReportSettings: camp.photoReportSettings ?? null,
         strategy:            camp.strategy            ?? 'STANDARD',
         strategyLimitType:   camp.strategyLimitType   ?? null,
-        // Copy segments — strip IDs; always send mediaSegments:[] (required non-nullable, creatives re-added by user)
-        segments: (camp.segments ?? []).map(({ id: _sid, ...seg }) => ({
-          ...seg,
+        // Copy segments using the exact shape CampaignCreate sends
+        segments: (camp.segments ?? []).map(seg => ({
+          displayOwnerId: seg.displayOwner?.id ?? seg.displayOwnerId ?? null,
+          inventories: (seg.inventories ?? []).map(inv => ({
+            id:           inv.id,
+            timeSettings: inv.timeSettings ?? [],
+            priority:     inv.priority     ?? 1,
+            bid:          inv.bid          ?? 0,
+          })),
           mediaSegments: [],
-          inventories: (seg.inventories ?? []).map(inv => ({ id: inv.id ?? inv })),
+          photoReportSettings: camp.photoReportSettings ?? {
+            saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
+          },
         })),
       }
 
