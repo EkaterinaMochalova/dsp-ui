@@ -296,6 +296,13 @@
         targetAudience = (dmpData?.length > 0) ? { ...rest, dmpData } : rest
       }
 
+      // API requires "YYYY-MM-DDTHH:mm:ss" format
+      const toApiDate = d => !d ? null : (d.includes('T') ? d : d + 'T00:00:00')
+
+      const budgetBuyer = camp.budgetBuyer ?? camp.budget ?? 0
+      const additionalCharge = camp.additionalCharge ?? 0
+      const budget = Math.round(budgetBuyer * (1 + additionalCharge / 100) * 100) / 100
+
       const payload = {
         name:             'Копия: ' + (camp.name ?? ''),
         description:      camp.description ?? '',
@@ -303,15 +310,15 @@
         customerId:       camp.customer?.id   ?? camp.customerId   ?? null,
         type:             camp.type,
         bidType:          camp.bidType,
-        startDate:        camp.startDate,
-        endDate:          camp.endDate,
-        budget:           camp.budget           ?? 0,
-        budgetBuyer:      camp.budgetBuyer       ?? 0,
+        startDate:        toApiDate(camp.startDate),
+        endDate:          toApiDate(camp.endDate),
+        budget,
+        budgetBuyer,
         dailyBudget:      camp.dailyBudget       ?? null,
         dailyBudgetBuyer: camp.dailyBudgetBuyer  ?? null,
         hourlyBudget:     camp.hourlyBudget      ?? null,
         hourlyBudgetBuyer:camp.hourlyBudgetBuyer ?? null,
-        additionalCharge: camp.additionalCharge  ?? null,
+        additionalCharge,
         maxImpressionsCount:       camp.maxImpressionsCount      ?? 0,
         maxDailyImpressionsCount:  camp.maxDailyImpressionsCount ?? 0,
         maxHourlyImpressionsCount: camp.maxHourlyImpressionsCount?? 0,
@@ -345,9 +352,12 @@
         await load(currentPage)
       }
     } catch (e) {
-      console.error('[duplicateCampaign]', e)
-      const msg = e?.data?.message ?? e?.data ?? e?.message ?? 'Ошибка при дублировании кампании'
-      alert(msg)
+      console.error('[duplicateCampaign] full error:', JSON.stringify(e?.data ?? e))
+      const fields = e?.data?.errors?.field ?? e?.data?.fieldErrors ?? []
+      const detail = fields.length
+        ? fields.map(f => `${f.field ?? f.property}: ${f.message ?? f.defaultMessage}`).join('\n')
+        : (e?.data?.message ?? e?.message ?? JSON.stringify(e?.data ?? e))
+      alert('Ошибка при дублировании:\n' + detail)
     }
   }
 
