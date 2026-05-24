@@ -129,7 +129,7 @@ export const api = {
     brands(customerId) {
       return request(`/clients/customers/${customerId}/brands`)
     },
-    create(data)     { return request('/clients/customers',     { method: 'PUT',    body: JSON.stringify(data) }) },
+    create(agencyId, data) { return request(`/clients/agencies/${agencyId}/customers`, { method: 'POST', body: JSON.stringify(data) }) },
     update(id, data) { return request(`/clients/customers/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
     delete(id)       { return request(`/clients/customers/${id}`, { method: 'DELETE' }) },
   },
