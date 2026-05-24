@@ -198,7 +198,7 @@
             registeredAddress:  d.accAddress   || '',
           },
         }
-        modalMode === 'create' ? await api.customers.create(body) : await api.customers.update(editingId, body)
+        modalMode === 'create' ? await api.customers.create(body.agencyId, body) : await api.customers.update(editingId, body)
       } else if (subView === 'brands') {
         const body = { name: d.name, description: d.description }
         modalMode === 'create' ? await api.brands.create(body) : await api.brands.update(editingId, body)
