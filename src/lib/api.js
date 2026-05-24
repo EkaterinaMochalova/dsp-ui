@@ -159,12 +159,12 @@ export const api = {
   users: {
     list(params = {}) {
       const q = new URLSearchParams({ page: 0, size: -1, ...params })
-      return request(`/clients/users?${q}`)
+      return request(`/users?${q}`)
     },
-    create(data)     { return request('/clients/users', { method: 'POST', body: JSON.stringify(data) }) },
-    update(id, data) { return request(`/clients/users/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
-    toggle(id)       { return request(`/clients/users/${id}/toggle`, { method: 'POST' }) },
-    delete(id)       { return request(`/clients/users/${id}`, { method: 'DELETE' }) },
+    create(data)     { return request('/users', { method: 'POST', body: JSON.stringify(data) }) },
+    update(id, data) { return request(`/users/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
+    toggle(id)       { return request(`/users/${id}/toggle`, { method: 'POST' }) },
+    delete(id)       { return request(`/users/${id}`, { method: 'DELETE' }) },
   },
 
   ssp: {
