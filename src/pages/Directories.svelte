@@ -230,7 +230,9 @@
       await loadSection(subView)
       loadCounts()
     } catch(e) {
-      alert('Не удалось удалить: ' + (e?.data?.message ?? 'Ошибка'))
+      console.error('[deleteRow]', JSON.stringify(e))
+      const msg = e?.data?.message ?? e?.data?.error ?? (typeof e?.data === 'string' ? e.data : null) ?? e?.message ?? JSON.stringify(e?.data ?? e)
+      alert('Не удалось удалить: ' + msg)
     }
   }
 
