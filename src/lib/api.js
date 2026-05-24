@@ -8,11 +8,13 @@ function getToken() {
 
 async function request(path, options = {}) {
   const token = getToken()
-  // Abort after 45 s so a hung server never freezes the UI indefinitely.
-  // The caller's finally-block always sets saving/loading back to false once the
-  // AbortError propagates, so the button un-freezes and an error message is shown.
+  // DELETE operations (cascade) may legitimately take several minutes on the backend.
+  // All other requests abort after 45 s so a hung server never freezes the UI.
+  const isDelete = (options.method ?? 'GET').toUpperCase() === 'DELETE'
+  const timeoutMs = options._timeout ?? (isDelete ? 300_000 : 45_000)
+  const timeoutLabel = isDelete ? '5 мин' : '45 с'
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 45_000)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   let res
   try {
     res = await fetch(`${BASE}${path}`, {
@@ -26,7 +28,7 @@ async function request(path, options = {}) {
     })
   } catch (err) {
     // Rethrow AbortError as a friendly timeout object so callers can show a message
-    if (err?.name === 'AbortError') throw { status: 408, message: 'Превышено время ожидания сервера (45 с). Попробуйте ещё раз.' }
+    if (err?.name === 'AbortError') throw { status: 408, message: `Превышено время ожидания сервера (${timeoutLabel}). Попробуйте ещё раз.` }
     throw err
   } finally {
     clearTimeout(timeoutId)
