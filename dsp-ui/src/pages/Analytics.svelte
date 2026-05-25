@@ -744,6 +744,14 @@
 
   </div>
 
+  <!-- ── DEBUG panel (temporary) ─────────────────────────────────────────── -->
+  <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:11px;font-family:monospace;word-break:break-all">
+    <b>DEBUG</b> · invRows={invRows.length} · statsMap keys={Object.keys(statsMap).length}<br>
+    spendCampaigns={allCampaigns.filter(c=>(statsMap[c.id]?.totalBudgetShowed??0)>0).length}<br>
+    statsMap[first]={JSON.stringify(Object.values(statsMap)[0]??null)}<br>
+    invRow[0]={JSON.stringify(invRows[0]??null)}
+  </div>
+
   <!-- ── Breakdown by vendor / format / city ───────────────────────────────── -->
   {#if !statsLoading || invRows.length > 0}
   <div class="three-col">
