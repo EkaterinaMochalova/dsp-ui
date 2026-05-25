@@ -1,10 +1,19 @@
 {
-  "name": "dspbov2",
-  "version": "1.0.0",
+  "name": "dsp-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "start": "serve -s . -l ${PORT:-8080}"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.1.0",
+    "svelte": "^4.2.18",
+    "vite": "^5.3.0"
   },
   "dependencies": {
-    "serve": "^14.2.3"
+    "leaflet": "^1.9.4"
   }
 }

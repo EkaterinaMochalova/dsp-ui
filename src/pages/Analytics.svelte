@@ -292,7 +292,7 @@
 
     if (!allCampaigns.length) return
 
-    // ── Phase 1: campaign-level KPI stats (fast, batch) ──────────────────────
+    // ── Phase 1: campaign-level KPI stats ────────────────────────────────────
     statsLoading = true
     const BATCH = 20
     const ids = allCampaigns.map(c => c.id)
@@ -305,12 +305,14 @@
         for (const r of rows) {
           const cid = r.campaign?.id
           if (!cid) continue
-          // campaignStats only returns campaign-level summary rows (no r.inventory)
-          agg[cid] = {
-            totalShowed:       r.totalCountShowed  ?? r.totalShowed  ?? 0,
-            totalOts:          r.otsCountShowed    ?? r.totalOpOts   ?? 0,
-            totalBudgetShowed: r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0,
-            cpm:               r.cpm ?? 0,
+          if (!r.inventory) {
+            // Campaign-level aggregate row
+            agg[cid] = {
+              totalShowed:       r.totalCountShowed  ?? r.totalShowed  ?? 0,
+              totalOts:          r.otsCountShowed    ?? r.totalOpOts   ?? 0,
+              totalBudgetShowed: r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0,
+              cpm:               r.cpm ?? 0,
+            }
           }
         }
         statsMap = { ...statsMap, ...agg }
@@ -319,62 +321,69 @@
     statsLoading = false
 
     // ── Phase 2: per-inventory breakdown for dimension cards ─────────────────
-    // Only load for campaigns that have actual spend (avoids useless API calls)
     const spendIds = allCampaigns
       .filter(c => (statsMap[c.id]?.totalBudgetShowed ?? 0) > 0)
       .map(c => c.id)
 
+    console.log('[Analytics] Phase2 spendIds:', spendIds.length, spendIds)
+    console.log('[Analytics] statsMap sample:', JSON.stringify(Object.entries(statsMap).slice(0, 3)))
+
     if (!spendIds.length) return
 
-    // Build inventory metadata map WITHOUT the lat/lon filter that allMapped() applies.
-    // allMapped() silently drops screens that have no coordinates, causing "Нет данных"
-    // for vendor/format/city cards even when spend data exists.
-    const screenMap = new Map()
-    try {
-      const PAGE = 500
-      let page = 0
-      while (true) {
-        const r = await api.inventories.list({ page, size: PAGE })
-        for (const inv of r.content ?? []) {
-          const itc = inv.inventoryTypeAndCity ?? {}
-          screenMap.set(inv.id, {
-            owner:  inv.displayOwner?.name || '',
-            format: inv.type || itc.type || '',
-            city:   inv.city?.name || itc.cityName || '',
-          })
-        }
-        if (r.last || page >= (r.totalPages ?? 1) - 1) break
-        page++
-      }
-    } catch {}
-
-    // Load impression-inventory-stats per campaign (10 in parallel at a time)
-    const BATCH_INV = 10
+    const BATCH_INV = 5
     const newInvRows = []
+    let debugLogged = false
     for (let i = 0; i < spendIds.length; i += BATCH_INV) {
       const batchIds = spendIds.slice(i, i + BATCH_INV)
+      console.log('[Analytics] calling inventoryStats for ids:', batchIds)
       const results = await Promise.all(
-        batchIds.map(id => api.stats.inventoryStats(id).catch(() => []))
+        batchIds.map(id => api.stats.inventoryStats(id).catch(e => {
+          console.warn('[Analytics] inventoryStats error for', id, e)
+          return []
+        }))
       )
+      console.log('[Analytics] inventoryStats results lengths:', results.map(r => Array.isArray(r) ? r.length : typeof r))
       for (const rows of results) {
-        if (!Array.isArray(rows)) continue
+        if (!Array.isArray(rows)) { console.log('[Analytics] non-array result:', rows); continue }
+        if (!rows.length) { console.log('[Analytics] empty array result'); continue }
+        // Log first response to console so we can see the actual field structure
+        if (!debugLogged) {
+          console.log('[Analytics] inventoryStats sample (first 2 rows):', JSON.stringify(rows.slice(0, 2), null, 2))
+          debugLogged = true
+        }
         for (const r of rows) {
-          const invId  = r.inventory?.id
-          const screen = invId ? screenMap.get(invId) : null
-          // Try direct fields on the stat row first (some endpoints embed them),
-          // then fall back to the screenMap lookup.
-          const owner  = r.displayOwnerDTO?.name || r.displayOwner?.name  || screen?.owner  || null
-          const format = r.inventoryFormat        || r.inventory?.type     || screen?.format || null
-          const city   = r.city                   || r.inventory?.city?.name || screen?.city || null
-          const spent  = r.customerStats?.budgetShowed ?? r.totalBudgetShowed ?? r.totalShowedBudget ?? 0
-          const showed = r.totalCountShowed ?? r.totalShowed ?? 0
-          const ots    = r.otsCountShowed   ?? r.totalOpOts  ?? r.totalOts ?? 0
-          if (owner || format || city) {
-            newInvRows.push({ invId, owner, format, city, spent, showed, ots })
+          const invId  = r.inventory?.id ?? r.inventoryId ?? null
+          const owner  = r.displayOwnerDTO?.name
+                      || r.displayOwner?.name
+                      || r.inventory?.displayOwner?.name
+                      || r.ownerName
+                      || r.inventory?.ownerName
+                      || null
+          const format = r.inventoryFormat
+                      || r.inventory?.type
+                      || r.inventoryType
+                      || r.inventory?.inventoryType
+                      || r.inventory?.inventoryTypeAndCity?.type
+                      || null
+          const city   = r.city
+                      || r.cityName
+                      || r.inventory?.city?.name
+                      || r.inventory?.cityName
+                      || r.inventory?.inventoryTypeAndCity?.cityName
+                      || null
+          const spent  = r.customerStats?.budgetShowed
+                      ?? r.totalBudgetShowed
+                      ?? r.totalShowedBudget
+                      ?? r.budgetShowed
+                      ?? 0
+          const showed = r.totalCountShowed ?? r.totalShowed ?? r.countShowed ?? 0
+          const ots    = r.otsCountShowed   ?? r.totalOpOts  ?? r.totalOts ?? r.otsShowed ?? 0
+          // Push every row that has an inventory ID, even if metadata is sparse
+          if (invId || owner || format || city) {
+            newInvRows.push({ invId, owner: owner || '—', format: format || '—', city: city || '—', spent, showed, ots })
           }
         }
       }
-      // Update progressively so cards fill in as data arrives
       invRows = [...newInvRows]
     }
   })
@@ -733,6 +742,14 @@
       {/if}
     </div>
 
+  </div>
+
+  <!-- ── DEBUG panel (temporary) ─────────────────────────────────────────── -->
+  <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:11px;font-family:monospace;word-break:break-all">
+    <b>DEBUG</b> · invRows={invRows.length} · statsMap keys={Object.keys(statsMap).length}<br>
+    spendCampaigns={allCampaigns.filter(c=>(statsMap[c.id]?.totalBudgetShowed??0)>0).length}<br>
+    statsMap[first]={JSON.stringify(Object.values(statsMap)[0]??null)}<br>
+    invRow[0]={JSON.stringify(invRows[0]??null)}
   </div>
 
   <!-- ── Breakdown by vendor / format / city ───────────────────────────────── -->
