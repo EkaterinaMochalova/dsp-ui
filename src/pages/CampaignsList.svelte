@@ -717,22 +717,22 @@
     </thead>
     <tbody>
       {#if loading}
-        <tr><td colspan="10" class="state-cell">
+        <tr><td colspan="11" class="state-cell">
           <div class="spinner"></div>
           Загружаю кампании…
         </td></tr>
 
       {:else if error}
-        <tr><td colspan="10" class="state-cell" style="color:#EF4444">{error}</td></tr>
+        <tr><td colspan="11" class="state-cell" style="color:#EF4444">{error}</td></tr>
 
       {:else if campaigns.length === 0}
-        <tr><td colspan="10" class="state-cell">Кампании не найдены</td></tr>
+        <tr><td colspan="11" class="state-cell">Кампании не найдены</td></tr>
 
       {:else if activeTab === 'groups'}
         {#each groups as group (group.name)}
           <!-- Group header row -->
           <tr class="group-row">
-            <td colspan="5">
+            <td colspan="6">
               <div class="group-name" on:click={() => toggleGroup(group.name)}>
                 <!-- Folder icon -->
                 <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:var(--text-muted);flex-shrink:0">
@@ -890,6 +890,9 @@
             </td>
             <td style="color:var(--text-muted);font-size:12px">
               {formatCities(c, citiesMap)}
+            </td>
+            <td style="color:var(--text-muted);font-size:12px">
+              {formatFormats(c, formatsMap)}
             </td>
             <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
               {formatDate(c.startDate)}
