@@ -337,7 +337,6 @@
 <style>
   .ov-page {
     padding: 28px 32px 48px;
-    max-width: 1200px;
     min-height: 100%;
     box-sizing: border-box;
   }
