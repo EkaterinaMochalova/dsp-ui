@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { formatMoney, formatDate, STATE_LABEL, STATE_COLOR, TYPE_LABEL } from '../lib/utils.js'
+  import { formatMoney, formatDate, STATE_LABEL, STATE_COLOR, TYPE_LABEL, FORMAT_LABEL } from '../lib/utils.js'
 
   // ── State ─────────────────────────────────────────────────────────────────
   let loading       = true
@@ -326,11 +326,26 @@
 
     if (!spendIds.length) return
 
-    // Await screens cache — needed for owner/format/city join
+    // Build inventory metadata map WITHOUT the lat/lon filter that allMapped() applies.
+    // allMapped() silently drops screens that have no coordinates, causing "Нет данных"
+    // for vendor/format/city cards even when spend data exists.
     const screenMap = new Map()
     try {
-      const screens = await api.inventories.allMapped()
-      for (const s of screens) screenMap.set(s.id, s)
+      const PAGE = 500
+      let page = 0
+      while (true) {
+        const r = await api.inventories.list({ page, size: PAGE })
+        for (const inv of r.content ?? []) {
+          const itc = inv.inventoryTypeAndCity ?? {}
+          screenMap.set(inv.id, {
+            owner:  inv.displayOwner?.name || '',
+            format: inv.type || itc.type || '',
+            city:   inv.city?.name || itc.cityName || '',
+          })
+        }
+        if (r.last || page >= (r.totalPages ?? 1) - 1) break
+        page++
+      }
     } catch {}
 
     // Load impression-inventory-stats per campaign (10 in parallel at a time)
@@ -346,13 +361,17 @@
         for (const r of rows) {
           const invId  = r.inventory?.id
           const screen = invId ? screenMap.get(invId) : null
-          const owner  = screen?.owner  || null
-          const format = screen?.format || null
-          const city   = screen?.city   || null
-          const spent  = r.customerStats?.budgetShowed ?? r.totalShowedBudget ?? 0
-          const showed = r.totalShowed ?? 0
-          const ots    = r.totalOpOts  ?? r.totalOts ?? 0
-          newInvRows.push({ invId, owner, format, city, spent, showed, ots })
+          // Try direct fields on the stat row first (some endpoints embed them),
+          // then fall back to the screenMap lookup.
+          const owner  = r.displayOwnerDTO?.name || r.displayOwner?.name  || screen?.owner  || null
+          const format = r.inventoryFormat        || r.inventory?.type     || screen?.format || null
+          const city   = r.city                   || r.inventory?.city?.name || screen?.city || null
+          const spent  = r.customerStats?.budgetShowed ?? r.totalBudgetShowed ?? r.totalShowedBudget ?? 0
+          const showed = r.totalCountShowed ?? r.totalShowed ?? 0
+          const ots    = r.otsCountShowed   ?? r.totalOpOts  ?? r.totalOts ?? 0
+          if (owner || format || city) {
+            newInvRows.push({ invId, owner, format, city, spent, showed, ots })
+          }
         }
       }
       // Update progressively so cards fill in as data arrives
@@ -756,7 +775,7 @@
           {#each byFormat as f}
             {@const color = FORMAT_COLOR[f.label] ?? '#64748b'}
             <div class="dim-row">
-              <div class="dim-label"><span class="dim-dot" style="background:{color};border-radius:2px"></span><span>{f.label}</span></div>
+              <div class="dim-label"><span class="dim-dot" style="background:{color};border-radius:2px"></span><span>{FORMAT_LABEL[f.label] ?? f.label}</span></div>
               <div class="dim-bar-wrap"><div class="dim-bar-fill" style="width:{(f.spent/formatMaxSpent*100).toFixed(1)}%;background:{color}"></div></div>
               <div class="dim-stats">
                 <span class="dim-count">{f.screens} экр.</span>
