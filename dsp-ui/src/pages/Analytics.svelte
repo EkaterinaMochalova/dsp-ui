@@ -292,15 +292,10 @@
 
     if (!allCampaigns.length) return
 
-    // ── Phase 1: campaign-level KPI stats + per-inventory dimension rows ────────
-    // campaignStats returns two kinds of rows in the same array:
-    //   • rows WITH  r.inventory  → per-screen stats (owner/format/city embedded)
-    //   • rows WITHOUT r.inventory → campaign-level aggregates
-    // We capture both in a single pass so no Phase 2 round-trip is needed.
+    // ── Phase 1: campaign-level KPI stats ────────────────────────────────────
     statsLoading = true
     const BATCH = 20
     const ids = allCampaigns.map(c => c.id)
-    const pendingInvRows = []
     for (let i = 0; i < ids.length; i += BATCH) {
       const batch = ids.slice(i, i + BATCH)
       try {
@@ -308,32 +303,10 @@
         if (!Array.isArray(rows)) continue
         const agg = {}
         for (const r of rows) {
-          if (r.inventory) {
-            // ── Per-inventory row ──────────────────────────────────────────
-            const invId  = r.inventory?.id ?? null
-            const owner  = r.displayOwnerDTO?.name
-                        || r.displayOwner?.name
-                        || r.inventory?.displayOwner?.name
-                        || null
-            const format = r.inventoryFormat
-                        || r.inventory?.type
-                        || null
-            const city   = r.inventory?.city?.name
-                        || r.city
-                        || null
-            const spent  = r.customerStats?.budgetShowed
-                        ?? r.totalBudgetShowed
-                        ?? r.totalShowedBudget
-                        ?? 0
-            const showed = r.totalCountShowed ?? r.totalShowed ?? 0
-            const ots    = r.otsCountShowed   ?? r.totalOpOts  ?? r.totalOts ?? 0
-            if (owner || format || city) {
-              pendingInvRows.push({ invId, owner, format, city, spent, showed, ots })
-            }
-          } else {
-            // ── Campaign-level aggregate row ───────────────────────────────
-            const cid = r.campaign?.id
-            if (!cid) continue
+          const cid = r.campaign?.id
+          if (!cid) continue
+          if (!r.inventory) {
+            // Campaign-level aggregate row
             agg[cid] = {
               totalShowed:       r.totalCountShowed  ?? r.totalShowed  ?? 0,
               totalOts:          r.otsCountShowed    ?? r.totalOpOts   ?? 0,
@@ -343,11 +316,67 @@
           }
         }
         statsMap = { ...statsMap, ...agg }
-        // Update dimension cards progressively as each batch arrives
-        if (pendingInvRows.length) invRows = [...pendingInvRows]
       } catch {}
     }
     statsLoading = false
+
+    // ── Phase 2: per-inventory breakdown for dimension cards ─────────────────
+    const spendIds = allCampaigns
+      .filter(c => (statsMap[c.id]?.totalBudgetShowed ?? 0) > 0)
+      .map(c => c.id)
+
+    if (!spendIds.length) return
+
+    const BATCH_INV = 5
+    const newInvRows = []
+    let debugLogged = false
+    for (let i = 0; i < spendIds.length; i += BATCH_INV) {
+      const batchIds = spendIds.slice(i, i + BATCH_INV)
+      const results = await Promise.all(
+        batchIds.map(id => api.stats.inventoryStats(id).catch(() => []))
+      )
+      for (const rows of results) {
+        if (!Array.isArray(rows) || !rows.length) continue
+        // Log first response to console so we can see the actual field structure
+        if (!debugLogged) {
+          console.log('[Analytics] inventoryStats sample (first 2 rows):', JSON.stringify(rows.slice(0, 2), null, 2))
+          debugLogged = true
+        }
+        for (const r of rows) {
+          const invId  = r.inventory?.id ?? r.inventoryId ?? null
+          const owner  = r.displayOwnerDTO?.name
+                      || r.displayOwner?.name
+                      || r.inventory?.displayOwner?.name
+                      || r.ownerName
+                      || r.inventory?.ownerName
+                      || null
+          const format = r.inventoryFormat
+                      || r.inventory?.type
+                      || r.inventoryType
+                      || r.inventory?.inventoryType
+                      || r.inventory?.inventoryTypeAndCity?.type
+                      || null
+          const city   = r.city
+                      || r.cityName
+                      || r.inventory?.city?.name
+                      || r.inventory?.cityName
+                      || r.inventory?.inventoryTypeAndCity?.cityName
+                      || null
+          const spent  = r.customerStats?.budgetShowed
+                      ?? r.totalBudgetShowed
+                      ?? r.totalShowedBudget
+                      ?? r.budgetShowed
+                      ?? 0
+          const showed = r.totalCountShowed ?? r.totalShowed ?? r.countShowed ?? 0
+          const ots    = r.otsCountShowed   ?? r.totalOpOts  ?? r.totalOts ?? r.otsShowed ?? 0
+          // Push every row that has an inventory ID, even if metadata is sparse
+          if (invId || owner || format || city) {
+            newInvRows.push({ invId, owner: owner || '—', format: format || '—', city: city || '—', spent, showed, ots })
+          }
+        }
+      }
+      invRows = [...newInvRows]
+    }
   })
 </script>
 
