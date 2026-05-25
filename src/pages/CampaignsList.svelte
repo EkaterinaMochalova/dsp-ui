@@ -29,6 +29,53 @@
     document.addEventListener('mouseup', onUp)
   }
 
+  // ── Column visibility & order ──────────────────────────────────────────────
+  const COL_DEFS = [
+    { id: 'status',  label: 'Статус'      },
+    { id: 'name',    label: 'Кампания'    },
+    { id: 'city',    label: 'Город'       },
+    { id: 'format',  label: 'Формат'      },
+    { id: 'start',   label: 'Начало'      },
+    { id: 'end',     label: 'Конец'       },
+    { id: 'budget',  label: 'Бюджет'      },
+    { id: 'today',   label: 'Сегодня'     },
+    { id: 'ots',     label: 'OTS'         },
+    { id: 'shows',   label: 'Выходы'      },
+  ]
+  const _COL_CFG_KEY = 'dsp_col_cfg'
+  // colCfg: [{id, visible}] in display order — persisted to localStorage
+  let colCfg = (() => {
+    try {
+      const s = JSON.parse(localStorage.getItem(_COL_CFG_KEY))
+      if (Array.isArray(s) && s.length === COL_DEFS.length) return s
+    } catch {}
+    return COL_DEFS.map(c => ({ id: c.id, visible: true }))
+  })()
+  function saveColCfg() {
+    try { localStorage.setItem(_COL_CFG_KEY, JSON.stringify(colCfg)) } catch {}
+  }
+  function toggleColVis(id) {
+    colCfg = colCfg.map(c => c.id === id ? { ...c, visible: !c.visible } : c)
+    saveColCfg()
+  }
+  function moveCol(id, dir) {
+    const idx = colCfg.findIndex(c => c.id === id)
+    const newIdx = idx + dir
+    if (newIdx < 0 || newIdx >= colCfg.length) return
+    const arr = [...colCfg]
+    ;[arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]]
+    colCfg = arr
+    saveColCfg()
+  }
+  function resetColCfg() {
+    colCfg = COL_DEFS.map(c => ({ id: c.id, visible: true }))
+    saveColCfg()
+  }
+  let colPanelOpen = false
+
+  $: visibleColIds = colCfg.filter(c => c.visible).map(c => c.id)
+  function cv(id) { return visibleColIds.includes(id) }
+
   // Filters
   let filterType = ''
   let filterState = ''
@@ -683,11 +730,30 @@
   </button>
   <div class="tab-actions">
     <!-- Column settings icon -->
-    <button style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:6px;display:flex">
-      <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z"/>
-      </svg>
-    </button>
+    <div class="col-cfg-wrap" on:mouseleave={() => colPanelOpen = false}>
+      <button class="col-cfg-btn" on:click={() => colPanelOpen = !colPanelOpen} title="Настройка колонок">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z"/>
+        </svg>
+      </button>
+      {#if colPanelOpen}
+      <div class="col-panel">
+        <div class="col-panel-title">Колонки</div>
+        {#each colCfg as col, i}
+          {@const def = COL_DEFS.find(d => d.id === col.id)}
+          <div class="col-panel-row">
+            <button class="col-mv" on:click={() => moveCol(col.id, -1)} disabled={i === 0} title="Вверх">↑</button>
+            <button class="col-mv" on:click={() => moveCol(col.id, 1)} disabled={i === colCfg.length - 1} title="Вниз">↓</button>
+            <label class="col-panel-item">
+              <input type="checkbox" checked={col.visible} on:change={() => toggleColVis(col.id)} />
+              <span>{def?.label ?? col.id}</span>
+            </label>
+          </div>
+        {/each}
+        <button class="col-reset-btn" on:click={resetColCfg}>Сбросить</button>
+      </div>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -696,13 +762,17 @@
 <div class="table-wrap">
   <table class="campaigns-table">
     <colgroup>
-      {#each colW as w, i}
-        <col style="width:{w}px;min-width:{i === colW.length-1 ? w : 40}px">
+      {#each visibleColIds as id}
+        {@const defIdx = COL_DEFS.findIndex(d => d.id === id)}
+        {@const w = colW[defIdx] ?? 100}
+        <col style="width:{w}px;min-width:40px">
       {/each}
+      <col style="width:36px;min-width:36px">
     </colgroup>
     <thead>
       <tr>
-        <th style="position:relative">Статус<div class="rzh" on:mousedown={(e)=>rzStart(0,e)}></div></th>
+        {#if cv('status')}<th style="position:relative">Статус<div class="rzh" on:mousedown={(e)=>rzStart(0,e)}></div></th>{/if}
+        {#if cv('name')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('name')}>
             Кампания
@@ -716,8 +786,10 @@
           </button>
           <div class="rzh" on:mousedown={(e)=>rzStart(1,e)}></div>
         </th>
-        <th style="position:relative;white-space:nowrap">Город<div class="rzh" on:mousedown={(e)=>rzStart(2,e)}></div></th>
-        <th style="position:relative;white-space:nowrap">Формат<div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div></th>
+        {/if}
+        {#if cv('city')}<th style="position:relative;white-space:nowrap">Город<div class="rzh" on:mousedown={(e)=>rzStart(2,e)}></div></th>{/if}
+        {#if cv('format')}<th style="position:relative;white-space:nowrap">Формат<div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div></th>{/if}
+        {#if cv('start')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('startDate')}>
             Начало
@@ -731,6 +803,8 @@
           </button>
           <div class="rzh" on:mousedown={(e)=>rzStart(4,e)}></div>
         </th>
+        {/if}
+        {#if cv('end')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('endDate')}>
             Конец
@@ -744,6 +818,8 @@
           </button>
           <div class="rzh" on:mousedown={(e)=>rzStart(5,e)}></div>
         </th>
+        {/if}
+        {#if cv('budget')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('budget')}>
             Бюджет
@@ -757,7 +833,9 @@
           </button>
           <div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div>
         </th>
-        <th style="position:relative"><span class="sort-th" style="cursor:default">Сегодня</span><div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div></th>
+        {/if}
+        {#if cv('today')}<th style="position:relative"><span class="sort-th" style="cursor:default">Сегодня</span><div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div></th>{/if}
+        {#if cv('ots')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('otsCount')}>
             OTS
@@ -771,6 +849,8 @@
           </button>
           <div class="rzh" on:mousedown={(e)=>rzStart(8,e)}></div>
         </th>
+        {/if}
+        {#if cv('shows')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('impressionsCount')}>
             Выходы
@@ -784,27 +864,28 @@
           </button>
           <div class="rzh" on:mousedown={(e)=>rzStart(9,e)}></div>
         </th>
+        {/if}
         <th></th>
       </tr>
     </thead>
     <tbody>
       {#if loading}
-        <tr><td colspan="11" class="state-cell">
+        <tr><td colspan={visibleColIds.length + 1} class="state-cell">
           <div class="spinner"></div>
           Загружаю кампании…
         </td></tr>
 
       {:else if error}
-        <tr><td colspan="11" class="state-cell" style="color:#EF4444">{error}</td></tr>
+        <tr><td colspan={visibleColIds.length + 1} class="state-cell" style="color:#EF4444">{error}</td></tr>
 
       {:else if campaigns.length === 0}
-        <tr><td colspan="11" class="state-cell">Кампании не найдены</td></tr>
+        <tr><td colspan={visibleColIds.length + 1} class="state-cell">Кампании не найдены</td></tr>
 
       {:else if activeTab === 'groups'}
         {#each groups as group (group.name)}
           <!-- Group header row -->
           <tr class="group-row">
-            <td colspan="6">
+            <td colspan={Math.min(6, visibleColIds.length + 1)}>
               <div class="group-name" on:click={() => toggleGroup(group.name)}>
                 <!-- Folder icon -->
                 <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:var(--text-muted);flex-shrink:0">
@@ -818,14 +899,16 @@
               </div>
             </td>
             <!-- Group totals -->
+            {#if cv('budget')}
             <td class="budget-cell">
               <div class="budget-main">
                 {formatMoney(group.items.reduce((s,c)=>s+(c.budget??0),0))}
               </div>
             </td>
-            <td></td>
-            <td></td>
-            <td></td>
+            {/if}
+            {#if cv('today')}<td></td>{/if}
+            {#if cv('ots')}<td></td>{/if}
+            {#if cv('shows')}<td></td>{/if}
             <td>
               <button class="group-expand" on:click={() => toggleGroup(group.name)}>
                 <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"
@@ -840,25 +923,18 @@
           {#if isExpanded(group.name)}
             {#each group.items as c (c.id)}
               <tr class="campaign-row">
-                <td>
-                  <StatusBadge state={c.state} />
-                </td>
+                {#if cv('status')}<td><StatusBadge state={c.state} /></td>{/if}
+                {#if cv('name')}
                 <td>
                   <button class="name-link" on:click={() => openCampaign(c.id)}>{c.name || '(без названия)'}</button>
                   <div class="cell-advertiser">{c.agency?.name ?? ''}</div>
                 </td>
-                <td style="color:var(--text-muted);font-size:12px">
-                  {formatCities(c, citiesMap)}
-                </td>
-                <td style="color:var(--text-muted);font-size:12px">
-                  {formatFormats(c, formatsMap)}
-                </td>
-                <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
-                  {formatDate(c.startDate)}
-                </td>
-                <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
-                  {formatDate(c.endDate)}
-                </td>
+                {/if}
+                {#if cv('city')}<td style="color:var(--text-muted);font-size:12px">{formatCities(c, citiesMap)}</td>{/if}
+                {#if cv('format')}<td style="color:var(--text-muted);font-size:12px">{formatFormats(c, formatsMap)}</td>{/if}
+                {#if cv('start')}<td style="color:var(--text-muted);font-size:12px;white-space:nowrap">{formatDate(c.startDate)}</td>{/if}
+                {#if cv('end')}<td style="color:var(--text-muted);font-size:12px;white-space:nowrap">{formatDate(c.endDate)}</td>{/if}
+                {#if cv('budget')}
                 <td class="budget-cell">
                   {#if true}
                     {@const totalSpent = statsMap[c.id]?.totalBudgetShowed > 0 ? statsMap[c.id].totalBudgetShowed : (todayStatsMap[c.id]?.spend ?? 0)}
@@ -875,6 +951,8 @@
                     {/if}
                   {/if}
                 </td>
+                {/if}
+                {#if cv('today')}
                 <td class="budget-cell">
                   {#if todayMap[c.id] != null && todayMap[c.id] > 0}
                     <div class="budget-main">{formatMoney(todayMap[c.id])}</div>
@@ -891,6 +969,8 @@
                     <div class="budget-main" style="color:var(--text-muted)">—</div>
                   {/if}
                 </td>
+                {/if}
+                {#if cv('ots')}
                 <td style="font-size:12px;color:var(--text-muted)">
                   {#if true}
                     {@const otsVal = statsMap[c.id]?.totalOts ?? todayStatsMap[c.id]?.ots ?? null}
@@ -904,6 +984,8 @@
                     {/if}
                   {/if}
                 </td>
+                {/if}
+                {#if cv('shows')}
                 <td style="font-size:12px;color:var(--text-muted)">
                   {#if true}
                     {@const showedVal = statsMap[c.id]?.totalShowed ?? todayStatsMap[c.id]?.showed ?? null}
@@ -918,6 +1000,7 @@
                     {/if}
                   {/if}
                 </td>
+                {/if}
                 <td style="position:relative">
                   <button class="row-menu-btn" title="Действия" on:click={(e) => toggleRowMenu(c.id, e)}>⋮</button>
                   {#if openRowMenu === c.id}
@@ -953,25 +1036,18 @@
         <!-- Flat "all" tab -->
         {#each visibleCampaigns as c (c.id)}
           <tr class="campaign-row">
-            <td>
-              <StatusBadge state={c.state} />
-            </td>
+            {#if cv('status')}<td><StatusBadge state={c.state} /></td>{/if}
+            {#if cv('name')}
             <td>
               <button class="name-link" on:click={() => openCampaign(c.id)}>{c.name || '(без названия)'}</button>
               <div class="cell-advertiser">{c.agency?.name ?? ''}</div>
             </td>
-            <td style="color:var(--text-muted);font-size:12px">
-              {formatCities(c, citiesMap)}
-            </td>
-            <td style="color:var(--text-muted);font-size:12px">
-              {formatFormats(c, formatsMap)}
-            </td>
-            <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
-              {formatDate(c.startDate)}
-            </td>
-            <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
-              {formatDate(c.endDate)}
-            </td>
+            {/if}
+            {#if cv('city')}<td style="color:var(--text-muted);font-size:12px">{formatCities(c, citiesMap)}</td>{/if}
+            {#if cv('format')}<td style="color:var(--text-muted);font-size:12px">{formatFormats(c, formatsMap)}</td>{/if}
+            {#if cv('start')}<td style="color:var(--text-muted);font-size:12px;white-space:nowrap">{formatDate(c.startDate)}</td>{/if}
+            {#if cv('end')}<td style="color:var(--text-muted);font-size:12px;white-space:nowrap">{formatDate(c.endDate)}</td>{/if}
+            {#if cv('budget')}
             <td class="budget-cell">
               {#if true}
                 {@const totalSpent = statsMap[c.id]?.totalBudgetShowed > 0 ? statsMap[c.id].totalBudgetShowed : (todayStatsMap[c.id]?.spend ?? 0)}
@@ -988,6 +1064,8 @@
                 {/if}
               {/if}
             </td>
+            {/if}
+            {#if cv('today')}
             <td class="budget-cell">
               {#if todayMap[c.id] != null && todayMap[c.id] > 0}
                 <div class="budget-main">{formatMoney(todayMap[c.id])}</div>
@@ -1004,6 +1082,8 @@
                 <div class="budget-main" style="color:var(--text-muted)">—</div>
               {/if}
             </td>
+            {/if}
+            {#if cv('ots')}
             <td style="font-size:12px;color:var(--text-muted)">
               {#if true}
                 {@const otsVal = statsMap[c.id]?.totalOts ?? todayStatsMap[c.id]?.ots ?? null}
@@ -1017,6 +1097,8 @@
                 {/if}
               {/if}
             </td>
+            {/if}
+            {#if cv('shows')}
             <td style="font-size:12px;color:var(--text-muted)">
               {#if true}
                 {@const showedVal = statsMap[c.id]?.totalShowed ?? todayStatsMap[c.id]?.showed ?? null}
@@ -1031,6 +1113,7 @@
                 {/if}
               {/if}
             </td>
+            {/if}
             <td style="position:relative">
               <button class="row-menu-btn" title="Действия" on:click={(e) => toggleRowMenu(c.id, e)}>⋮</button>
               {#if openRowMenu === c.id}
@@ -1292,4 +1375,49 @@
     color: var(--accent, #6366f1);
     text-decoration: underline;
   }
+
+  .col-cfg-wrap { position: relative; }
+  .col-cfg-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted, #6b7280); padding: 6px;
+    display: flex; border-radius: 5px; transition: background 0.15s;
+  }
+  .col-cfg-btn:hover { background: #f3f4f6; }
+  .col-panel {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 200;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10); padding: 8px 0;
+    min-width: 180px; max-height: 360px; overflow-y: auto;
+  }
+  .col-panel-title {
+    font-size: 11px; font-weight: 600; color: #6b7280;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 4px 12px 8px;
+  }
+  .col-panel-row {
+    display: flex; align-items: center; gap: 2px; padding: 2px 8px;
+  }
+  .col-mv {
+    background: none; border: none; cursor: pointer; color: #9ca3af;
+    font-size: 12px; width: 20px; height: 22px; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s;
+  }
+  .col-mv:hover:not(:disabled) { background: #f3f4f6; color: #374151; }
+  .col-mv:disabled { opacity: 0.3; cursor: default; }
+  .col-panel-item {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 13px; color: #374151; cursor: pointer;
+    padding: 4px 4px; flex: 1; border-radius: 4px;
+    transition: background 0.1s;
+  }
+  .col-panel-item:hover { background: #f9fafb; }
+  .col-panel-item input { margin: 0; cursor: pointer; }
+  .col-reset-btn {
+    width: calc(100% - 16px); margin: 6px 8px 2px;
+    font-size: 12px; color: #6b7280; background: none;
+    border: 1px solid #e5e7eb; border-radius: 5px;
+    padding: 4px 0; cursor: pointer; transition: background 0.15s;
+  }
+  .col-reset-btn:hover { background: #f9fafb; }
 </style>
