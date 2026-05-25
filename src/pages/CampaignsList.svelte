@@ -377,8 +377,9 @@
     }
   }
 
-  function formatCities(c) {
-    const names = citiesMap[c.id] ?? []
+  // citiesMap passed explicitly so Svelte tracks the dependency and re-renders on update
+  function formatCities(c, map) {
+    const names = map[c.id] ?? []
     if (!names.length) return '—'
     if (names.length <= 2) return names.join(', ')
     return names.slice(0, 2).join(', ') + `, +${names.length - 2}`
@@ -764,7 +765,7 @@
                   <div class="cell-advertiser">{c.agency?.name ?? ''}</div>
                 </td>
                 <td style="color:var(--text-muted);font-size:12px">
-                  {formatCities(c)}
+                  {formatCities(c, citiesMap)}
                 </td>
                 <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
                   {formatDate(c.startDate)}
@@ -874,7 +875,7 @@
               <div class="cell-advertiser">{c.agency?.name ?? ''}</div>
             </td>
             <td style="color:var(--text-muted);font-size:12px">
-              {formatCities(c)}
+              {formatCities(c, citiesMap)}
             </td>
             <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
               {formatDate(c.startDate)}
