@@ -251,6 +251,42 @@
   })()
   $: statusMaxCount = Math.max(1, ...byStatus.map(s => s.count))
 
+  // ── Breakdown by brand ────────────────────────────────────────────────────
+  $: byBrand = (() => {
+    const m = {}
+    for (const c of filteredCampaigns) {
+      const key = c.brand?.name
+      if (!key) continue
+      if (!m[key]) m[key] = { count: 0, budget: 0, spent: 0 }
+      m[key].count++
+      m[key].budget += c.budget ?? 0
+      m[key].spent  += c._stats.totalBudgetShowed ?? 0
+    }
+    return Object.entries(m)
+      .sort((a, b) => (b[1].spent || b[1].budget) - (a[1].spent || a[1].budget))
+      .slice(0, 12)
+      .map(([label, v]) => ({ label, ...v }))
+  })()
+  $: brandMaxVal = Math.max(1, ...byBrand.map(b => b.spent || b.budget))
+
+  // ── Breakdown by advertiser (customer) ────────────────────────────────────
+  $: byAdvertiser = (() => {
+    const m = {}
+    for (const c of filteredCampaigns) {
+      const key = c.customer?.name
+      if (!key) continue
+      if (!m[key]) m[key] = { count: 0, budget: 0, spent: 0 }
+      m[key].count++
+      m[key].budget += c.budget ?? 0
+      m[key].spent  += c._stats.totalBudgetShowed ?? 0
+    }
+    return Object.entries(m)
+      .sort((a, b) => (b[1].spent || b[1].budget) - (a[1].spent || a[1].budget))
+      .slice(0, 12)
+      .map(([label, v]) => ({ label, ...v }))
+  })()
+  $: advertiserMaxVal = Math.max(1, ...byAdvertiser.map(a => a.spent || a.budget))
+
   // States/types that actually appear in loaded campaigns (with counts)
   $: usedStates = (() => {
     const m = {}
@@ -826,6 +862,63 @@
               </div>
               <div class="dim-stats">
                 <span class="dim-count">{s.count}</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+  </div>
+
+  <!-- ── Breakdown by brand / advertiser ──────────────────────────────────── -->
+  <div class="two-col">
+
+    <!-- By brand -->
+    <div class="card">
+      <div class="card-title">{$tr('an_by_brand')}</div>
+      {#if byBrand.length === 0}
+        <p class="empty-text">{$tr('an_no_data')}</p>
+      {:else}
+        <div class="dim-list">
+          {#each byBrand as b}
+            {@const barVal = b.spent || b.budget}
+            <div class="dim-row">
+              <div class="dim-label"><span class="dim-dot" style="background:#8b5cf6;border-radius:2px"></span><span title={b.label}>{b.label}</span></div>
+              <div class="dim-bar-wrap"><div class="dim-bar-fill" style="width:{(barVal/brandMaxVal*100).toFixed(1)}%;background:#8b5cf6"></div></div>
+              <div class="dim-stats">
+                <span class="dim-count">{b.count}</span>
+                {#if b.spent > 0}
+                  <span class="dim-spent">{formatMoney(b.spent)}</span>
+                {:else}
+                  <span class="dim-budget">{formatMoney(b.budget)}</span>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <!-- By advertiser -->
+    <div class="card">
+      <div class="card-title">{$tr('an_by_advertiser')}</div>
+      {#if byAdvertiser.length === 0}
+        <p class="empty-text">{$tr('an_no_data')}</p>
+      {:else}
+        <div class="dim-list">
+          {#each byAdvertiser as a}
+            {@const barVal = a.spent || a.budget}
+            <div class="dim-row">
+              <div class="dim-label"><span class="dim-dot" style="background:#f59e0b;border-radius:2px"></span><span title={a.label}>{a.label}</span></div>
+              <div class="dim-bar-wrap"><div class="dim-bar-fill" style="width:{(barVal/advertiserMaxVal*100).toFixed(1)}%;background:#f59e0b"></div></div>
+              <div class="dim-stats">
+                <span class="dim-count">{a.count}</span>
+                {#if a.spent > 0}
+                  <span class="dim-spent">{formatMoney(a.spent)}</span>
+                {:else}
+                  <span class="dim-budget">{formatMoney(a.budget)}</span>
+                {/if}
               </div>
             </div>
           {/each}
