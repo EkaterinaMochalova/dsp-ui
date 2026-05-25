@@ -466,6 +466,8 @@
   $: hasBudgetFilter = !!(filterBudgetMin || filterBudgetMax)
   $: hasCityFilter = !!filterCity
   $: hasFormatFilter = !!filterFormat
+  // Unique inventory format codes seen in current page's data
+  $: availableFormats = [...new Set(Object.values(formatsMap).flat())].sort()
 
   // Reactive sort icons — $: guarantees re-evaluation whenever sortBy/sortDir change
   $: si = (() => {
@@ -539,14 +541,14 @@
   <!-- Type chip -->
   <div style="position:relative">
     <button class="chip" class:active={!!filterType} on:click={() => toggleChip('type')}>
-      Формат {filterType ? `· ${TYPE_LABEL_MAP[filterType] ?? filterType}` : ''}
+      Тип кампании {filterType ? `· ${TYPE_LABEL_MAP[filterType] ?? filterType}` : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     {#if openChip === 'type'}
       <div class="dropdown">
-        <button class="dropdown-item" on:click={() => clearFilter('type')}>Все форматы</button>
+        <button class="dropdown-item" on:click={() => clearFilter('type')}>Все типы</button>
         {#each allTypes as t}
           <button class="dropdown-item" class:selected={filterType===t} on:click={() => applyFilter('type', t)}>
             {TYPE_LABEL_MAP[t] ?? t}
@@ -637,20 +639,24 @@
   <!-- Inventory format filter chip -->
   <div style="position:relative">
     <button class="chip" class:active={hasFormatFilter} on:click={() => toggleChip('inv-format')}>
-      Носитель {hasFormatFilter ? `· ${FORMAT_LABEL[filterFormat] ?? filterFormat}` : ''}
+      Формат {hasFormatFilter ? `· ${FORMAT_LABEL[filterFormat] ?? filterFormat}` : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     {#if openChip === 'inv-format'}
       <div class="dropdown" style="min-width:180px">
-        <button class="dropdown-item" on:click={() => clearFilter('inv-format')}>Все носители</button>
-        {#each Object.entries(FORMAT_LABEL) as [code, label]}
-          <button class="dropdown-item" class:selected={filterFormat === code}
-            on:click={() => { filterFormat = code; openChip = null }}>
-            {label}
-          </button>
-        {/each}
+        <button class="dropdown-item" on:click={() => clearFilter('inv-format')}>Все форматы</button>
+        {#if availableFormats.length === 0}
+          <div class="dropdown-group">Загрузка…</div>
+        {:else}
+          {#each availableFormats as code}
+            <button class="dropdown-item" class:selected={filterFormat === code}
+              on:click={() => { filterFormat = code; openChip = null }}>
+              {FORMAT_LABEL[code] ?? code}
+            </button>
+          {/each}
+        {/if}
       </div>
     {/if}
   </div>
