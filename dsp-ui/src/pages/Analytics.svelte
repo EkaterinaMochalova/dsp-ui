@@ -260,10 +260,13 @@
       .sort((a, b) => b.spent - a.spent)
   }
 
-  // Pass invRows explicitly so Svelte sees it as a reactive dependency
-  $: byVendor = aggByDim('owner',  invRows).slice(0, 12)
-  $: byFormat = aggByDim('format', invRows)
-  $: byCity   = aggByDim('city',   invRows).slice(0, 12)
+  // Filter invRows to match whichever campaigns pass the current filter bar
+  $: _filteredIds    = new Set(filteredCampaigns.map(c => c.id))
+  $: filteredInvRows = invRows.filter(r => _filteredIds.has(r.campaignId))
+
+  $: byVendor = aggByDim('owner',  filteredInvRows).slice(0, 12)
+  $: byFormat = aggByDim('format', filteredInvRows)
+  $: byCity   = aggByDim('city',   filteredInvRows).slice(0, 12)
 
   $: vendorMaxSpent = Math.max(1, ...byVendor.map(v => v.spent))
   $: formatMaxSpent = Math.max(1, ...byFormat.map(f => f.spent))
@@ -362,8 +365,9 @@
       const results = await Promise.all(
         batchIds.map(id => api.stats.inventoryStats(id).catch(() => []))
       )
-      for (const rows of results) {
-        if (!Array.isArray(rows) || !rows.length) continue
+      results.forEach((rows, idx) => {
+        if (!Array.isArray(rows) || !rows.length) return
+        const campaignId = batchIds[idx]
         for (const r of rows) {
           const invId  = r.inventory?.id ?? null
           // impression-inventory-stats only embeds id/name/location on inventory;
@@ -376,10 +380,12 @@
           const showed = r.totalCountShowed ?? r.totalShowed ?? 0
           const ots    = r.totalOpOts ?? r.totalOts ?? 0
           if (owner || format || city) {
-            newInvRows.push({ invId, owner, format, city, spent, showed, ots })
+            // campaignId tag lets us filter breakdown by whichever campaigns
+            // are currently visible through the filter bar
+            newInvRows.push({ invId, campaignId, owner, format, city, spent, showed, ots })
           }
         }
-      }
+      })
       invRows = [...newInvRows]
     }
   })
