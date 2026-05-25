@@ -323,8 +323,10 @@
       const toApiDate = d => !d ? null : (d.includes('T') ? d : d + 'T00:00:00')
 
       const budgetBuyer = camp.budgetBuyer ?? camp.budget ?? 0
-      const additionalCharge = camp.additionalCharge ?? 0
-      const budget = Math.round(budgetBuyer * (1 + additionalCharge / 100) * 100) / 100
+      // Never inherit the server's additionalCharge default (1.0 = 100% markup) for a new copy —
+      // that value causes every RTB bid to fail with code 1000.  Always start duplicates at 0.
+      const additionalCharge = 0
+      const budget = budgetBuyer  // no markup on a fresh copy
 
       const payload = {
         name:             'Копия: ' + (camp.name ?? ''),
