@@ -27,6 +27,10 @@
   let minBudget     = ''
   let maxBudget     = ''
 
+  // Dropdown open state
+  let statusDropdownOpen = false
+  let typeDropdownOpen   = false
+
   // Filter values — breakdown section (vendor / format / city drill-down)
   let dimFilterVendors = []   // selected vendor names
   let dimFilterFormats = []   // selected format keys
@@ -245,6 +249,26 @@
       }))
   })()
   $: statusMaxCount = Math.max(1, ...byStatus.map(s => s.count))
+
+  // States/types that actually appear in loaded campaigns (with counts)
+  $: usedStates = (() => {
+    const m = {}
+    for (const c of allCampaigns) {
+      if (c.state) m[c.state] = (m[c.state] ?? 0) + 1
+    }
+    return Object.entries(m)
+      .sort((a, b) => b[1] - a[1])
+      .map(([state, count]) => ({ state, count }))
+  })()
+  $: usedTypes = (() => {
+    const m = {}
+    for (const c of allCampaigns) {
+      if (c.type) m[c.type] = (m[c.type] ?? 0) + 1
+    }
+    return Object.entries(m)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count]) => ({ type, count }))
+  })()
 
   // Generic helper: aggregate rows by a string dimension key.
   // rows must be passed explicitly so Svelte tracks it as a reactive dependency
@@ -500,33 +524,59 @@
 
     <div class="filter-row filter-row--dropdowns">
 
-      <!-- Status multi-select -->
-      <div class="filter-group filter-group--wide">
+      <!-- Status dropdown -->
+      <div class="filter-group">
         <label class="filter-label">Статус</label>
-        <div class="multi-check">
-          {#each (stateOptions.length ? stateOptions : Object.keys(STATE_LABEL)) as s}
-            <label class="mcheck-item">
-              <input type="checkbox" checked={selectedStates.includes(s)}
-                on:change={() => toggleState(s)} />
-              <span class="mcheck-dot" style="background:{stateColor(s)}"></span>
-              <span>{STATE_LABEL[s] ?? s}</span>
-            </label>
-          {/each}
+        <div class="fdd-wrap" on:mouseleave={() => statusDropdownOpen = false}>
+          <button class="fdd-btn" on:click={() => statusDropdownOpen = !statusDropdownOpen}>
+            {#if selectedStates.length === 0}
+              Все статусы
+            {:else}
+              {selectedStates.length} выбрано
+            {/if}
+            <span class="fdd-arrow">{statusDropdownOpen ? '▲' : '▼'}</span>
+          </button>
+          {#if statusDropdownOpen}
+          <div class="fdd-panel">
+            {#each usedStates as { state, count }}
+              <label class="fdd-item {selectedStates.includes(state) ? 'fdd-item--checked' : ''}">
+                <input type="checkbox" checked={selectedStates.includes(state)}
+                  on:change={() => toggleState(state)} />
+                <span class="fdd-dot" style="background:{stateColor(state)}"></span>
+                <span class="fdd-name">{STATE_LABEL[state] ?? state}</span>
+                <span class="fdd-count">{count}</span>
+              </label>
+            {/each}
+          </div>
+          {/if}
         </div>
       </div>
 
-      <!-- Type multi-select -->
-      <div class="filter-group filter-group--wide">
+      <!-- Type dropdown -->
+      <div class="filter-group">
         <label class="filter-label">Тип</label>
-        <div class="multi-check">
-          {#each (typeOptions.length ? typeOptions : Object.keys(TYPE_LABEL)) as t}
-            <label class="mcheck-item">
-              <input type="checkbox" checked={selectedTypes.includes(t)}
-                on:change={() => toggleType(t)} />
-              <span class="mcheck-dot" style="background:{TYPE_COLOR[t] ?? '#64748b'};border-radius:2px"></span>
-              <span>{TYPE_LABEL[t] ?? t}</span>
-            </label>
-          {/each}
+        <div class="fdd-wrap" on:mouseleave={() => typeDropdownOpen = false}>
+          <button class="fdd-btn" on:click={() => typeDropdownOpen = !typeDropdownOpen}>
+            {#if selectedTypes.length === 0}
+              Все типы
+            {:else}
+              {selectedTypes.length} выбрано
+            {/if}
+            <span class="fdd-arrow">{typeDropdownOpen ? '▲' : '▼'}</span>
+          </button>
+          {#if typeDropdownOpen}
+          <div class="fdd-panel">
+            {#each usedTypes as { type, count }}
+              <label class="fdd-item {selectedTypes.includes(type) ? 'fdd-item--checked' : ''}">
+                <input type="checkbox" checked={selectedTypes.includes(type)}
+                  on:change={() => toggleType(type)} />
+                <span class="fdd-dot" style="background:{TYPE_COLOR[type] ?? '#64748b'};border-radius:2px"></span>
+                <span class="fdd-name">{TYPE_LABEL[type] ?? type}</span>
+                <span class="fdd-count">{count}</span>
+              </label>
+            {/each}
+          </div>
+          {/if}
         </div>
       </div>
 
@@ -1268,6 +1318,72 @@
     color: var(--text-muted, #9ca3af);
     margin: 0;
   }
+
+  /* ── Filter dropdowns ──────────────────────────────────────────────────── */
+  .fdd-wrap {
+    position: relative;
+  }
+  .fdd-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text, #374151);
+    background: #fff;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    min-width: 140px;
+    justify-content: space-between;
+    transition: border-color 0.15s;
+  }
+  .fdd-btn:hover { border-color: #9ca3af; }
+  .fdd-arrow { font-size: 9px; color: #9ca3af; }
+  .fdd-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 100;
+    background: #fff;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+    min-width: 200px;
+    padding: 6px 0;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .fdd-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text, #374151);
+    transition: background 0.1s;
+  }
+  .fdd-item:hover { background: #f9fafb; }
+  .fdd-item--checked { background: #eff6ff; }
+  .fdd-item input { margin: 0; cursor: pointer; flex-shrink: 0; }
+  .fdd-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .fdd-name { flex: 1; }
+  .fdd-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: #9ca3af;
+    background: #f3f4f6;
+    border-radius: 10px;
+    padding: 1px 6px;
+    min-width: 20px;
+    text-align: center;
+  }
+  .fdd-item--checked .fdd-count { background: #dbeafe; color: #3b82f6; }
 
   /* ── Breakdown filter bar ───────────────────────────────────────────────── */
   .dim-filter-bar {
