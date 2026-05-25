@@ -1,5 +1,6 @@
 <script>
   import { page, currentUser } from '../lib/stores.js'
+  import { lang, toggleLang, t } from '../lib/i18n.js'
 
   function nav(target) { window.location.hash = `#/${target}` }
 
@@ -37,7 +38,7 @@
       <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
         <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
       </svg>
-      Обзор
+      {$t('nav_overview')}
     </button>
 
     <button class="nav-item" class:active={$page === 'campaigns' || $page === ''} on:click={() => nav('campaigns')}>
@@ -45,7 +46,7 @@
       <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
       </svg>
-      Кампании
+      {$t('nav_campaigns')}
       <span class="nav-dot"></span>
     </button>
 
@@ -54,7 +55,7 @@
       <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
         <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
       </svg>
-      Рекламные
+      {$t('nav_creatives')}
       <span class="nav-dot"></span>
     </button>
 
@@ -63,7 +64,7 @@
       <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
         <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
       </svg>
-      Аналитика
+      {$t('nav_analytics')}
     </button>
 
     <button class="nav-item" class:active={$page === 'directories' || $page.startsWith('directories/')} on:click={() => nav('directories')}>
@@ -71,10 +72,17 @@
       <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
         <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z"/>
       </svg>
-      Справочники
+      {$t('nav_directories')}
     </button>
 
   </nav>
+
+  <!-- Language toggle -->
+  <div class="lang-toggle-wrap">
+    <button class="lang-btn" on:click={toggleLang}>
+      {$lang === 'ru' ? 'EN' : 'RU'}
+    </button>
+  </div>
 
   <!-- User avatar -->
   <div class="sidebar-footer">
@@ -86,6 +94,28 @@
 </aside>
 
 <style>
+  .lang-toggle-wrap {
+    padding: 8px 10px 4px;
+  }
+  .lang-btn {
+    width: 100%;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+    color: rgba(255,255,255,0.85);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 0.05em;
+    padding: 5px 0;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .lang-btn:hover {
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+  }
+
   .sidebar-footer {
     margin-top: auto;
     padding: 12px 8px;
