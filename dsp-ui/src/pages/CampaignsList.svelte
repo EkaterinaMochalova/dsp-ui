@@ -67,6 +67,23 @@
     colCfg = arr
     saveColCfg()
   }
+
+  // Drag-to-reorder state
+  let dragColId = null
+  let dragOverId = null
+  function colDragStart(id) { dragColId = id }
+  function colDragOver(id)  { if (id !== dragColId) dragOverId = id }
+  function colDrop(id) {
+    if (!dragColId || dragColId === id) return
+    const arr = [...colCfg]
+    const from = arr.findIndex(c => c.id === dragColId)
+    const to   = arr.findIndex(c => c.id === id)
+    arr.splice(to, 0, arr.splice(from, 1)[0])
+    colCfg = arr
+    saveColCfg()
+    dragColId = null; dragOverId = null
+  }
+  function colDragEnd() { dragColId = null; dragOverId = null }
   function resetColCfg() {
     colCfg = COL_DEFS.map(c => ({ id: c.id, visible: true }))
     saveColCfg()
@@ -739,11 +756,18 @@
       {#if colPanelOpen}
       <div class="col-panel">
         <div class="col-panel-title">Колонки</div>
-        {#each colCfg as col, i}
+        {#each colCfg as col (col.id)}
           {@const def = COL_DEFS.find(d => d.id === col.id)}
-          <div class="col-panel-row">
-            <button class="col-mv" on:click={() => moveCol(col.id, -1)} disabled={i === 0} title="Вверх">↑</button>
-            <button class="col-mv" on:click={() => moveCol(col.id, 1)} disabled={i === colCfg.length - 1} title="Вниз">↓</button>
+          <div
+            class="col-panel-row"
+            class:col-drag-over={dragOverId === col.id}
+            draggable="true"
+            on:dragstart={() => colDragStart(col.id)}
+            on:dragover|preventDefault={() => colDragOver(col.id)}
+            on:drop|preventDefault={() => colDrop(col.id)}
+            on:dragend={colDragEnd}
+          >
+            <span class="col-drag-handle" title="Перетащить для сортировки">⋮⋮</span>
             <label class="col-panel-item">
               <input type="checkbox" checked={col.visible} on:change={() => toggleColVis(col.id)} />
               <span>{def?.label ?? col.id}</span>
@@ -1395,16 +1419,18 @@
     padding: 4px 12px 8px;
   }
   .col-panel-row {
-    display: flex; align-items: center; gap: 2px; padding: 2px 8px;
+    display: flex; align-items: center; gap: 4px; padding: 1px 8px;
+    border-radius: 5px; transition: background 0.1s;
+    cursor: grab;
   }
-  .col-mv {
-    background: none; border: none; cursor: pointer; color: #9ca3af;
-    font-size: 12px; width: 20px; height: 22px; border-radius: 3px;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.1s;
+  .col-panel-row:active { cursor: grabbing; }
+  .col-drag-over { background: #eff6ff; outline: 1.5px solid #93c5fd; outline-offset: -1px; }
+  .col-drag-handle {
+    font-size: 11px; color: #d1d5db; letter-spacing: -1px;
+    user-select: none; flex-shrink: 0; padding: 2px 1px;
+    line-height: 1;
   }
-  .col-mv:hover:not(:disabled) { background: #f3f4f6; color: #374151; }
-  .col-mv:disabled { opacity: 0.3; cursor: default; }
+  .col-panel-row:hover .col-drag-handle { color: #9ca3af; }
   .col-panel-item {
     display: flex; align-items: center; gap: 7px;
     font-size: 13px; color: #374151; cursor: pointer;
