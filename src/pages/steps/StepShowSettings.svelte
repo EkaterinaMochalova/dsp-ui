@@ -118,15 +118,15 @@
 <div class="settings-wrap">
 
   <!-- ── Interval ─────────────────────────────────────────────────── -->
-  <div class="section-card">
-    <div class="section-title">Интервал между показами</div>
+  <div class="section-card section-card-row">
+    <div class="section-title" style="margin-bottom:0;flex-shrink:0">Интервал между показами</div>
     <div class="interval-row">
-      <div class="stepper-wrap">
+      <div class="stepper-wrap interval-stepper">
         <button class="stepper-btn" on:click={decInterval} tabindex="-1">−</button>
         <input
           class="stepper-input"
           type="number"
-          placeholder="Ввести интервал"
+          placeholder="Интервал"
           bind:value={draft.interval}
           min="0"
         />
@@ -196,14 +196,14 @@
                 <button class="stepper-btn" on:click={() => inc(row.countField)} tabindex="-1">+</button>
               </div>
               {#if countWarn}
-                <div class="warn-tooltip" title="Превышает прогнозное значение ({row.countRef().toLocaleString('ru-RU')})">
-                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                <div class="warn-badge" title="Превышает прогноз: {row.countRef().toLocaleString('ru-RU')}">
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                   </svg>
-                  <span class="warn-text">Превышает прогноз ({row.countRef().toLocaleString('ru-RU')})</span>
+                  {row.countRef().toLocaleString('ru-RU')}
                 </div>
               {:else if row.countRef() > 0}
-                <div class="forecast-hint">прогноз: {row.countRef().toLocaleString('ru-RU')}</div>
+                <div class="forecast-hint">{row.countRef().toLocaleString('ru-RU')}</div>
               {/if}
             </div>
 
@@ -222,14 +222,14 @@
                 <button class="stepper-btn" on:click={() => inc(row.otsField)} tabindex="-1">+</button>
               </div>
               {#if otsWarn}
-                <div class="warn-tooltip" title="Превышает прогнозное значение ({row.otsRef().toLocaleString('ru-RU')})">
-                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                <div class="warn-badge" title="Превышает прогноз: {row.otsRef().toLocaleString('ru-RU')}">
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                   </svg>
-                  <span class="warn-text">Превышает прогноз ({row.otsRef().toLocaleString('ru-RU')})</span>
+                  {row.otsRef().toLocaleString('ru-RU')}
                 </div>
               {:else if row.otsRef() > 0}
-                <div class="forecast-hint">прогноз: {row.otsRef().toLocaleString('ru-RU')}</div>
+                <div class="forecast-hint">{row.otsRef().toLocaleString('ru-RU')}</div>
               {/if}
             </div>
           </div>
@@ -264,9 +264,9 @@
   .settings-wrap {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 28px 32px 24px;
-    max-width: 900px;
+    gap: 10px;
+    padding: 20px 28px 20px;
+    max-width: 860px;
     margin: 0 auto;
     height: 100%;
     box-sizing: border-box;
@@ -277,20 +277,26 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 24px;
+    padding: 14px 18px;
+  }
+  /* Interval card: single row layout */
+  .section-card-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
   }
 
   .section-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     color: var(--navy, #112853);
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
 
   .section-desc {
-    font-size: 12.5px;
+    font-size: 12px;
     color: var(--text-muted, #64748B);
-    line-height: 1.5;
+    line-height: 1.45;
     margin-bottom: 0;
   }
 
@@ -298,8 +304,12 @@
   .interval-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 12px;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .interval-stepper {
+    width: 200px;
+    flex: none !important;
   }
 
   /* ── Stepper ── */
@@ -307,9 +317,9 @@
     display: flex;
     align-items: center;
     border: 1.5px solid #CBD5E1;
-    border-radius: 8px;
+    border-radius: 7px;
     overflow: hidden;
-    height: 36px;
+    height: 32px;
     flex: 1;
     transition: border-color .15s;
   }
@@ -317,12 +327,12 @@
   .stepper-warn { border-color: #F59E0B !important; }
 
   .stepper-btn {
-    width: 34px;
+    width: 28px;
     height: 100%;
     border: none;
     background: #F8FAFC;
     color: #475569;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 400;
     cursor: pointer;
     flex-shrink: 0;
@@ -350,11 +360,11 @@
     font-family: inherit;
     color: var(--navy, #112853);
     background: white;
-    padding: 0 4px;
+    padding: 0 2px;
     transition: background .15s;
   }
   .stepper-input.input-warn { background: #FFFBEB; color: #92400E; }
-  .stepper-input::placeholder { color: #94A3B8; }
+  .stepper-input::placeholder { color: #94A3B8; font-size: 12px; }
   .stepper-input::-webkit-inner-spin-button,
   .stepper-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .stepper-input[type=number] { -moz-appearance: textfield; }
@@ -363,17 +373,17 @@
   .unit-toggle {
     display: flex;
     border: 1.5px solid #CBD5E1;
-    border-radius: 8px;
+    border-radius: 7px;
     overflow: hidden;
-    height: 36px;
+    height: 32px;
     flex-shrink: 0;
   }
   .unit-btn {
     height: 100%;
-    padding: 0 18px;
+    padding: 0 14px;
     border: none;
     background: white;
-    font-size: 13px;
+    font-size: 12.5px;
     font-family: inherit;
     font-weight: 500;
     color: #64748B;
@@ -390,7 +400,7 @@
   /* ── Optimal header ── */
   .optimal-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 20px;
   }
@@ -400,7 +410,6 @@
   .toggle-switch {
     position: relative;
     flex-shrink: 0;
-    margin-top: 2px;
     cursor: pointer;
   }
   .toggle-switch input {
@@ -411,10 +420,10 @@
   }
   .toggle-track {
     display: block;
-    width: 44px;
-    height: 24px;
+    width: 38px;
+    height: 21px;
     background: #CBD5E1;
-    border-radius: 12px;
+    border-radius: 11px;
     position: relative;
     transition: background .15s;
   }
@@ -423,24 +432,24 @@
   }
   .toggle-thumb {
     position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 18px;
-    height: 18px;
+    top: 2.5px;
+    left: 2.5px;
+    width: 16px;
+    height: 16px;
     background: white;
     border-radius: 50%;
     box-shadow: 0 1px 3px rgba(0,0,0,.2);
     transition: left .15s;
   }
   .toggle-switch input:checked + .toggle-track .toggle-thumb {
-    left: 23px;
+    left: 19.5px;
   }
 
   /* ── Limit grid ── */
   .limit-grid {
-    margin-top: 18px;
+    margin-top: 12px;
     border: 1.5px solid #E2E8F0;
-    border-radius: 10px;
+    border-radius: 8px;
     overflow: hidden;
   }
 
@@ -449,12 +458,12 @@
     align-items: center;
     background: #F8FAFC;
     border-bottom: 1.5px solid #E2E8F0;
-    padding: 10px 16px;
-    gap: 16px;
+    padding: 7px 12px;
+    gap: 12px;
   }
   .lg-col-head {
     flex: 1;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 600;
     color: #64748B;
     text-align: center;
@@ -463,61 +472,62 @@
   .lg-row {
     display: flex;
     align-items: center;
-    padding: 10px 16px;
-    gap: 16px;
-    border-bottom: 1.5px solid #F1F5F9;
+    padding: 6px 12px;
+    gap: 12px;
+    border-bottom: 1px solid #F1F5F9;
   }
   .lg-row:last-child { border-bottom: none; }
 
   .lg-row-label {
-    width: 110px;
+    width: 90px;
     flex-shrink: 0;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 500;
     color: #334155;
   }
-  .lg-head .lg-row-label { width: 110px; flex-shrink: 0; }
+  .lg-head .lg-row-label { width: 90px; flex-shrink: 0; }
 
   .lg-cell {
     flex: 1;
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 4px;
-  }
-
-  /* ── Forecast hint / warning ── */
-  .forecast-hint {
-    font-size: 10.5px;
-    color: #94A3B8;
-    text-align: center;
-    padding: 0 4px;
-  }
-
-  .warn-tooltip {
-    display: flex;
+    flex-direction: row;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
+  }
+  .lg-cell .stepper-wrap { flex: 1; }
+
+  /* ── Forecast hint / warning — inline beside stepper ── */
+  .forecast-hint {
+    font-size: 11px;
+    color: #B0BAC9;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 28px;
+  }
+
+  .warn-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
     color: #B45309;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 500;
-    padding: 0 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
     cursor: default;
   }
-  .warn-tooltip svg { flex-shrink: 0; }
-  .warn-text { line-height: 1.3; }
 
   /* ── Forecast note ── */
   .forecast-note {
     display: flex;
     align-items: flex-start;
     gap: 6px;
-    margin-top: 12px;
-    padding: 10px 12px;
+    margin-top: 10px;
+    padding: 8px 10px;
     background: #EFF6FF;
     border: 1px solid #BFDBFE;
-    border-radius: 8px;
-    font-size: 11.5px;
+    border-radius: 7px;
+    font-size: 11px;
     color: #1E40AF;
     line-height: 1.45;
   }
