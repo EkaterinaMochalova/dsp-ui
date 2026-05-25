@@ -17,7 +17,7 @@
   let stateOptions  = []
   let typeOptions   = []
 
-  // Filter values
+  // Filter values — campaign-level (top filter bar)
   let filterOpen    = true
   let searchText    = ''
   let dateFrom      = ''
@@ -26,6 +26,11 @@
   let selectedTypes  = []
   let minBudget     = ''
   let maxBudget     = ''
+
+  // Filter values — breakdown section (vendor / format / city drill-down)
+  let dimFilterVendors = []   // selected vendor names
+  let dimFilterFormats = []   // selected format keys
+  let dimFilterCity    = ''   // city text search
 
   // ── Constants ─────────────────────────────────────────────────────────────
   const COLOR_MAP = {
@@ -260,9 +265,42 @@
       .sort((a, b) => b.spent - a.spent)
   }
 
-  // Filter invRows to match whichever campaigns pass the current filter bar
+  // Filter invRows: campaign-level filters + breakdown drill-down filters
   $: _filteredIds    = new Set(filteredCampaigns.map(c => c.id))
-  $: filteredInvRows = invRows.filter(r => _filteredIds.has(r.campaignId))
+  $: filteredInvRows = (() => {
+    const _vendors = dimFilterVendors
+    const _formats = dimFilterFormats
+    const _city    = dimFilterCity.trim().toLowerCase()
+    return invRows.filter(r => {
+      if (!_filteredIds.has(r.campaignId)) return false
+      if (_vendors.length && !_vendors.includes(r.owner))  return false
+      if (_formats.length && !_formats.includes(r.format)) return false
+      if (_city && !(r.city ?? '').toLowerCase().includes(_city)) return false
+      return true
+    })
+  })()
+
+  // Available options derived from the full (campaign-filtered) set
+  $: _campaignInvRows = invRows.filter(r => _filteredIds.has(r.campaignId))
+  $: availableVendors = [...new Set(_campaignInvRows.map(r => r.owner).filter(Boolean))].sort()
+  $: availableFormats = [...new Set(_campaignInvRows.map(r => r.format).filter(Boolean))].sort()
+
+  function toggleDimVendor(v) {
+    dimFilterVendors = dimFilterVendors.includes(v)
+      ? dimFilterVendors.filter(x => x !== v)
+      : [...dimFilterVendors, v]
+  }
+  function toggleDimFormat(f) {
+    dimFilterFormats = dimFilterFormats.includes(f)
+      ? dimFilterFormats.filter(x => x !== f)
+      : [...dimFilterFormats, f]
+  }
+  function clearDimFilters() {
+    dimFilterVendors = []
+    dimFilterFormats = []
+    dimFilterCity    = ''
+  }
+  $: dimFiltersActive = dimFilterVendors.length > 0 || dimFilterFormats.length > 0 || dimFilterCity.trim() !== ''
 
   $: byVendor = aggByDim('owner',  filteredInvRows).slice(0, 12)
   $: byFormat = aggByDim('format', filteredInvRows)
@@ -746,6 +784,59 @@
 
   </div>
 
+  <!-- ── Breakdown filters ─────────────────────────────────────────────────── -->
+  {#if invRows.length > 0}
+  <div class="dim-filter-bar">
+
+    <!-- Vendor chips -->
+    {#if availableVendors.length}
+    <div class="dim-filter-group">
+      <span class="dim-filter-label">Оператор</span>
+      <div class="dim-chips">
+        {#each availableVendors as v}
+          <button
+            class="dim-chip {dimFilterVendors.includes(v) ? 'dim-chip--active' : ''}"
+            on:click={() => toggleDimVendor(v)}
+          >{v}</button>
+        {/each}
+      </div>
+    </div>
+    {/if}
+
+    <!-- Format chips -->
+    {#if availableFormats.length}
+    <div class="dim-filter-group">
+      <span class="dim-filter-label">Формат</span>
+      <div class="dim-chips">
+        {#each availableFormats as f}
+          {@const color = FORMAT_COLOR[f] ?? '#64748b'}
+          <button
+            class="dim-chip {dimFilterFormats.includes(f) ? 'dim-chip--active' : ''}"
+            style={dimFilterFormats.includes(f) ? `background:${color};border-color:${color};color:#fff` : `border-color:${color};color:${color}`}
+            on:click={() => toggleDimFormat(f)}
+          >{FORMAT_LABEL[f] ?? f}</button>
+        {/each}
+      </div>
+    </div>
+    {/if}
+
+    <!-- City search -->
+    <div class="dim-filter-group dim-filter-group--city">
+      <span class="dim-filter-label">Город</span>
+      <input
+        class="dim-city-input"
+        type="text"
+        placeholder="Поиск по городу…"
+        bind:value={dimFilterCity}
+      />
+    </div>
+
+    {#if dimFiltersActive}
+      <button class="dim-clear-btn" on:click={clearDimFilters}>× Сбросить</button>
+    {/if}
+  </div>
+  {/if}
+
   <!-- ── Breakdown by vendor / format / city ───────────────────────────────── -->
   {#if !statsLoading || invRows.length > 0}
   <div class="three-col">
@@ -1177,6 +1268,82 @@
     color: var(--text-muted, #9ca3af);
     margin: 0;
   }
+
+  /* ── Breakdown filter bar ───────────────────────────────────────────────── */
+  .dim-filter-bar {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 14px;
+    background: #fff;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+  }
+  .dim-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .dim-filter-group--city {
+    flex-wrap: nowrap;
+  }
+  .dim-filter-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .dim-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .dim-chip {
+    font-size: 12px;
+    padding: 3px 10px;
+    border: 1.5px solid #d1d5db;
+    border-radius: 20px;
+    background: #fff;
+    color: #374151;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .dim-chip:hover { background: #f3f4f6; }
+  .dim-chip--active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #fff;
+  }
+  .dim-chip--active:hover { background: #2563eb; }
+  .dim-city-input {
+    font-size: 12px;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px;
+    padding: 4px 8px;
+    width: 160px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .dim-city-input:focus { border-color: #3b82f6; }
+  .dim-clear-btn {
+    font-size: 12px;
+    color: #6b7280;
+    background: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    align-self: center;
+    transition: background 0.15s;
+  }
+  .dim-clear-btn:hover { background: #f9fafb; }
 
   /* ── Responsive ─────────────────────────────────────────────────────────── */
   @media (max-width: 900px) {
