@@ -117,16 +117,31 @@
         })
       }
       campaigns = rows
-      citiesMap = {}   // clear while new data loads
       totalElements = data.totalElements ?? 0
       totalPages = data.totalPages ?? 0
 
-      // Load stats + cities for visible campaigns in background
+      // Extract cities inline from the list response — the list API embeds
+      // segments[].inventories[].city so we can populate the column immediately
+      // without extra requests.  Any campaign whose segments are missing (e.g.
+      // the list endpoint stripped them) will be fetched individually below.
+      const inlineMap = {}
+      for (const camp of rows) {
+        const names = [...new Set(
+          (camp.segments ?? [])
+            .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
+            .filter(Boolean)
+        )]
+        if (names.length > 0) inlineMap[camp.id] = names
+      }
+      citiesMap = inlineMap
+
       if (campaigns.length > 0) {
         const ids = campaigns.map(c => c.id)
         loadStats(ids)
         loadTodayStats(ids)
-        loadCities(ids)
+        // Only fetch individually for campaigns that didn't get cities inline
+        const missing = ids.filter(id => !inlineMap[id])
+        if (missing.length > 0) loadCities(missing)
       }
     } catch (e) {
       error = 'Не удалось загрузить кампании'
@@ -213,9 +228,9 @@
 
   async function loadCities(ids) {
     try {
-      // Fetch full campaign details in parallel; extract unique city names per campaign
-      const results = await Promise.all(ids.map(id => api.campaigns.get(id).catch(() => null)))
-      const map = {}
+      // Fetch full campaign details for campaigns whose city wasn't in the list payload
+      const results = await Promise.all(ids.map(id => api.campaigns.get(id).catch(e => { console.warn('[loadCities] get', id, e); return null })))
+      const map = { ...citiesMap }
       for (const camp of results) {
         if (!camp) continue
         const names = [...new Set(
@@ -226,8 +241,8 @@
         map[camp.id] = names
       }
       citiesMap = map
-    } catch {
-      // Cities are non-critical
+    } catch (e) {
+      console.warn('[loadCities]', e)
     }
   }
 
