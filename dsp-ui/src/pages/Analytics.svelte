@@ -325,6 +325,9 @@
       .filter(c => (statsMap[c.id]?.totalBudgetShowed ?? 0) > 0)
       .map(c => c.id)
 
+    console.log('[Analytics] Phase2 spendIds:', spendIds.length, spendIds)
+    console.log('[Analytics] statsMap sample:', JSON.stringify(Object.entries(statsMap).slice(0, 3)))
+
     if (!spendIds.length) return
 
     const BATCH_INV = 5
@@ -332,11 +335,17 @@
     let debugLogged = false
     for (let i = 0; i < spendIds.length; i += BATCH_INV) {
       const batchIds = spendIds.slice(i, i + BATCH_INV)
+      console.log('[Analytics] calling inventoryStats for ids:', batchIds)
       const results = await Promise.all(
-        batchIds.map(id => api.stats.inventoryStats(id).catch(() => []))
+        batchIds.map(id => api.stats.inventoryStats(id).catch(e => {
+          console.warn('[Analytics] inventoryStats error for', id, e)
+          return []
+        }))
       )
+      console.log('[Analytics] inventoryStats results lengths:', results.map(r => Array.isArray(r) ? r.length : typeof r))
       for (const rows of results) {
-        if (!Array.isArray(rows) || !rows.length) continue
+        if (!Array.isArray(rows)) { console.log('[Analytics] non-array result:', rows); continue }
+        if (!rows.length) { console.log('[Analytics] empty array result'); continue }
         // Log first response to console so we can see the actual field structure
         if (!debugLogged) {
           console.log('[Analytics] inventoryStats sample (first 2 rows):', JSON.stringify(rows.slice(0, 2), null, 2))
