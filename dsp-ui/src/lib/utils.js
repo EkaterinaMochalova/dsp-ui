@@ -67,6 +67,20 @@ export const TYPE_LABEL = {
   OPEN_RTB: 'Open RTB',
 }
 
+export const FORMAT_LABEL = {
+  BILLBOARD:    'Биллборд',
+  SUPERSITE:    'Суперсайт',
+  CITY_FORMAT:  'Ситиформат',
+  CITYFORMAT:   'Ситиформат',
+  LED:          'LED',
+  INDOOR:       'Индор',
+  DIGITAL:      'Диджитал',
+  PVZ_SCREEN:   'ПВЗ-экран',
+  BRANDWALL:    'Брандмауэр',
+  PILLAR:       'Тумба',
+  STREET_FURNITURE: 'Улич. мебель',
+}
+
 // ── Screen/inventory mapping ──────────────────────────────────────────────────
 // Shared between StepScreens and the api cache layer so both use identical
 // mapped objects and the same cache version.

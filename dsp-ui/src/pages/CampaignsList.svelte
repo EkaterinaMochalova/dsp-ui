@@ -1,14 +1,14 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { formatDate, formatMoney, STATE_LABEL, STATE_COLOR, TYPE_LABEL } from '../lib/utils.js'
+  import { formatDate, formatMoney, STATE_LABEL, STATE_COLOR, TYPE_LABEL, FORMAT_LABEL } from '../lib/utils.js'
   import StatusBadge from '../components/StatusBadge.svelte'
   import Pagination from '../components/Pagination.svelte'
 
   // ── Resizable columns ─────────────────────────────────────────────────────
-  // Статус | Кампания | Город | Начало | Конец | Бюджет | Бюджет/день | OTS | Выходы | Menu
+  // Статус | Кампания | Город | Формат | Начало | Конец | Бюджет | Бюджет/день | OTS | Выходы | Menu
   const _CW_KEY = 'dsp_camp_col_w'
-  const _CW_DEF = [100, 220, 130, 95, 95, 120, 105, 75, 85, 36]
+  const _CW_DEF = [100, 220, 130, 120, 95, 95, 120, 105, 75, 85, 36]
   let colW = (() => {
     try {
       const s = JSON.parse(localStorage.getItem(_CW_KEY))
@@ -37,6 +37,8 @@
   let filterDateTo = ''
   let filterBudgetMin = ''
   let filterBudgetMax = ''
+  let filterCity = ''
+  let filterFormat = ''
   let searchTimeout
 
   // Sort
@@ -75,6 +77,8 @@
 
   // Cities keyed by campaign ID: string[]
   let citiesMap = {}
+  // Formats keyed by campaign ID: string[]
+  let formatsMap = {}
 
   onMount(async () => {
     try {
@@ -100,8 +104,7 @@
         ...(filterSearch    ? { name: filterSearch }           : {}),
         ...(filterDateFrom  ? { startDate: filterDateFrom }   : {}),
         ...(filterDateTo    ? { endDate: filterDateTo }       : {}),
-        ...(filterBudgetMin ? { budgetFrom: filterBudgetMin } : {}),
-        ...(filterBudgetMax ? { budgetTo:   filterBudgetMax } : {}),
+        // Budget filter is applied client-side (backend ignores these params)
       }
       const data = await api.campaigns.list(params)
       let rows = data.content ?? []
@@ -118,16 +121,32 @@
         })
       }
       campaigns = rows
-      citiesMap = {}   // clear while new data loads
       totalElements = data.totalElements ?? 0
       totalPages = data.totalPages ?? 0
 
-      // Load stats + cities for visible campaigns in background
+      // Extract cities + formats inline from the list response.
+      // The list API typically omits segments, so inlineCityMap will be empty
+      // and loadCities will fetch individually.  If segments are present the
+      // column populates immediately without extra requests.
+      const inlineCityMap = {}
+      const inlineFmtMap  = {}
+      for (const camp of rows) {
+        const invs = (camp.segments ?? []).flatMap(s => s.inventories ?? [])
+        const cities = [...new Set(invs.map(i => i.city?.name).filter(Boolean))]
+        const fmts   = [...new Set(invs.map(i => i.format).filter(Boolean))]
+        if (cities.length > 0) inlineCityMap[camp.id] = cities
+        if (fmts.length   > 0) inlineFmtMap[camp.id]  = fmts
+      }
+      citiesMap  = inlineCityMap
+      formatsMap = inlineFmtMap
+
       if (campaigns.length > 0) {
         const ids = campaigns.map(c => c.id)
         loadStats(ids)
         loadTodayStats(ids)
-        loadCities(ids)
+        // Only fetch individually for campaigns that didn't get data inline
+        const missing = ids.filter(id => !inlineCityMap[id])
+        if (missing.length > 0) loadCities(missing)
       }
     } catch (e) {
       error = 'Не удалось загрузить кампании'
@@ -214,21 +233,21 @@
 
   async function loadCities(ids) {
     try {
-      // Fetch full campaign details in parallel; extract unique city names per campaign
-      const results = await Promise.all(ids.map(id => api.campaigns.get(id).catch(() => null)))
-      const map = {}
+      // Fetch full campaign details for campaigns whose data wasn't in the list payload.
+      // Populates both citiesMap and formatsMap from the same requests.
+      const results = await Promise.all(ids.map(id => api.campaigns.get(id).catch(e => { console.warn('[loadCities] get', id, e); return null })))
+      const cMap = { ...citiesMap }
+      const fMap = { ...formatsMap }
       for (const camp of results) {
         if (!camp) continue
-        const names = [...new Set(
-          (camp.segments ?? [])
-            .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
-            .filter(Boolean)
-        )]
-        map[camp.id] = names
+        const invs  = (camp.segments ?? []).flatMap(s => s.inventories ?? [])
+        cMap[camp.id] = [...new Set(invs.map(i => i.city?.name).filter(Boolean))]
+        fMap[camp.id] = [...new Set(invs.map(i => i.format).filter(Boolean))]
       }
-      citiesMap = map
-    } catch {
-      // Cities are non-critical
+      citiesMap  = cMap
+      formatsMap = fMap
+    } catch (e) {
+      console.warn('[loadCities]', e)
     }
   }
 
@@ -255,8 +274,11 @@
     if (key === 'search')    { filterSearch = '' }
     if (key === 'date')      { filterDateFrom = ''; filterDateTo = '' }
     if (key === 'budget')    { filterBudgetMin = ''; filterBudgetMax = '' }
+    // city/format are pure client-side — no API reload needed
+    if (key === 'city')      { filterCity = '' }
+    if (key === 'inv-format') { filterFormat = '' }
     openChip = null
-    load(0)
+    if (key !== 'city' && key !== 'inv-format') load(0)
   }
 
   function applyFilter(key, val) {
@@ -286,26 +308,123 @@
 
   async function duplicateCampaign(id) {
     try {
-      const result = await api.campaigns.copy(id)
-      if (result?.id) {
-        window.location.hash = '#/campaigns/' + result.id
+      // Backend has no /copy endpoint — implement client-side:
+      // 1. Fetch full campaign  2. Build create payload  3. POST new campaign
+      const camp = await api.campaigns.get(id)
+
+      // Strip dmpData:[] to avoid RTB bid failures (code 1000)
+      let targetAudience = null
+      if (camp.targetAudience) {
+        const { dmpData, ...rest } = camp.targetAudience
+        targetAudience = (dmpData?.length > 0) ? { ...rest, dmpData } : rest
+      }
+
+      // API requires "YYYY-MM-DDTHH:mm:ss" format
+      const toApiDate = d => !d ? null : (d.includes('T') ? d : d + 'T00:00:00')
+
+      const budgetBuyer = camp.budgetBuyer ?? camp.budget ?? 0
+      // Never inherit the server's additionalCharge default (1.0 = 100% markup) for a new copy —
+      // that value causes every RTB bid to fail with code 1000.  Always start duplicates at 0.
+      const additionalCharge = 0
+      const budget = budgetBuyer  // no markup on a fresh copy
+
+      const payload = {
+        name:             'Копия: ' + (camp.name ?? ''),
+        description:      camp.description ?? '',
+        brandId:          camp.brand?.id      ?? camp.brandId      ?? null,
+        customerId:       camp.customer?.id   ?? camp.customerId   ?? null,
+        type:             camp.type,
+        bidType:          camp.bidType,
+        startDate:        toApiDate(camp.startDate),
+        endDate:          toApiDate(camp.endDate),
+        budget,
+        budgetBuyer,
+        dailyBudget:      camp.dailyBudget       ?? null,
+        dailyBudgetBuyer: camp.dailyBudgetBuyer  ?? null,
+        hourlyBudget:     camp.hourlyBudget      ?? null,
+        hourlyBudgetBuyer:camp.hourlyBudgetBuyer ?? null,
+        additionalCharge,
+        maxImpressionsCount:       camp.maxImpressionsCount      ?? 0,
+        maxDailyImpressionsCount:  camp.maxDailyImpressionsCount ?? 0,
+        maxHourlyImpressionsCount: camp.maxHourlyImpressionsCount?? 0,
+        ots:              camp.ots              ?? null,
+        dailyOts:         camp.dailyOts         ?? null,
+        hourlyOts:        camp.hourlyOts         ?? null,
+        targetAudience,
+        photoReportSettings: camp.photoReportSettings ?? null,
+        strategy:            camp.strategy            ?? 'STANDARD',
+        strategyLimitType:   camp.strategyLimitType   ?? null,
+        // Copy segments using the exact shape CampaignCreate sends
+        segments: (camp.segments ?? []).map(seg => ({
+          displayOwnerId: seg.displayOwner?.id ?? seg.displayOwnerId ?? null,
+          inventories: (seg.inventories ?? []).map(inv => ({
+            id:           inv.id,
+            timeSettings: inv.timeSettings ?? [],
+            priority:     inv.priority     ?? 1,
+            bid:          inv.bid          ?? 0,
+          })),
+          mediaSegments: [],
+          photoReportSettings: camp.photoReportSettings ?? {
+            saveAll: false, countPerDisplay: 5, saveMode: 'BY_CAMPAIGN', explicitlySetPhoto: false,
+          },
+        })),
+      }
+
+      const created = await api.campaigns.create(payload)
+      if (created?.id) {
+        window.location.hash = '#/campaigns/' + created.id
       } else {
         await load(currentPage)
       }
     } catch (e) {
-      console.error('[duplicateCampaign]', e)
+      console.error('[duplicateCampaign] full error:', JSON.stringify(e?.data ?? e))
+      const fields = e?.data?.errors?.field ?? e?.data?.fieldErrors ?? []
+      const detail = fields.length
+        ? fields.map(f => `${f.field ?? f.property}: ${f.message ?? f.defaultMessage}`).join('\n')
+        : (e?.data?.message ?? e?.message ?? JSON.stringify(e?.data ?? e))
+      alert('Ошибка при дублировании:\n' + detail)
     }
   }
 
-  function formatCities(c) {
-    const names = citiesMap[c.id] ?? []
+  // citiesMap/formatsMap passed explicitly so Svelte tracks the dependency
+  function formatCities(c, map) {
+    const names = map[c.id] ?? []
     if (!names.length) return '—'
     if (names.length <= 2) return names.join(', ')
     return names.slice(0, 2).join(', ') + `, +${names.length - 2}`
   }
 
+  function formatFormats(c, map) {
+    const codes = map[c.id] ?? []
+    if (!codes.length) return '—'
+    const labels = [...new Set(codes.map(f => FORMAT_LABEL[f] ?? f))]
+    if (labels.length <= 2) return labels.join(', ')
+    return labels.slice(0, 2).join(', ') + `, +${labels.length - 2}`
+  }
+
+  // Client-side filters (budget, city, inventory format — backend ignores these params)
+  $: visibleCampaigns = (() => {
+    // reference maps so Svelte re-runs this when they update
+    const _cmap = citiesMap
+    const _fmap = formatsMap
+    return campaigns.filter(c => {
+      const b = c.budget ?? 0
+      if (filterBudgetMin !== '' && filterBudgetMin != null && b < Number(filterBudgetMin)) return false
+      if (filterBudgetMax !== '' && filterBudgetMax != null && b > Number(filterBudgetMax)) return false
+      if (filterCity) {
+        const cities = _cmap[c.id] ?? []
+        if (!cities.some(city => city.toLowerCase().includes(filterCity.toLowerCase()))) return false
+      }
+      if (filterFormat) {
+        const fmts = _fmap[c.id] ?? []
+        if (!fmts.includes(filterFormat)) return false
+      }
+      return true
+    })
+  })()
+
   // Group campaigns by customer name for display
-  $: groups = groupCampaigns(campaigns)
+  $: groups = groupCampaigns(visibleCampaigns)
 
   function groupCampaigns(list) {
     const map = {}
@@ -347,6 +466,10 @@
 
   $: hasDateFilter = !!(filterDateFrom || filterDateTo)
   $: hasBudgetFilter = !!(filterBudgetMin || filterBudgetMax)
+  $: hasCityFilter = !!filterCity
+  $: hasFormatFilter = !!filterFormat
+  // Unique inventory format codes seen in current page's data
+  $: availableFormats = [...new Set(Object.values(formatsMap).flat())].sort()
 
   // Reactive sort icons — $: guarantees re-evaluation whenever sortBy/sortDir change
   $: si = (() => {
@@ -420,14 +543,14 @@
   <!-- Type chip -->
   <div style="position:relative">
     <button class="chip" class:active={!!filterType} on:click={() => toggleChip('type')}>
-      Формат {filterType ? `· ${TYPE_LABEL_MAP[filterType] ?? filterType}` : ''}
+      Тип кампании {filterType ? `· ${TYPE_LABEL_MAP[filterType] ?? filterType}` : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     {#if openChip === 'type'}
       <div class="dropdown">
-        <button class="dropdown-item" on:click={() => clearFilter('type')}>Все форматы</button>
+        <button class="dropdown-item" on:click={() => clearFilter('type')}>Все типы</button>
         {#each allTypes as t}
           <button class="dropdown-item" class:selected={filterType===t} on:click={() => applyFilter('type', t)}>
             {TYPE_LABEL_MAP[t] ?? t}
@@ -475,7 +598,7 @@
       </svg>
     </button>
     {#if openChip === 'budget'}
-      <div class="dropdown" style="min-width:240px;padding:12px">
+      <div class="dropdown" style="min-width:240px;padding:12px;left:auto;right:0">
         <div class="filter-row-label">Бюджет от (₽)</div>
         <div class="filter-row">
           <input class="chip-input" type="number" min="0" placeholder="0" bind:value={filterBudgetMin} style="flex:1" />
@@ -488,6 +611,54 @@
           <button class="filter-clear-btn" on:click={() => clearFilter('budget')}>Сбросить</button>
           <button class="filter-apply-btn" on:click={applyBudgetFilter}>Применить</button>
         </div>
+      </div>
+    {/if}
+  </div>
+
+  <!-- City filter chip -->
+  <div style="position:relative">
+    <button class="chip" class:active={hasCityFilter} on:click={() => toggleChip('city')}>
+      Город {hasCityFilter ? `· ${filterCity}` : ''}
+    </button>
+    {#if openChip === 'city'}
+      <div class="dropdown" style="min-width:220px;padding:10px">
+        <input
+          class="chip-input"
+          type="text"
+          placeholder="Поиск по городу…"
+          bind:value={filterCity}
+          autofocus
+        />
+        {#if filterCity}
+          <div class="filter-actions">
+            <button class="filter-clear-btn" on:click={() => clearFilter('city')}>Сбросить</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </div>
+
+  <!-- Inventory format filter chip -->
+  <div style="position:relative">
+    <button class="chip" class:active={hasFormatFilter} on:click={() => toggleChip('inv-format')}>
+      Формат {hasFormatFilter ? `· ${FORMAT_LABEL[filterFormat] ?? filterFormat}` : ''}
+      <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
+        <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+    {#if openChip === 'inv-format'}
+      <div class="dropdown" style="min-width:180px">
+        <button class="dropdown-item" on:click={() => clearFilter('inv-format')}>Все форматы</button>
+        {#if availableFormats.length === 0}
+          <div class="dropdown-group">Загрузка…</div>
+        {:else}
+          {#each availableFormats as code}
+            <button class="dropdown-item" class:selected={filterFormat === code}
+              on:click={() => { filterFormat = code; openChip = null }}>
+              {FORMAT_LABEL[code] ?? code}
+            </button>
+          {/each}
+        {/if}
       </div>
     {/if}
   </div>
@@ -546,6 +717,7 @@
           <div class="rzh" on:mousedown={(e)=>rzStart(1,e)}></div>
         </th>
         <th style="position:relative;white-space:nowrap">Город<div class="rzh" on:mousedown={(e)=>rzStart(2,e)}></div></th>
+        <th style="position:relative;white-space:nowrap">Формат<div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div></th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('startDate')}>
             Начало
@@ -557,7 +729,7 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(4,e)}></div>
         </th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('endDate')}>
@@ -570,7 +742,7 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(4,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(5,e)}></div>
         </th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('budget')}>
@@ -583,9 +755,9 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(5,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div>
         </th>
-        <th style="position:relative"><span class="sort-th" style="cursor:default">Сегодня</span><div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div></th>
+        <th style="position:relative"><span class="sort-th" style="cursor:default">Сегодня</span><div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div></th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('otsCount')}>
             OTS
@@ -597,7 +769,7 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(8,e)}></div>
         </th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('impressionsCount')}>
@@ -610,29 +782,29 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(8,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(9,e)}></div>
         </th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {#if loading}
-        <tr><td colspan="10" class="state-cell">
+        <tr><td colspan="11" class="state-cell">
           <div class="spinner"></div>
           Загружаю кампании…
         </td></tr>
 
       {:else if error}
-        <tr><td colspan="10" class="state-cell" style="color:#EF4444">{error}</td></tr>
+        <tr><td colspan="11" class="state-cell" style="color:#EF4444">{error}</td></tr>
 
       {:else if campaigns.length === 0}
-        <tr><td colspan="10" class="state-cell">Кампании не найдены</td></tr>
+        <tr><td colspan="11" class="state-cell">Кампании не найдены</td></tr>
 
       {:else if activeTab === 'groups'}
         {#each groups as group (group.name)}
           <!-- Group header row -->
           <tr class="group-row">
-            <td colspan="5">
+            <td colspan="6">
               <div class="group-name" on:click={() => toggleGroup(group.name)}>
                 <!-- Folder icon -->
                 <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="color:var(--text-muted);flex-shrink:0">
@@ -676,7 +848,10 @@
                   <div class="cell-advertiser">{c.agency?.name ?? ''}</div>
                 </td>
                 <td style="color:var(--text-muted);font-size:12px">
-                  {formatCities(c)}
+                  {formatCities(c, citiesMap)}
+                </td>
+                <td style="color:var(--text-muted);font-size:12px">
+                  {formatFormats(c, formatsMap)}
                 </td>
                 <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
                   {formatDate(c.startDate)}
@@ -776,7 +951,7 @@
 
       {:else}
         <!-- Flat "all" tab -->
-        {#each campaigns as c (c.id)}
+        {#each visibleCampaigns as c (c.id)}
           <tr class="campaign-row">
             <td>
               <StatusBadge state={c.state} />
@@ -786,7 +961,10 @@
               <div class="cell-advertiser">{c.agency?.name ?? ''}</div>
             </td>
             <td style="color:var(--text-muted);font-size:12px">
-              {formatCities(c)}
+              {formatCities(c, citiesMap)}
+            </td>
+            <td style="color:var(--text-muted);font-size:12px">
+              {formatFormats(c, formatsMap)}
             </td>
             <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
               {formatDate(c.startDate)}

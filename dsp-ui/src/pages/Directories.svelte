@@ -198,7 +198,7 @@
             registeredAddress:  d.accAddress   || '',
           },
         }
-        modalMode === 'create' ? await api.customers.create(body) : await api.customers.update(editingId, body)
+        modalMode === 'create' ? await api.customers.create(body.agencyId, body) : await api.customers.update(editingId, body)
       } else if (subView === 'brands') {
         const body = { name: d.name, description: d.description }
         modalMode === 'create' ? await api.brands.create(body) : await api.brands.update(editingId, body)
@@ -230,7 +230,9 @@
       await loadSection(subView)
       loadCounts()
     } catch(e) {
-      alert('Не удалось удалить: ' + (e?.data?.message ?? 'Ошибка'))
+      console.error('[deleteRow]', JSON.stringify(e))
+      const msg = e?.data?.message ?? e?.data?.error ?? (typeof e?.data === 'string' ? e.data : null) ?? e?.message ?? JSON.stringify(e?.data ?? e)
+      alert('Не удалось удалить: ' + msg)
     }
   }
 

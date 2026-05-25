@@ -8,11 +8,13 @@ function getToken() {
 
 async function request(path, options = {}) {
   const token = getToken()
-  // Abort after 45 s so a hung server never freezes the UI indefinitely.
-  // The caller's finally-block always sets saving/loading back to false once the
-  // AbortError propagates, so the button un-freezes and an error message is shown.
+  // DELETE operations (cascade) may legitimately take several minutes on the backend.
+  // All other requests abort after 45 s so a hung server never freezes the UI.
+  const isDelete = (options.method ?? 'GET').toUpperCase() === 'DELETE'
+  const timeoutMs = options._timeout ?? (isDelete ? 300_000 : 45_000)
+  const timeoutLabel = isDelete ? '5 мин' : '45 с'
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 45_000)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   let res
   try {
     res = await fetch(`${BASE}${path}`, {
@@ -26,7 +28,7 @@ async function request(path, options = {}) {
     })
   } catch (err) {
     // Rethrow AbortError as a friendly timeout object so callers can show a message
-    if (err?.name === 'AbortError') throw { status: 408, message: 'Превышено время ожидания сервера (45 с). Попробуйте ещё раз.' }
+    if (err?.name === 'AbortError') throw { status: 408, message: `Превышено время ожидания сервера (${timeoutLabel}). Попробуйте ещё раз.` }
     throw err
   } finally {
     clearTimeout(timeoutId)
@@ -129,7 +131,7 @@ export const api = {
     brands(customerId) {
       return request(`/clients/customers/${customerId}/brands`)
     },
-    create(data)     { return request('/clients/customers',     { method: 'POST',   body: JSON.stringify(data) }) },
+    create(agencyId, data) { return request(`/clients/agencies/${agencyId}/customers`, { method: 'POST', body: JSON.stringify(data) }) },
     update(id, data) { return request(`/clients/customers/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
     delete(id)       { return request(`/clients/customers/${id}`, { method: 'DELETE' }) },
   },
@@ -159,12 +161,12 @@ export const api = {
   users: {
     list(params = {}) {
       const q = new URLSearchParams({ page: 0, size: -1, ...params })
-      return request(`/clients/users?${q}`)
+      return request(`/users?${q}`)
     },
-    create(data)     { return request('/clients/users', { method: 'POST', body: JSON.stringify(data) }) },
-    update(id, data) { return request(`/clients/users/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
-    toggle(id)       { return request(`/clients/users/${id}/toggle`, { method: 'POST' }) },
-    delete(id)       { return request(`/clients/users/${id}`, { method: 'DELETE' }) },
+    create(data)     { return request('/users', { method: 'POST', body: JSON.stringify(data) }) },
+    update(id, data) { return request(`/users/${id}`, { method: 'PUT',  body: JSON.stringify(data) }) },
+    toggle(id)       { return request(`/users/${id}/toggle`, { method: 'POST' }) },
+    delete(id)       { return request(`/users/${id}`, { method: 'DELETE' }) },
   },
 
   ssp: {

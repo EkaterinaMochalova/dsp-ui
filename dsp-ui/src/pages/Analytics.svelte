@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { formatMoney, formatDate, STATE_LABEL, STATE_COLOR, TYPE_LABEL } from '../lib/utils.js'
+  import { formatMoney, formatDate, STATE_LABEL, STATE_COLOR, TYPE_LABEL, FORMAT_LABEL } from '../lib/utils.js'
 
   // ── State ─────────────────────────────────────────────────────────────────
   let loading       = true
@@ -292,10 +292,15 @@
 
     if (!allCampaigns.length) return
 
-    // ── Phase 1: campaign-level KPI stats (fast, batch) ──────────────────────
+    // ── Phase 1: campaign-level KPI stats + per-inventory dimension rows ────────
+    // campaignStats returns two kinds of rows in the same array:
+    //   • rows WITH  r.inventory  → per-screen stats (owner/format/city embedded)
+    //   • rows WITHOUT r.inventory → campaign-level aggregates
+    // We capture both in a single pass so no Phase 2 round-trip is needed.
     statsLoading = true
     const BATCH = 20
     const ids = allCampaigns.map(c => c.id)
+    const pendingInvRows = []
     for (let i = 0; i < ids.length; i += BATCH) {
       const batch = ids.slice(i, i + BATCH)
       try {
@@ -303,61 +308,46 @@
         if (!Array.isArray(rows)) continue
         const agg = {}
         for (const r of rows) {
-          const cid = r.campaign?.id
-          if (!cid) continue
-          // campaignStats only returns campaign-level summary rows (no r.inventory)
-          agg[cid] = {
-            totalShowed:       r.totalCountShowed  ?? r.totalShowed  ?? 0,
-            totalOts:          r.otsCountShowed    ?? r.totalOpOts   ?? 0,
-            totalBudgetShowed: r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0,
-            cpm:               r.cpm ?? 0,
+          if (r.inventory) {
+            // ── Per-inventory row ──────────────────────────────────────────
+            const invId  = r.inventory?.id ?? null
+            const owner  = r.displayOwnerDTO?.name
+                        || r.displayOwner?.name
+                        || r.inventory?.displayOwner?.name
+                        || null
+            const format = r.inventoryFormat
+                        || r.inventory?.type
+                        || null
+            const city   = r.inventory?.city?.name
+                        || r.city
+                        || null
+            const spent  = r.customerStats?.budgetShowed
+                        ?? r.totalBudgetShowed
+                        ?? r.totalShowedBudget
+                        ?? 0
+            const showed = r.totalCountShowed ?? r.totalShowed ?? 0
+            const ots    = r.otsCountShowed   ?? r.totalOpOts  ?? r.totalOts ?? 0
+            if (owner || format || city) {
+              pendingInvRows.push({ invId, owner, format, city, spent, showed, ots })
+            }
+          } else {
+            // ── Campaign-level aggregate row ───────────────────────────────
+            const cid = r.campaign?.id
+            if (!cid) continue
+            agg[cid] = {
+              totalShowed:       r.totalCountShowed  ?? r.totalShowed  ?? 0,
+              totalOts:          r.otsCountShowed    ?? r.totalOpOts   ?? 0,
+              totalBudgetShowed: r.totalBudgetShowed ?? r.customerStats?.budgetShowed ?? 0,
+              cpm:               r.cpm ?? 0,
+            }
           }
         }
         statsMap = { ...statsMap, ...agg }
+        // Update dimension cards progressively as each batch arrives
+        if (pendingInvRows.length) invRows = [...pendingInvRows]
       } catch {}
     }
     statsLoading = false
-
-    // ── Phase 2: per-inventory breakdown for dimension cards ─────────────────
-    // Only load for campaigns that have actual spend (avoids useless API calls)
-    const spendIds = allCampaigns
-      .filter(c => (statsMap[c.id]?.totalBudgetShowed ?? 0) > 0)
-      .map(c => c.id)
-
-    if (!spendIds.length) return
-
-    // Await screens cache — needed for owner/format/city join
-    const screenMap = new Map()
-    try {
-      const screens = await api.inventories.allMapped()
-      for (const s of screens) screenMap.set(s.id, s)
-    } catch {}
-
-    // Load impression-inventory-stats per campaign (10 in parallel at a time)
-    const BATCH_INV = 10
-    const newInvRows = []
-    for (let i = 0; i < spendIds.length; i += BATCH_INV) {
-      const batchIds = spendIds.slice(i, i + BATCH_INV)
-      const results = await Promise.all(
-        batchIds.map(id => api.stats.inventoryStats(id).catch(() => []))
-      )
-      for (const rows of results) {
-        if (!Array.isArray(rows)) continue
-        for (const r of rows) {
-          const invId  = r.inventory?.id
-          const screen = invId ? screenMap.get(invId) : null
-          const owner  = screen?.owner  || null
-          const format = screen?.format || null
-          const city   = screen?.city   || null
-          const spent  = r.customerStats?.budgetShowed ?? r.totalShowedBudget ?? 0
-          const showed = r.totalShowed ?? 0
-          const ots    = r.totalOpOts  ?? r.totalOts ?? 0
-          newInvRows.push({ invId, owner, format, city, spent, showed, ots })
-        }
-      }
-      // Update progressively so cards fill in as data arrives
-      invRows = [...newInvRows]
-    }
   })
 </script>
 
@@ -756,7 +746,7 @@
           {#each byFormat as f}
             {@const color = FORMAT_COLOR[f.label] ?? '#64748b'}
             <div class="dim-row">
-              <div class="dim-label"><span class="dim-dot" style="background:{color};border-radius:2px"></span><span>{f.label}</span></div>
+              <div class="dim-label"><span class="dim-dot" style="background:{color};border-radius:2px"></span><span>{FORMAT_LABEL[f.label] ?? f.label}</span></div>
               <div class="dim-bar-wrap"><div class="dim-bar-fill" style="width:{(f.spent/formatMaxSpent*100).toFixed(1)}%;background:{color}"></div></div>
               <div class="dim-stats">
                 <span class="dim-count">{f.screens} экр.</span>
@@ -802,7 +792,6 @@
 <style>
   .an-page {
     padding: 28px 32px 48px;
-    max-width: 1280px;
     min-height: 100%;
     box-sizing: border-box;
   }
