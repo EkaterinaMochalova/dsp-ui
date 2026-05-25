@@ -238,11 +238,12 @@
             .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
             .filter(Boolean)
         )]
+        console.log('[loadCities]', camp.id, camp.name, '→ segs:', camp.segments?.length ?? 0, 'cities:', names)
         map[camp.id] = names
       }
       citiesMap = map
     } catch (e) {
-      console.warn('[loadCities]', e)
+      console.warn('[loadCities error]', e)
     }
   }
 
