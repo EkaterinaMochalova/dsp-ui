@@ -241,10 +241,12 @@
   })()
   $: statusMaxCount = Math.max(1, ...byStatus.map(s => s.count))
 
-  // Generic helper: aggregate invRows by a string dimension key
-  function aggByDim(key) {
+  // Generic helper: aggregate rows by a string dimension key.
+  // rows must be passed explicitly so Svelte tracks it as a reactive dependency
+  // (accessing it inside a called function is NOT tracked by the compiler).
+  function aggByDim(key, rows) {
     const m = {}
-    for (const r of invRows) {
+    for (const r of rows) {
       const k = r[key]
       if (!k) continue
       if (!m[k]) m[k] = { spent: 0, showed: 0, ots: 0, screens: new Set() }
@@ -258,9 +260,10 @@
       .sort((a, b) => b.spent - a.spent)
   }
 
-  $: byVendor = aggByDim('owner').slice(0, 12)
-  $: byFormat = aggByDim('format')
-  $: byCity   = aggByDim('city').slice(0, 12)
+  // Pass invRows explicitly so Svelte sees it as a reactive dependency
+  $: byVendor = aggByDim('owner',  invRows).slice(0, 12)
+  $: byFormat = aggByDim('format', invRows)
+  $: byCity   = aggByDim('city',   invRows).slice(0, 12)
 
   $: vendorMaxSpent = Math.max(1, ...byVendor.map(v => v.spent))
   $: formatMaxSpent = Math.max(1, ...byFormat.map(f => f.spent))
@@ -325,62 +328,55 @@
       .filter(c => (statsMap[c.id]?.totalBudgetShowed ?? 0) > 0)
       .map(c => c.id)
 
-    console.log('[Analytics] Phase2 spendIds:', spendIds.length, spendIds)
-    console.log('[Analytics] statsMap sample:', JSON.stringify(Object.entries(statsMap).slice(0, 3)))
-
     if (!spendIds.length) return
 
+    // Build screenMap fetching ALL inventories (no enabled=true filter).
+    // api.inventories.list() hardcodes enabled=true and would miss disabled
+    // screens that belong to completed campaigns. listRaw bypasses that.
+    const screenMap = new Map()
+    try {
+      const PAGE = 500
+      let page = 0
+      while (true) {
+        const r = await api.inventories.listRaw(`page=${page}&size=${PAGE}`)
+        for (const inv of r.content ?? []) {
+          const itc = inv.inventoryTypeAndCity ?? {}
+          screenMap.set(inv.id, {
+            owner:  inv.displayOwner?.name || null,
+            format: inv.type || itc.type   || null,
+            city:   inv.city?.name || itc.cityName || null,
+          })
+        }
+        if (r.last || page >= (r.totalPages ?? 1) - 1) break
+        page++
+      }
+    } catch (e) {
+      console.warn('[Analytics] screenMap build failed:', e)
+    }
+
+    // Fetch impression-inventory-stats per campaign and join with screenMap
     const BATCH_INV = 5
     const newInvRows = []
-    let debugLogged = false
     for (let i = 0; i < spendIds.length; i += BATCH_INV) {
       const batchIds = spendIds.slice(i, i + BATCH_INV)
-      console.log('[Analytics] calling inventoryStats for ids:', batchIds)
       const results = await Promise.all(
-        batchIds.map(id => api.stats.inventoryStats(id).catch(e => {
-          console.warn('[Analytics] inventoryStats error for', id, e)
-          return []
-        }))
+        batchIds.map(id => api.stats.inventoryStats(id).catch(() => []))
       )
-      console.log('[Analytics] inventoryStats results lengths:', results.map(r => Array.isArray(r) ? r.length : typeof r))
       for (const rows of results) {
-        if (!Array.isArray(rows)) { console.log('[Analytics] non-array result:', rows); continue }
-        if (!rows.length) { console.log('[Analytics] empty array result'); continue }
-        // Log first response to console so we can see the actual field structure
-        if (!debugLogged) {
-          console.log('[Analytics] inventoryStats sample (first 2 rows):', JSON.stringify(rows.slice(0, 2), null, 2))
-          debugLogged = true
-        }
+        if (!Array.isArray(rows) || !rows.length) continue
         for (const r of rows) {
-          const invId  = r.inventory?.id ?? r.inventoryId ?? null
-          const owner  = r.displayOwnerDTO?.name
-                      || r.displayOwner?.name
-                      || r.inventory?.displayOwner?.name
-                      || r.ownerName
-                      || r.inventory?.ownerName
-                      || null
-          const format = r.inventoryFormat
-                      || r.inventory?.type
-                      || r.inventoryType
-                      || r.inventory?.inventoryType
-                      || r.inventory?.inventoryTypeAndCity?.type
-                      || null
-          const city   = r.city
-                      || r.cityName
-                      || r.inventory?.city?.name
-                      || r.inventory?.cityName
-                      || r.inventory?.inventoryTypeAndCity?.cityName
-                      || null
-          const spent  = r.customerStats?.budgetShowed
-                      ?? r.totalBudgetShowed
-                      ?? r.totalShowedBudget
-                      ?? r.budgetShowed
-                      ?? 0
-          const showed = r.totalCountShowed ?? r.totalShowed ?? r.countShowed ?? 0
-          const ots    = r.otsCountShowed   ?? r.totalOpOts  ?? r.totalOts ?? r.otsShowed ?? 0
-          // Push every row that has an inventory ID, even if metadata is sparse
-          if (invId || owner || format || city) {
-            newInvRows.push({ invId, owner: owner || '—', format: format || '—', city: city || '—', spent, showed, ots })
+          const invId  = r.inventory?.id ?? null
+          // impression-inventory-stats only embeds id/name/location on inventory;
+          // type, city, displayOwner come from the screenMap join.
+          const screen = invId ? screenMap.get(invId) : null
+          const owner  = screen?.owner  || null
+          const format = screen?.format || null
+          const city   = screen?.city   || null
+          const spent  = r.customerStats?.budgetShowed ?? r.totalBudgetShowed ?? r.totalShowedBudget ?? 0
+          const showed = r.totalCountShowed ?? r.totalShowed ?? 0
+          const ots    = r.totalOpOts ?? r.totalOts ?? 0
+          if (owner || format || city) {
+            newInvRows.push({ invId, owner, format, city, spent, showed, ots })
           }
         }
       }
@@ -742,14 +738,6 @@
       {/if}
     </div>
 
-  </div>
-
-  <!-- ── DEBUG panel (temporary) ─────────────────────────────────────────── -->
-  <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:11px;font-family:monospace;word-break:break-all">
-    <b>DEBUG</b> · invRows={invRows.length} · statsMap keys={Object.keys(statsMap).length}<br>
-    spendCampaigns={allCampaigns.filter(c=>(statsMap[c.id]?.totalBudgetShowed??0)>0).length}<br>
-    statsMap[first]={JSON.stringify(Object.values(statsMap)[0]??null)}<br>
-    invRow[0]={JSON.stringify(invRows[0]??null)}
   </div>
 
   <!-- ── Breakdown by vendor / format / city ───────────────────────────────── -->
