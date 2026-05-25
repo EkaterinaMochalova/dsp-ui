@@ -1,14 +1,14 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { formatDate, formatMoney, STATE_LABEL, STATE_COLOR, TYPE_LABEL } from '../lib/utils.js'
+  import { formatDate, formatMoney, STATE_LABEL, STATE_COLOR, TYPE_LABEL, FORMAT_LABEL } from '../lib/utils.js'
   import StatusBadge from '../components/StatusBadge.svelte'
   import Pagination from '../components/Pagination.svelte'
 
   // ── Resizable columns ─────────────────────────────────────────────────────
-  // Статус | Кампания | Город | Начало | Конец | Бюджет | Бюджет/день | OTS | Выходы | Menu
+  // Статус | Кампания | Город | Формат | Начало | Конец | Бюджет | Бюджет/день | OTS | Выходы | Menu
   const _CW_KEY = 'dsp_camp_col_w'
-  const _CW_DEF = [100, 220, 130, 95, 95, 120, 105, 75, 85, 36]
+  const _CW_DEF = [100, 220, 130, 120, 95, 95, 120, 105, 75, 85, 36]
   let colW = (() => {
     try {
       const s = JSON.parse(localStorage.getItem(_CW_KEY))
@@ -75,6 +75,8 @@
 
   // Cities keyed by campaign ID: string[]
   let citiesMap = {}
+  // Formats keyed by campaign ID: string[]
+  let formatsMap = {}
 
   onMount(async () => {
     try {
@@ -120,27 +122,28 @@
       totalElements = data.totalElements ?? 0
       totalPages = data.totalPages ?? 0
 
-      // Extract cities inline from the list response — the list API embeds
-      // segments[].inventories[].city so we can populate the column immediately
-      // without extra requests.  Any campaign whose segments are missing (e.g.
-      // the list endpoint stripped them) will be fetched individually below.
-      const inlineMap = {}
+      // Extract cities + formats inline from the list response.
+      // The list API typically omits segments, so inlineCityMap will be empty
+      // and loadCities will fetch individually.  If segments are present the
+      // column populates immediately without extra requests.
+      const inlineCityMap = {}
+      const inlineFmtMap  = {}
       for (const camp of rows) {
-        const names = [...new Set(
-          (camp.segments ?? [])
-            .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
-            .filter(Boolean)
-        )]
-        if (names.length > 0) inlineMap[camp.id] = names
+        const invs = (camp.segments ?? []).flatMap(s => s.inventories ?? [])
+        const cities = [...new Set(invs.map(i => i.city?.name).filter(Boolean))]
+        const fmts   = [...new Set(invs.map(i => i.format).filter(Boolean))]
+        if (cities.length > 0) inlineCityMap[camp.id] = cities
+        if (fmts.length   > 0) inlineFmtMap[camp.id]  = fmts
       }
-      citiesMap = inlineMap
+      citiesMap  = inlineCityMap
+      formatsMap = inlineFmtMap
 
       if (campaigns.length > 0) {
         const ids = campaigns.map(c => c.id)
         loadStats(ids)
         loadTodayStats(ids)
-        // Only fetch individually for campaigns that didn't get cities inline
-        const missing = ids.filter(id => !inlineMap[id])
+        // Only fetch individually for campaigns that didn't get data inline
+        const missing = ids.filter(id => !inlineCityMap[id])
         if (missing.length > 0) loadCities(missing)
       }
     } catch (e) {
@@ -228,22 +231,21 @@
 
   async function loadCities(ids) {
     try {
-      // Fetch full campaign details for campaigns whose city wasn't in the list payload
+      // Fetch full campaign details for campaigns whose data wasn't in the list payload.
+      // Populates both citiesMap and formatsMap from the same requests.
       const results = await Promise.all(ids.map(id => api.campaigns.get(id).catch(e => { console.warn('[loadCities] get', id, e); return null })))
-      const map = { ...citiesMap }
+      const cMap = { ...citiesMap }
+      const fMap = { ...formatsMap }
       for (const camp of results) {
         if (!camp) continue
-        const names = [...new Set(
-          (camp.segments ?? [])
-            .flatMap(s => (s.inventories ?? []).map(i => i.city?.name))
-            .filter(Boolean)
-        )]
-        console.log('[loadCities]', camp.id, camp.name, '→ segs:', camp.segments?.length ?? 0, 'cities:', names)
-        map[camp.id] = names
+        const invs  = (camp.segments ?? []).flatMap(s => s.inventories ?? [])
+        cMap[camp.id] = [...new Set(invs.map(i => i.city?.name).filter(Boolean))]
+        fMap[camp.id] = [...new Set(invs.map(i => i.format).filter(Boolean))]
       }
-      citiesMap = map
+      citiesMap  = cMap
+      formatsMap = fMap
     } catch (e) {
-      console.warn('[loadCities error]', e)
+      console.warn('[loadCities]', e)
     }
   }
 
@@ -377,12 +379,20 @@
     }
   }
 
-  // citiesMap passed explicitly so Svelte tracks the dependency and re-renders on update
+  // citiesMap/formatsMap passed explicitly so Svelte tracks the dependency
   function formatCities(c, map) {
     const names = map[c.id] ?? []
     if (!names.length) return '—'
     if (names.length <= 2) return names.join(', ')
     return names.slice(0, 2).join(', ') + `, +${names.length - 2}`
+  }
+
+  function formatFormats(c, map) {
+    const codes = map[c.id] ?? []
+    if (!codes.length) return '—'
+    const labels = [...new Set(codes.map(f => FORMAT_LABEL[f] ?? f))]
+    if (labels.length <= 2) return labels.join(', ')
+    return labels.slice(0, 2).join(', ') + `, +${labels.length - 2}`
   }
 
   // Client-side budget filter (backend ignores budgetFrom/budgetTo params)
@@ -635,6 +645,7 @@
           <div class="rzh" on:mousedown={(e)=>rzStart(1,e)}></div>
         </th>
         <th style="position:relative;white-space:nowrap">Город<div class="rzh" on:mousedown={(e)=>rzStart(2,e)}></div></th>
+        <th style="position:relative;white-space:nowrap">Формат<div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div></th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('startDate')}>
             Начало
@@ -646,7 +657,7 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(4,e)}></div>
         </th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('endDate')}>
@@ -659,7 +670,7 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(4,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(5,e)}></div>
         </th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('budget')}>
@@ -672,9 +683,9 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(5,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div>
         </th>
-        <th style="position:relative"><span class="sort-th" style="cursor:default">Сегодня</span><div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div></th>
+        <th style="position:relative"><span class="sort-th" style="cursor:default">Сегодня</span><div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div></th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('otsCount')}>
             OTS
@@ -686,7 +697,7 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(8,e)}></div>
         </th>
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('impressionsCount')}>
@@ -699,7 +710,7 @@
               <svg class="sort-icon sort-icon-muted" viewBox="0 0 10 14" fill="none"><path d="M5 1v4M3 3l2-2 2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13V9M3 11l2 2 2-2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {/if}
           </button>
-          <div class="rzh" on:mousedown={(e)=>rzStart(8,e)}></div>
+          <div class="rzh" on:mousedown={(e)=>rzStart(9,e)}></div>
         </th>
         <th></th>
       </tr>
@@ -766,6 +777,9 @@
                 </td>
                 <td style="color:var(--text-muted);font-size:12px">
                   {formatCities(c, citiesMap)}
+                </td>
+                <td style="color:var(--text-muted);font-size:12px">
+                  {formatFormats(c, formatsMap)}
                 </td>
                 <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">
                   {formatDate(c.startDate)}
