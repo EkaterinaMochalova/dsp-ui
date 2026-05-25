@@ -37,6 +37,8 @@
   let filterDateTo = ''
   let filterBudgetMin = ''
   let filterBudgetMax = ''
+  let filterCity = ''
+  let filterFormat = ''
   let searchTimeout
 
   // Sort
@@ -272,8 +274,11 @@
     if (key === 'search')    { filterSearch = '' }
     if (key === 'date')      { filterDateFrom = ''; filterDateTo = '' }
     if (key === 'budget')    { filterBudgetMin = ''; filterBudgetMax = '' }
+    // city/format are pure client-side — no API reload needed
+    if (key === 'city')      { filterCity = '' }
+    if (key === 'inv-format') { filterFormat = '' }
     openChip = null
-    load(0)
+    if (key !== 'city' && key !== 'inv-format') load(0)
   }
 
   function applyFilter(key, val) {
@@ -395,13 +400,26 @@
     return labels.slice(0, 2).join(', ') + `, +${labels.length - 2}`
   }
 
-  // Client-side budget filter (backend ignores budgetFrom/budgetTo params)
-  $: visibleCampaigns = campaigns.filter(c => {
-    const b = c.budget ?? 0
-    if (filterBudgetMin !== '' && filterBudgetMin != null && b < Number(filterBudgetMin)) return false
-    if (filterBudgetMax !== '' && filterBudgetMax != null && b > Number(filterBudgetMax)) return false
-    return true
-  })
+  // Client-side filters (budget, city, inventory format — backend ignores these params)
+  $: visibleCampaigns = (() => {
+    // reference maps so Svelte re-runs this when they update
+    const _cmap = citiesMap
+    const _fmap = formatsMap
+    return campaigns.filter(c => {
+      const b = c.budget ?? 0
+      if (filterBudgetMin !== '' && filterBudgetMin != null && b < Number(filterBudgetMin)) return false
+      if (filterBudgetMax !== '' && filterBudgetMax != null && b > Number(filterBudgetMax)) return false
+      if (filterCity) {
+        const cities = _cmap[c.id] ?? []
+        if (!cities.some(city => city.toLowerCase().includes(filterCity.toLowerCase()))) return false
+      }
+      if (filterFormat) {
+        const fmts = _fmap[c.id] ?? []
+        if (!fmts.includes(filterFormat)) return false
+      }
+      return true
+    })
+  })()
 
   // Group campaigns by customer name for display
   $: groups = groupCampaigns(visibleCampaigns)
@@ -446,6 +464,8 @@
 
   $: hasDateFilter = !!(filterDateFrom || filterDateTo)
   $: hasBudgetFilter = !!(filterBudgetMin || filterBudgetMax)
+  $: hasCityFilter = !!filterCity
+  $: hasFormatFilter = !!filterFormat
 
   // Reactive sort icons — $: guarantees re-evaluation whenever sortBy/sortDir change
   $: si = (() => {
@@ -587,6 +607,50 @@
           <button class="filter-clear-btn" on:click={() => clearFilter('budget')}>Сбросить</button>
           <button class="filter-apply-btn" on:click={applyBudgetFilter}>Применить</button>
         </div>
+      </div>
+    {/if}
+  </div>
+
+  <!-- City filter chip -->
+  <div style="position:relative">
+    <button class="chip" class:active={hasCityFilter} on:click={() => toggleChip('city')}>
+      Город {hasCityFilter ? `· ${filterCity}` : ''}
+    </button>
+    {#if openChip === 'city'}
+      <div class="dropdown" style="min-width:220px;padding:10px">
+        <input
+          class="chip-input"
+          type="text"
+          placeholder="Поиск по городу…"
+          bind:value={filterCity}
+          autofocus
+        />
+        {#if filterCity}
+          <div class="filter-actions">
+            <button class="filter-clear-btn" on:click={() => clearFilter('city')}>Сбросить</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </div>
+
+  <!-- Inventory format filter chip -->
+  <div style="position:relative">
+    <button class="chip" class:active={hasFormatFilter} on:click={() => toggleChip('inv-format')}>
+      Носитель {hasFormatFilter ? `· ${FORMAT_LABEL[filterFormat] ?? filterFormat}` : ''}
+      <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
+        <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+    {#if openChip === 'inv-format'}
+      <div class="dropdown" style="min-width:180px">
+        <button class="dropdown-item" on:click={() => clearFilter('inv-format')}>Все носители</button>
+        {#each Object.entries(FORMAT_LABEL) as [code, label]}
+          <button class="dropdown-item" class:selected={filterFormat === code}
+            on:click={() => { filterFormat = code; openChip = null }}>
+            {label}
+          </button>
+        {/each}
       </div>
     {/if}
   </div>
