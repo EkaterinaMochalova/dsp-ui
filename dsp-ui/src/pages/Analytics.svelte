@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { formatMoney, formatDate, STATE_LABEL, STATE_COLOR, TYPE_LABEL, FORMAT_LABEL } from '../lib/utils.js'
+  import { t as tr } from '../lib/i18n.js'
 
   // ── State ─────────────────────────────────────────────────────────────────
   let loading       = true
@@ -458,21 +459,21 @@
   <!-- ── Header ──────────────────────────────────────────────────────────── -->
   <div class="an-header">
     <div>
-      <h1 class="an-title">Аналитика</h1>
+      <h1 class="an-title">{$tr('an_title')}</h1>
       <p class="an-sub">
         {#if loading}
-          Загрузка…
+          {$tr('loading')}
         {:else}
-          {totalCampaigns} кампаний
-          {#if statsLoading}· <span class="sub-loading">Статистика загружается…</span>{/if}
+          {totalCampaigns} {$tr('an_campaigns')}
+          {#if statsLoading}· <span class="sub-loading">{$tr('an_loading')}</span>{/if}
         {/if}
       </p>
     </div>
     <div class="an-header-actions">
       <button class="btn-filter" on:click={() => filterOpen = !filterOpen}>
-        {filterOpen ? 'Скрыть фильтры' : 'Фильтры'}
+        {filterOpen ? $tr('an_hide_filter') : $tr('an_filter')}
       </button>
-      <a href="#/campaigns" class="btn-link">Все кампании →</a>
+      <a href="#/campaigns" class="btn-link">{$tr('an_all_campaigns')}</a>
     </div>
   </div>
 
@@ -481,7 +482,7 @@
   {:else if loading}
     <div class="an-spinner">
       <div class="spinner"></div>
-      <span>Загрузка данных…</span>
+      <span>{$tr('loading')}</span>
     </div>
   {:else}
 
@@ -492,32 +493,32 @@
 
       <!-- Search -->
       <div class="filter-group filter-group--wide">
-        <label class="filter-label">Поиск</label>
-        <input class="filter-input" type="text" placeholder="Название кампании…"
+        <label class="filter-label">{$tr('an_filter')}</label>
+        <input class="filter-input" type="text" placeholder={$tr('an_search')}
           bind:value={searchText} />
       </div>
 
       <!-- Date from -->
       <div class="filter-group">
-        <label class="filter-label">Дата от</label>
+        <label class="filter-label">{$tr('an_date_from')}</label>
         <input class="filter-input" type="date" bind:value={dateFrom} />
       </div>
 
       <!-- Date to -->
       <div class="filter-group">
-        <label class="filter-label">Дата до</label>
+        <label class="filter-label">{$tr('an_date_to')}</label>
         <input class="filter-input" type="date" bind:value={dateTo} />
       </div>
 
       <!-- Min budget -->
       <div class="filter-group">
-        <label class="filter-label">Бюджет от, ₽</label>
+        <label class="filter-label">{$tr('an_budget_from')}</label>
         <input class="filter-input" type="number" placeholder="0" bind:value={minBudget} />
       </div>
 
       <!-- Max budget -->
       <div class="filter-group">
-        <label class="filter-label">Бюджет до, ₽</label>
+        <label class="filter-label">{$tr('an_budget_to')}</label>
         <input class="filter-input" type="number" placeholder="∞" bind:value={maxBudget} />
       </div>
     </div>
@@ -526,13 +527,13 @@
 
       <!-- Status dropdown -->
       <div class="filter-group">
-        <label class="filter-label">Статус</label>
+        <label class="filter-label">{$tr('an_status')}</label>
         <div class="fdd-wrap" on:mouseleave={() => statusDropdownOpen = false}>
           <button class="fdd-btn" on:click={() => statusDropdownOpen = !statusDropdownOpen}>
             {#if selectedStates.length === 0}
-              Все статусы
+              {$tr('an_all_statuses')}
             {:else}
-              {selectedStates.length} выбрано
+              {selectedStates.length} {$tr('an_selected')}
             {/if}
             <span class="fdd-arrow">{statusDropdownOpen ? '▲' : '▼'}</span>
           </button>
@@ -554,13 +555,13 @@
 
       <!-- Type dropdown -->
       <div class="filter-group">
-        <label class="filter-label">Тип</label>
+        <label class="filter-label">{$tr('an_type')}</label>
         <div class="fdd-wrap" on:mouseleave={() => typeDropdownOpen = false}>
           <button class="fdd-btn" on:click={() => typeDropdownOpen = !typeDropdownOpen}>
             {#if selectedTypes.length === 0}
-              Все типы
+              {$tr('an_all_types')}
             {:else}
-              {selectedTypes.length} выбрано
+              {selectedTypes.length} {$tr('an_selected')}
             {/if}
             <span class="fdd-arrow">{typeDropdownOpen ? '▲' : '▼'}</span>
           </button>
@@ -582,8 +583,8 @@
 
       <!-- Actions -->
       <div class="filter-actions">
-        <span class="filter-chip">{totalCampaigns} кампаний</span>
-        <button class="btn-reset" on:click={resetFilters}>Сбросить фильтры</button>
+        <span class="filter-chip">{totalCampaigns} {$tr('an_campaigns')}</span>
+        <button class="btn-reset" on:click={resetFilters}>{$tr('an_reset')}</button>
       </div>
 
     </div>
@@ -594,19 +595,19 @@
   <div class="kpi-grid">
 
     <div class="kpi-card">
-      <div class="kpi-label">Кампании</div>
+      <div class="kpi-label">{$tr('an_kpi_campaigns')}</div>
       <div class="kpi-value">{totalCampaigns}</div>
-      <div class="kpi-sub">{activeCnt} активных</div>
+      <div class="kpi-sub">{activeCnt} {$tr('an_kpi_active')}</div>
     </div>
 
     <div class="kpi-card">
-      <div class="kpi-label">Плановый бюджет</div>
+      <div class="kpi-label">{$tr('an_kpi_planned')}</div>
       <div class="kpi-value kpi-money">{formatMoney(totalBudgetPlanned)}</div>
-      <div class="kpi-sub">по выбранным</div>
+      <div class="kpi-sub">{$tr('an_kpi_by_selected')}</div>
     </div>
 
     <div class="kpi-card kpi-card--accent">
-      <div class="kpi-label">Потрачено</div>
+      <div class="kpi-label">{$tr('an_kpi_spent')}</div>
       <div class="kpi-value kpi-money">
         {#if statsLoading}<span class="kpi-loading">…</span>{:else}{formatMoney(totalBudgetSpent)}{/if}
       </div>
@@ -615,13 +616,13 @@
           <span class="kpi-bar">
             <span class="kpi-bar-fill" style="width:{spendPct.toFixed(1)}%"></span>
           </span>
-          {spendPct.toFixed(1)}% от плана
+          {spendPct.toFixed(1)}% {$tr('an_kpi_from_plan')}
         {:else if !statsLoading}—{:else}загрузка…{/if}
       </div>
     </div>
 
     <div class="kpi-card">
-      <div class="kpi-label">Показы</div>
+      <div class="kpi-label">{$tr('an_kpi_impressions')}</div>
       <div class="kpi-value">
         {#if statsLoading}<span class="kpi-loading">…</span>{:else}{fmt(totalImpressions)}{/if}
       </div>
@@ -629,11 +630,11 @@
     </div>
 
     <div class="kpi-card">
-      <div class="kpi-label">Средний CPM</div>
+      <div class="kpi-label">{$tr('an_kpi_avg_cpm')}</div>
       <div class="kpi-value kpi-money">
         {#if statsLoading}<span class="kpi-loading">…</span>{:else}{formatMoney(avgCpm)}{/if}
       </div>
-      <div class="kpi-sub">взвешенный</div>
+      <div class="kpi-sub">{$tr('an_kpi_weighted')}</div>
     </div>
 
   </div>
@@ -644,7 +645,7 @@
 
     <!-- Chart 1: Budget bars by month -->
     <div class="card">
-      <div class="card-title">Бюджет по месяцам</div>
+      <div class="card-title">{$tr('an_chart_budget')}</div>
       <svg viewBox="0 0 {SVG_W} {SVG_H}" class="chart-svg" preserveAspectRatio="xMidYMid meet">
         <!-- Gridlines -->
         {#each Array(GRIDLINES + 1) as _, gi}
@@ -670,7 +671,7 @@
             width={bw} height={Math.max(1, hPlan)}
             fill="#bfdbfe" rx="2"
           >
-            <title>{mo.label} — Плановый: {formatMoney(mo.budget)}</title>
+            <title>{mo.label} — {$tr('an_chart_planned')}: {formatMoney(mo.budget)}</title>
           </rect>
 
           <!-- Spent bar -->
@@ -680,7 +681,7 @@
             width={bw} height={Math.max(1, hSpent)}
             fill="#3b82f6" rx="2"
           >
-            <title>{mo.label} — Потрачено: {formatMoney(mo.spent)}</title>
+            <title>{mo.label} — {$tr('an_chart_spent')}: {formatMoney(mo.spent)}</title>
           </rect>
           {/if}
 
@@ -704,14 +705,14 @@
       </svg>
 
       <div class="chart-legend">
-        <span class="legend-swatch" style="background:#bfdbfe"></span> Плановый бюджет
-        <span class="legend-swatch" style="background:#3b82f6;margin-left:12px"></span> Потрачено
+        <span class="legend-swatch" style="background:#bfdbfe"></span> {$tr('an_chart_planned')}
+        <span class="legend-swatch" style="background:#3b82f6;margin-left:12px"></span> {$tr('an_chart_spent')}
       </div>
     </div>
 
     <!-- Chart 2: Impressions line -->
     <div class="card">
-      <div class="card-title">Показы по месяцам</div>
+      <div class="card-title">{$tr('an_chart_impr')}</div>
       <svg viewBox="0 0 {SVG_W} {SVG_H}" class="chart-svg" preserveAspectRatio="xMidYMid meet">
         <!-- Gridlines -->
         {#each Array(GRIDLINES + 1) as _, gi}
@@ -769,7 +770,7 @@
       </svg>
 
       <div class="chart-legend">
-        <span class="legend-swatch" style="background:#6366f1"></span> Показы
+        <span class="legend-swatch" style="background:#6366f1"></span> {$tr('an_chart_shows')}
       </div>
     </div>
 
@@ -782,9 +783,9 @@
 
     <!-- By type -->
     <div class="card">
-      <div class="card-title">По типу</div>
+      <div class="card-title">{$tr('an_by_type')}</div>
       {#if byType.length === 0}
-        <p class="empty-text">Нет данных</p>
+        <p class="empty-text">{$tr('an_no_data')}</p>
       {:else}
         <div class="dim-list">
           {#each byType as t}
@@ -809,9 +810,9 @@
 
     <!-- By status -->
     <div class="card">
-      <div class="card-title">По статусу</div>
+      <div class="card-title">{$tr('an_by_status')}</div>
       {#if byStatus.length === 0}
-        <p class="empty-text">Нет данных</p>
+        <p class="empty-text">{$tr('an_no_data')}</p>
       {:else}
         <div class="dim-list">
           {#each byStatus as s}
@@ -841,7 +842,7 @@
     <!-- Vendor chips -->
     {#if availableVendors.length}
     <div class="dim-filter-group">
-      <span class="dim-filter-label">Оператор</span>
+      <span class="dim-filter-label">{$tr('an_operator')}</span>
       <div class="dim-chips">
         {#each availableVendors as v}
           <button
@@ -856,7 +857,7 @@
     <!-- Format chips -->
     {#if availableFormats.length}
     <div class="dim-filter-group">
-      <span class="dim-filter-label">Формат</span>
+      <span class="dim-filter-label">{$tr('an_format')}</span>
       <div class="dim-chips">
         {#each availableFormats as f}
           {@const color = FORMAT_COLOR[f] ?? '#64748b'}
@@ -872,17 +873,17 @@
 
     <!-- City search -->
     <div class="dim-filter-group dim-filter-group--city">
-      <span class="dim-filter-label">Город</span>
+      <span class="dim-filter-label">{$tr('cl_city')}</span>
       <input
         class="dim-city-input"
         type="text"
-        placeholder="Поиск по городу…"
+        placeholder={$tr('an_city_search')}
         bind:value={dimFilterCity}
       />
     </div>
 
     {#if dimFiltersActive}
-      <button class="dim-clear-btn" on:click={clearDimFilters}>× Сбросить</button>
+      <button class="dim-clear-btn" on:click={clearDimFilters}>{$tr('an_dim_reset')}</button>
     {/if}
   </div>
   {/if}
@@ -893,11 +894,11 @@
 
     <!-- By vendor -->
     <div class="card">
-      <div class="card-title">По оператору</div>
+      <div class="card-title">{$tr('an_by_vendor')}</div>
       {#if statsLoading && byVendor.length === 0}
-        <p class="empty-text">Статистика загружается…</p>
+        <p class="empty-text">{$tr('an_loading')}</p>
       {:else if byVendor.length === 0}
-        <p class="empty-text">Нет данных</p>
+        <p class="empty-text">{$tr('an_no_data')}</p>
       {:else}
         <div class="dim-list">
           {#each byVendor as v}
@@ -905,9 +906,9 @@
               <div class="dim-label"><span class="dim-dot" style="background:#6366f1;border-radius:2px"></span><span title={v.label}>{v.label}</span></div>
               <div class="dim-bar-wrap"><div class="dim-bar-fill" style="width:{(v.spent/vendorMaxSpent*100).toFixed(1)}%;background:#6366f1"></div></div>
               <div class="dim-stats">
-                <span class="dim-count">{v.screens} экр.</span>
+                <span class="dim-count">{v.screens} {$tr('an_dim_screens')}</span>
                 <span class="dim-spent">{formatMoney(v.spent)}</span>
-                <span class="dim-budget dim-muted">{fmt(v.showed)} пок.</span>
+                <span class="dim-budget dim-muted">{fmt(v.showed)} {$tr('an_dim_shows')}</span>
               </div>
             </div>
           {/each}
@@ -917,11 +918,11 @@
 
     <!-- By format -->
     <div class="card">
-      <div class="card-title">По формату</div>
+      <div class="card-title">{$tr('an_by_format')}</div>
       {#if statsLoading && byFormat.length === 0}
-        <p class="empty-text">Статистика загружается…</p>
+        <p class="empty-text">{$tr('an_loading')}</p>
       {:else if byFormat.length === 0}
-        <p class="empty-text">Нет данных</p>
+        <p class="empty-text">{$tr('an_no_data')}</p>
       {:else}
         <div class="dim-list">
           {#each byFormat as f}
@@ -930,9 +931,9 @@
               <div class="dim-label"><span class="dim-dot" style="background:{color};border-radius:2px"></span><span>{FORMAT_LABEL[f.label] ?? f.label}</span></div>
               <div class="dim-bar-wrap"><div class="dim-bar-fill" style="width:{(f.spent/formatMaxSpent*100).toFixed(1)}%;background:{color}"></div></div>
               <div class="dim-stats">
-                <span class="dim-count">{f.screens} экр.</span>
+                <span class="dim-count">{f.screens} {$tr('an_dim_screens')}</span>
                 <span class="dim-spent">{formatMoney(f.spent)}</span>
-                <span class="dim-budget dim-muted">{fmt(f.showed)} пок.</span>
+                <span class="dim-budget dim-muted">{fmt(f.showed)} {$tr('an_dim_shows')}</span>
               </div>
             </div>
           {/each}
@@ -942,11 +943,11 @@
 
     <!-- By city -->
     <div class="card">
-      <div class="card-title">По городу</div>
+      <div class="card-title">{$tr('an_by_city')}</div>
       {#if statsLoading && byCity.length === 0}
-        <p class="empty-text">Статистика загружается…</p>
+        <p class="empty-text">{$tr('an_loading')}</p>
       {:else if byCity.length === 0}
-        <p class="empty-text">Нет данных</p>
+        <p class="empty-text">{$tr('an_no_data')}</p>
       {:else}
         <div class="dim-list">
           {#each byCity as c}
@@ -954,9 +955,9 @@
               <div class="dim-label"><span class="dim-dot" style="background:#0ea5e9;border-radius:2px"></span><span title={c.label}>{c.label}</span></div>
               <div class="dim-bar-wrap"><div class="dim-bar-fill" style="width:{(c.spent/cityMaxSpent*100).toFixed(1)}%;background:#0ea5e9"></div></div>
               <div class="dim-stats">
-                <span class="dim-count">{c.screens} экр.</span>
+                <span class="dim-count">{c.screens} {$tr('an_dim_screens')}</span>
                 <span class="dim-spent">{formatMoney(c.spent)}</span>
-                <span class="dim-budget dim-muted">{fmt(c.showed)} пок.</span>
+                <span class="dim-budget dim-muted">{fmt(c.showed)} {$tr('an_dim_shows')}</span>
               </div>
             </div>
           {/each}

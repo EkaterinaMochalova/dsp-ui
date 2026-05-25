@@ -4,6 +4,7 @@
   import { formatDate, formatMoney, STATE_LABEL, STATE_COLOR, TYPE_LABEL, FORMAT_LABEL } from '../lib/utils.js'
   import StatusBadge from '../components/StatusBadge.svelte'
   import Pagination from '../components/Pagination.svelte'
+  import { t as tr } from '../lib/i18n.js'
 
   // ── Resizable columns ─────────────────────────────────────────────────────
   // Статус | Кампания | Город | Формат | Начало | Конец | Бюджет | Бюджет/день | OTS | Выходы | Menu
@@ -565,14 +566,14 @@
   <!-- Status chip -->
   <div style="position:relative">
     <button class="chip" class:active={!!filterState} on:click={() => toggleChip('state')}>
-      Статус {filterState ? `· ${STATE_LABEL_MAP[filterState] ?? filterState}` : ''}
+      {$tr('cl_status')} {filterState ? `· ${STATE_LABEL_MAP[filterState] ?? filterState}` : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     {#if openChip === 'state'}
       <div class="dropdown" style="min-width:200px">
-        <button class="dropdown-item" on:click={() => clearFilter('state')}>Все статусы</button>
+        <button class="dropdown-item" on:click={() => clearFilter('state')}>{$tr('an_all_statuses')}</button>
         {#each STATE_GROUPS_FILTER as grp}
           <div class="dropdown-group">{grp.label}</div>
           {#each grp.values.filter(v => allStates.includes(v)) as v}
@@ -588,14 +589,14 @@
   <!-- Search (Название) -->
   <div style="position:relative">
     <button class="chip" class:active={!!filterSearch} on:click={() => toggleChip('search')}>
-      Название {filterSearch ? `· ${filterSearch}` : ''}
+      {$tr('cl_name_label')} {filterSearch ? `· ${filterSearch}` : ''}
     </button>
     {#if openChip === 'search'}
       <div class="dropdown" style="min-width:220px;padding:10px">
         <input
           class="chip-input"
           type="text"
-          placeholder="Поиск по названию…"
+          placeholder={$tr('cl_search')}
           bind:value={filterSearch}
           on:input={onSearchInput}
           autofocus
@@ -607,14 +608,14 @@
   <!-- Type chip -->
   <div style="position:relative">
     <button class="chip" class:active={!!filterType} on:click={() => toggleChip('type')}>
-      Тип кампании {filterType ? `· ${TYPE_LABEL_MAP[filterType] ?? filterType}` : ''}
+      {$tr('cl_type')} {filterType ? `· ${TYPE_LABEL_MAP[filterType] ?? filterType}` : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     {#if openChip === 'type'}
       <div class="dropdown">
-        <button class="dropdown-item" on:click={() => clearFilter('type')}>Все типы</button>
+        <button class="dropdown-item" on:click={() => clearFilter('type')}>{$tr('an_all_types')}</button>
         {#each allTypes as t}
           <button class="dropdown-item" class:selected={filterType===t} on:click={() => applyFilter('type', t)}>
             {TYPE_LABEL_MAP[t] ?? t}
@@ -630,24 +631,24 @@
       <svg class="chip-calendar" viewBox="0 0 16 16" fill="currentColor">
         <path d="M11 3a1 1 0 10-2 0v1H7V3a1 1 0 10-2 0v1H4a2 2 0 00-2 2v7a2 2 0 002 2h8a2 2 0 002-2V6a2 2 0 00-2-2h-1V3zM4 7h8v5H4V7z"/>
       </svg>
-      Даты {hasDateFilter ? '·' : ''}
+      {$tr('cl_dates')} {hasDateFilter ? '·' : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     {#if openChip === 'date'}
       <div class="dropdown" style="min-width:240px;padding:12px">
-        <div class="filter-row-label">Начало кампании</div>
+        <div class="filter-row-label">{$tr('cl_date_start')}</div>
         <div class="filter-row">
           <input class="chip-input" type="date" bind:value={filterDateFrom} style="flex:1" />
         </div>
-        <div class="filter-row-label" style="margin-top:8px">Конец кампании</div>
+        <div class="filter-row-label" style="margin-top:8px">{$tr('cl_date_end')}</div>
         <div class="filter-row">
           <input class="chip-input" type="date" bind:value={filterDateTo} style="flex:1" />
         </div>
         <div class="filter-actions">
-          <button class="filter-clear-btn" on:click={() => clearFilter('date')}>Сбросить</button>
-          <button class="filter-apply-btn" on:click={applyDateFilter}>Применить</button>
+          <button class="filter-clear-btn" on:click={() => clearFilter('date')}>{$tr('cl_reset')}</button>
+          <button class="filter-apply-btn" on:click={applyDateFilter}>{$tr('cl_apply')}</button>
         </div>
       </div>
     {/if}
@@ -656,24 +657,24 @@
   <!-- Budget chip -->
   <div style="position:relative">
     <button class="chip" class:active={hasBudgetFilter} on:click={() => toggleChip('budget')}>
-      Бюджет {hasBudgetFilter ? '·' : ''}
+      {$tr('cl_budget')} {hasBudgetFilter ? '·' : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     {#if openChip === 'budget'}
       <div class="dropdown" style="min-width:240px;padding:12px;left:auto;right:0">
-        <div class="filter-row-label">Бюджет от (₽)</div>
+        <div class="filter-row-label">{$tr('an_budget_from')}</div>
         <div class="filter-row">
           <input class="chip-input" type="number" min="0" placeholder="0" bind:value={filterBudgetMin} style="flex:1" />
         </div>
-        <div class="filter-row-label" style="margin-top:8px">Бюджет до (₽)</div>
+        <div class="filter-row-label" style="margin-top:8px">{$tr('an_budget_to')}</div>
         <div class="filter-row">
           <input class="chip-input" type="number" min="0" placeholder="∞" bind:value={filterBudgetMax} style="flex:1" />
         </div>
         <div class="filter-actions">
-          <button class="filter-clear-btn" on:click={() => clearFilter('budget')}>Сбросить</button>
-          <button class="filter-apply-btn" on:click={applyBudgetFilter}>Применить</button>
+          <button class="filter-clear-btn" on:click={() => clearFilter('budget')}>{$tr('cl_reset')}</button>
+          <button class="filter-apply-btn" on:click={applyBudgetFilter}>{$tr('cl_apply')}</button>
         </div>
       </div>
     {/if}
@@ -682,20 +683,20 @@
   <!-- City filter chip -->
   <div style="position:relative">
     <button class="chip" class:active={hasCityFilter} on:click={() => toggleChip('city')}>
-      Город {hasCityFilter ? `· ${filterCity}` : ''}
+      {$tr('cl_city')} {hasCityFilter ? `· ${filterCity}` : ''}
     </button>
     {#if openChip === 'city'}
       <div class="dropdown" style="min-width:220px;padding:10px">
         <input
           class="chip-input"
           type="text"
-          placeholder="Поиск по городу…"
+          placeholder={$tr('an_city_search')}
           bind:value={filterCity}
           autofocus
         />
         {#if filterCity}
           <div class="filter-actions">
-            <button class="filter-clear-btn" on:click={() => clearFilter('city')}>Сбросить</button>
+            <button class="filter-clear-btn" on:click={() => clearFilter('city')}>{$tr('cl_reset')}</button>
           </div>
         {/if}
       </div>
@@ -705,16 +706,16 @@
   <!-- Inventory format filter chip -->
   <div style="position:relative">
     <button class="chip" class:active={hasFormatFilter} on:click={() => toggleChip('inv-format')}>
-      Формат {hasFormatFilter ? `· ${FORMAT_LABEL[filterFormat] ?? filterFormat}` : ''}
+      {$tr('cl_format')} {hasFormatFilter ? `· ${FORMAT_LABEL[filterFormat] ?? filterFormat}` : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
     </button>
     {#if openChip === 'inv-format'}
       <div class="dropdown" style="min-width:180px">
-        <button class="dropdown-item" on:click={() => clearFilter('inv-format')}>Все форматы</button>
+        <button class="dropdown-item" on:click={() => clearFilter('inv-format')}>{$tr('cl_all_formats')}</button>
         {#if availableFormats.length === 0}
-          <div class="dropdown-group">Загрузка…</div>
+          <div class="dropdown-group">{$tr('loading')}</div>
         {:else}
           {#each availableFormats as code}
             <button class="dropdown-item" class:selected={filterFormat === code}
@@ -733,17 +734,17 @@
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
       <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
     </svg>
-    Рекламная кампания
+    {$tr('cl_new')}
   </button>
 </div>
 
 <!-- ── Tabs ── -->
 <div class="tabs-bar">
   <button class="tab" class:active={activeTab==='all'} on:click={() => activeTab='all'}>
-    Все рекламные кампании
+    {$tr('cl_tab_all')}
   </button>
   <button class="tab" class:active={activeTab==='groups'} on:click={() => activeTab='groups'}>
-    Группы
+    {$tr('cl_tab_groups')}
   </button>
   <div class="tab-actions">
     <!-- Column settings icon -->
@@ -755,7 +756,7 @@
       </button>
       {#if colPanelOpen}
       <div class="col-panel">
-        <div class="col-panel-title">Колонки</div>
+        <div class="col-panel-title">{$tr('cl_columns')}</div>
         {#each colCfg as col (col.id)}
           {@const def = COL_DEFS.find(d => d.id === col.id)}
           <div
@@ -770,11 +771,11 @@
             <span class="col-drag-handle" title="Перетащить для сортировки">⋮⋮</span>
             <label class="col-panel-item">
               <input type="checkbox" checked={col.visible} on:change={() => toggleColVis(col.id)} />
-              <span>{def?.label ?? col.id}</span>
+              <span>{$tr('cl_col_' + col.id)}</span>
             </label>
           </div>
         {/each}
-        <button class="col-reset-btn" on:click={resetColCfg}>Сбросить</button>
+        <button class="col-reset-btn" on:click={resetColCfg}>{$tr('cl_reset')}</button>
       </div>
       {/if}
     </div>
@@ -795,11 +796,11 @@
     </colgroup>
     <thead>
       <tr>
-        {#if cv('status')}<th style="position:relative">Статус<div class="rzh" on:mousedown={(e)=>rzStart(0,e)}></div></th>{/if}
+        {#if cv('status')}<th style="position:relative">{$tr('cl_col_status')}<div class="rzh" on:mousedown={(e)=>rzStart(0,e)}></div></th>{/if}
         {#if cv('name')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('name')}>
-            Кампания
+            {$tr('cl_col_name')}
             {#if si.name === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else if si.name === 'down'}
@@ -811,12 +812,12 @@
           <div class="rzh" on:mousedown={(e)=>rzStart(1,e)}></div>
         </th>
         {/if}
-        {#if cv('city')}<th style="position:relative;white-space:nowrap">Город<div class="rzh" on:mousedown={(e)=>rzStart(2,e)}></div></th>{/if}
-        {#if cv('format')}<th style="position:relative;white-space:nowrap">Формат<div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div></th>{/if}
+        {#if cv('city')}<th style="position:relative;white-space:nowrap">{$tr('cl_col_city')}<div class="rzh" on:mousedown={(e)=>rzStart(2,e)}></div></th>{/if}
+        {#if cv('format')}<th style="position:relative;white-space:nowrap">{$tr('cl_col_format')}<div class="rzh" on:mousedown={(e)=>rzStart(3,e)}></div></th>{/if}
         {#if cv('start')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('startDate')}>
-            Начало
+            {$tr('cl_col_start')}
             {#if si.startDate === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else if si.startDate === 'down'}
@@ -831,7 +832,7 @@
         {#if cv('end')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('endDate')}>
-            Конец
+            {$tr('cl_col_end')}
             {#if si.endDate === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else if si.endDate === 'down'}
@@ -846,7 +847,7 @@
         {#if cv('budget')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('budget')}>
-            Бюджет
+            {$tr('cl_col_budget')}
             {#if si.budget === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else if si.budget === 'down'}
@@ -858,7 +859,7 @@
           <div class="rzh" on:mousedown={(e)=>rzStart(6,e)}></div>
         </th>
         {/if}
-        {#if cv('today')}<th style="position:relative"><span class="sort-th" style="cursor:default">Сегодня</span><div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div></th>{/if}
+        {#if cv('today')}<th style="position:relative"><span class="sort-th" style="cursor:default">{$tr('cl_col_today')}</span><div class="rzh" on:mousedown={(e)=>rzStart(7,e)}></div></th>{/if}
         {#if cv('ots')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('otsCount')}>
@@ -877,7 +878,7 @@
         {#if cv('shows')}
         <th style="position:relative">
           <button class="sort-th" on:click={() => setSort('impressionsCount')}>
-            Выходы
+            {$tr('cl_col_shows')}
             {#if si.impressionsCount === 'up'}
               <svg class="sort-icon" viewBox="0 0 10 12" fill="none"><path d="M5 10V2M2 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {:else if si.impressionsCount === 'down'}
@@ -896,14 +897,14 @@
       {#if loading}
         <tr><td colspan={visibleColIds.length + 1} class="state-cell">
           <div class="spinner"></div>
-          Загружаю кампании…
+          {$tr('cl_loading')}
         </td></tr>
 
       {:else if error}
         <tr><td colspan={visibleColIds.length + 1} class="state-cell" style="color:#EF4444">{error}</td></tr>
 
       {:else if campaigns.length === 0}
-        <tr><td colspan={visibleColIds.length + 1} class="state-cell">Кампании не найдены</td></tr>
+        <tr><td colspan={visibleColIds.length + 1} class="state-cell">{$tr('cl_empty')}</td></tr>
 
       {:else if activeTab === 'groups'}
         {#each groups as group (group.name)}
@@ -1031,22 +1032,22 @@
                     <div class="row-menu-dropdown">
                       <button class="dropdown-item" on:click={() => { openCampaign(c.id); closeRowMenu() }}>
                         <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
-                        Открыть
+                        {$tr('cl_open')}
                       </button>
                       {#if STOPPABLE.includes(c.state)}
                         <button class="dropdown-item dropdown-item--warn" on:click={closeRowMenu}>
                           <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"/></svg>
-                          Остановить
+                          {$tr('cl_stop')}
                         </button>
                       {:else if STARTABLE.includes(c.state)}
                         <button class="dropdown-item dropdown-item--green" on:click={closeRowMenu}>
                           <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
-                          Запустить
+                          {$tr('cl_start_campaign')}
                         </button>
                       {/if}
                       <button class="dropdown-item" on:click={() => { duplicateCampaign(c.id); closeRowMenu() }}>
                         <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"/><path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z"/></svg>
-                        Дублировать
+                        {$tr('cl_duplicate')}
                       </button>
                     </div>
                   {/if}
@@ -1144,22 +1145,22 @@
                 <div class="row-menu-dropdown">
                   <button class="dropdown-item" on:click={() => { openCampaign(c.id); closeRowMenu() }}>
                     <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
-                    Открыть
+                    {$tr('cl_open')}
                   </button>
                   {#if STOPPABLE.includes(c.state)}
                     <button class="dropdown-item dropdown-item--warn" on:click={closeRowMenu}>
                       <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"/></svg>
-                      Остановить
+                      {$tr('cl_stop')}
                     </button>
                   {:else if STARTABLE.includes(c.state)}
                     <button class="dropdown-item dropdown-item--green" on:click={closeRowMenu}>
                       <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
-                      Запустить
+                      {$tr('cl_start_campaign')}
                     </button>
                   {/if}
                   <button class="dropdown-item" on:click={() => { duplicateCampaign(c.id); closeRowMenu() }}>
                     <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"/><path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z"/></svg>
-                    Дублировать
+                    {$tr('cl_duplicate')}
                   </button>
                 </div>
               {/if}
