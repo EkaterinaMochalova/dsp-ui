@@ -3627,9 +3627,14 @@ async function onCalcClick() {
       const gidSet = brief.selection.manual_gids;
       if (gidSet && gidSet.size > 0) {
         const before = pool.length;
+        const seenGids = new Set();
         pool = pool.filter(s => {
           const sid = _screenIdOf(s);
-          if (gidSet.has(sid)) { _foundGids.add(sid); return true; }
+          if (gidSet.has(sid) && !seenGids.has(sid)) {
+            seenGids.add(sid);
+            _foundGids.add(sid);
+            return true;
+          }
           return false;
         });
         if (!pool.length) {
