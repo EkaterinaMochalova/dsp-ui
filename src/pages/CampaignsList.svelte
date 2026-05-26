@@ -4,7 +4,7 @@
   import { formatDate, formatMoney, STATE_LABEL, STATE_COLOR, TYPE_LABEL, FORMAT_LABEL } from '../lib/utils.js'
   import StatusBadge from '../components/StatusBadge.svelte'
   import Pagination from '../components/Pagination.svelte'
-  import { t as tr } from '../lib/i18n.js'
+  import { t as tr, stateLabel, typeLabel, stateGroups } from '../lib/i18n.js'
 
   // ── Resizable columns ─────────────────────────────────────────────────────
   // Статус | Кампания | Город | Формат | Начало | Конец | Бюджет | Бюджет/день | OTS | Выходы | Menu
@@ -566,7 +566,7 @@
   <!-- Status chip -->
   <div style="position:relative">
     <button class="chip" class:active={!!filterState} on:click={() => toggleChip('state')}>
-      {$tr('cl_status')} {filterState ? `· ${STATE_LABEL_MAP[filterState] ?? filterState}` : ''}
+      {$tr('cl_status')} {filterState ? `· ${$stateLabel(filterState)}` : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
@@ -574,11 +574,11 @@
     {#if openChip === 'state'}
       <div class="dropdown" style="min-width:200px">
         <button class="dropdown-item" on:click={() => clearFilter('state')}>{$tr('an_all_statuses')}</button>
-        {#each STATE_GROUPS_FILTER as grp}
+        {#each $stateGroups as grp}
           <div class="dropdown-group">{grp.label}</div>
           {#each grp.values.filter(v => allStates.includes(v)) as v}
             <button class="dropdown-item" class:selected={filterState===v} on:click={() => applyFilter('state', v)}>
-              {STATE_LABEL_MAP[v] ?? v}
+              {$stateLabel(v)}
             </button>
           {/each}
         {/each}
@@ -608,7 +608,7 @@
   <!-- Type chip -->
   <div style="position:relative">
     <button class="chip" class:active={!!filterType} on:click={() => toggleChip('type')}>
-      {$tr('cl_type')} {filterType ? `· ${TYPE_LABEL_MAP[filterType] ?? filterType}` : ''}
+      {$tr('cl_type')} {filterType ? `· ${$typeLabel(filterType)}` : ''}
       <svg class="chip-arrow" viewBox="0 0 10 6" fill="none">
         <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
@@ -618,7 +618,7 @@
         <button class="dropdown-item" on:click={() => clearFilter('type')}>{$tr('an_all_types')}</button>
         {#each allTypes as t}
           <button class="dropdown-item" class:selected={filterType===t} on:click={() => applyFilter('type', t)}>
-            {TYPE_LABEL_MAP[t] ?? t}
+            {$typeLabel(t)}
           </button>
         {/each}
       </div>

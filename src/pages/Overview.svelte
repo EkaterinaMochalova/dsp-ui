@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { formatMoney, STATE_LABEL, STATE_COLOR, TYPE_LABEL } from '../lib/utils.js'
-  import { t as tr } from '../lib/i18n.js'
+  import { t as tr, stateLabel, typeLabel } from '../lib/i18n.js'
 
   let loading    = true
   let error      = ''
@@ -23,6 +23,7 @@
 
   // ── By status ─────────────────────────────────────────────────────────────
   $: byStatus = (() => {
+    const _sl = $stateLabel
     const m = {}
     for (const c of allCampaigns) {
       m[c.state] = (m[c.state] ?? 0) + 1
@@ -31,13 +32,14 @@
       .sort((a, b) => b[1] - a[1])
       .map(([state, count]) => ({
         state, count,
-        label: STATE_LABEL[state] ?? state,
+        label: _sl(state),
         color: COLOR_MAP[STATE_COLOR[state] ?? 'gray'],
       }))
   })()
 
   // ── By type ───────────────────────────────────────────────────────────────
   $: byType = (() => {
+    const _tl = $typeLabel
     const m = {}
     const budget = {}
     for (const c of allCampaigns) {
@@ -49,7 +51,7 @@
       .sort((a, b) => b[1] - a[1])
       .map(([type, count]) => ({
         type, count,
-        label: TYPE_LABEL[type] ?? type,
+        label: _tl(type),
         budget: budget[type] ?? 0,
         color: TYPE_COLOR[type] ?? '#64748b',
       }))
@@ -317,8 +319,8 @@
           <div class="top-name">
             <a href="#/campaigns/{c.id}" class="top-name-link">{c.name}</a>
             <div class="top-meta">
-              <span class="top-badge" style="color:{stateColor(c.state)}">{STATE_LABEL[c.state] ?? c.state}</span>
-              <span class="top-type">{TYPE_LABEL[c.type] ?? c.type}</span>
+              <span class="top-badge" style="color:{stateColor(c.state)}">{$stateLabel(c.state)}</span>
+              <span class="top-type">{$typeLabel(c.type)}</span>
             </div>
           </div>
           <div class="top-bar-wrap">

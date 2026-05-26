@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { formatMoney, formatDate, STATE_LABEL, STATE_COLOR, TYPE_LABEL, FORMAT_LABEL } from '../lib/utils.js'
-  import { t as tr } from '../lib/i18n.js'
+  import { t as tr, stateLabel, typeLabel } from '../lib/i18n.js'
 
   // ── State ─────────────────────────────────────────────────────────────────
   let loading       = true
@@ -214,6 +214,7 @@
 
   // ── Breakdown by type ─────────────────────────────────────────────────────
   $: byType = (() => {
+    const _tl = $typeLabel
     const m = {}
     for (const c of filteredCampaigns) {
       const t = c.type ?? 'UNKNOWN'
@@ -226,7 +227,7 @@
       .sort((a, b) => b[1].count - a[1].count)
       .map(([type, v]) => ({
         type,
-        label: TYPE_LABEL[type] ?? type,
+        label: _tl(type),
         color: TYPE_COLOR[type] ?? '#64748b',
         ...v,
       }))
@@ -235,6 +236,7 @@
 
   // ── Breakdown by status ───────────────────────────────────────────────────
   $: byStatus = (() => {
+    const _sl = $stateLabel
     const m = {}
     for (const c of filteredCampaigns) {
       m[c.state] = (m[c.state] ?? 0) + 1
@@ -245,7 +247,7 @@
       .map(([state, count]) => ({
         state,
         count,
-        label: STATE_LABEL[state] ?? state,
+        label: _sl(state),
         color: COLOR_MAP[STATE_COLOR[state] ?? 'gray'] ?? '#9ca3af',
       }))
   })()
@@ -580,7 +582,7 @@
                 <input type="checkbox" checked={selectedStates.includes(state)}
                   on:change={() => toggleState(state)} />
                 <span class="fdd-dot" style="background:{stateColor(state)}"></span>
-                <span class="fdd-name">{STATE_LABEL[state] ?? state}</span>
+                <span class="fdd-name">{$stateLabel(state)}</span>
                 <span class="fdd-count">{count}</span>
               </label>
             {/each}
@@ -608,7 +610,7 @@
                 <input type="checkbox" checked={selectedTypes.includes(type)}
                   on:change={() => toggleType(type)} />
                 <span class="fdd-dot" style="background:{TYPE_COLOR[type] ?? '#64748b'};border-radius:2px"></span>
-                <span class="fdd-name">{TYPE_LABEL[type] ?? type}</span>
+                <span class="fdd-name">{$typeLabel(type)}</span>
                 <span class="fdd-count">{count}</span>
               </label>
             {/each}

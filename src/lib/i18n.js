@@ -246,3 +246,57 @@ const TR = {
 }
 
 export const t = derived(lang, $lang => key => TR[$lang]?.[key] ?? TR.ru[key] ?? key)
+
+// ── Status / type label maps ──────────────────────────────────────────────────
+// RU maps are imported from utils.js by each component; EN equivalents live here.
+const STATE_LABEL_EN = {
+  NEW:                         'New',
+  ON_MODERATION:               'In review',
+  ON_TARGETING_CREATION:       'Creating targeting',
+  SENDING_ERROR:               'Send error',
+  ON_REVISION:                 'In revision',
+  RESERVED:                    'Reserved',
+  BOOKED:                      'Booked',
+  ACTIVE:                      'Active',
+  ON_TARGETING_UPDATE:         'Updating targeting',
+  CONFIRMATION_ERROR:          'Confirm error',
+  ACTIVATED:                   'Activated',
+  ACTIVATED_CANCELLING:        'Cancelling',
+  ACTIVATED_CANCELLATION_ERROR:'Cancel error',
+  PAUSED:                      'Paused',
+  STOPPED:                     'Stopped',
+  CANCEL:                      'Cancelling',
+  CANCELLED:                   'Cancelled',
+  REJECTED:                    'Rejected',
+  COMPLETED:                   'Completed',
+  BUDGET_EXHAUSTED:            'Budget exhausted',
+  OTS_EXHAUSTED:               'OTS exhausted',
+  WITHOUT_INVENTORY:           'No inventory',
+  DELETED:                     'Deleted',
+}
+
+const TYPE_LABEL_EN = {
+  RTB:             'RTB',
+  GUARANTEED:      'Guaranteed',
+  FLEX_GUARANTEED: 'Flex',
+  OPEN_RTB:        'Open RTB',
+}
+
+// Reactive helpers: $stateLabel(state), $typeLabel(type)
+import { STATE_LABEL, TYPE_LABEL } from './utils.js'
+export const stateLabel = derived(lang, $lang =>
+  state => ($lang === 'en' ? STATE_LABEL_EN : STATE_LABEL)[state] ?? state
+)
+export const typeLabel = derived(lang, $lang =>
+  type => ($lang === 'en' ? TYPE_LABEL_EN : TYPE_LABEL)[type] ?? type
+)
+
+// Reactive state-group filter labels (used in CampaignsList dropdown)
+export const stateGroups = derived(lang, $lang => [
+  { label: $lang === 'en' ? 'Active'      : 'Активные',    values: ['ACTIVE','ACTIVATED','BOOKED','RESERVED'] },
+  { label: $lang === 'en' ? 'Processing'  : 'В обработке', values: ['ON_MODERATION','ON_TARGETING_CREATION','ON_REVISION'] },
+  { label: $lang === 'en' ? 'New'         : 'Новые',       values: ['NEW'] },
+  { label: $lang === 'en' ? 'Completed'   : 'Завершённые', values: ['COMPLETED','BUDGET_EXHAUSTED','OTS_EXHAUSTED','WITHOUT_INVENTORY'] },
+  { label: $lang === 'en' ? 'Stopped'     : 'Остановлены', values: ['STOPPED','CANCELLED','REJECTED','DELETED'] },
+  { label: $lang === 'en' ? 'Errors'      : 'Ошибки',      values: ['SENDING_ERROR','CONFIRMATION_ERROR','ACTIVATED_CANCELLATION_ERROR'] },
+])
