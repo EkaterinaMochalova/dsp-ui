@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { formatMoney, STATE_LABEL, STATE_COLOR, TYPE_LABEL } from '../lib/utils.js'
+  import { t as tr } from '../lib/i18n.js'
 
   let loading    = true
   let error      = ''
@@ -179,10 +180,10 @@
   <!-- Header -->
   <div class="ov-header">
     <div>
-      <h1 class="ov-title">Обзор</h1>
-      <p class="ov-sub">{#if loading}Загрузка…{:else}{total} кампаний · {#if statsLoading}<span class="ov-sub-loading">загрузка статистики…</span>{:else}статистика актуальна{/if}{/if}</p>
+      <h1 class="ov-title">{$tr('ov_title')}</h1>
+      <p class="ov-sub">{#if loading}{$tr('loading')}{:else}{total} {$tr('an_campaigns')} · {#if statsLoading}<span class="ov-sub-loading">{$tr('ov_stats_loading')}</span>{:else}{$tr('ov_stats_ready')}{/if}{/if}</p>
     </div>
-    <a href="#/campaigns" class="ov-all-link">Все кампании →</a>
+    <a href="#/campaigns" class="ov-all-link">{$tr('an_all_campaigns')}</a>
   </div>
 
   {#if error}
@@ -190,43 +191,43 @@
   {:else if loading}
     <div class="ov-spinner">
       <div class="spinner"></div>
-      <span>Загрузка данных…</span>
+      <span>{$tr('loading')}</span>
     </div>
   {:else}
 
   <!-- KPI cards -->
   <div class="ov-kpis">
     <div class="kpi-card">
-      <div class="kpi-label">Всего кампаний</div>
+      <div class="kpi-label">{$tr('ov_total')}</div>
       <div class="kpi-value">{total}</div>
-      <div class="kpi-sub">{activeCnt} активных</div>
+      <div class="kpi-sub">{activeCnt} {$tr('an_kpi_active')}</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Запущено всего</div>
+      <div class="kpi-label">{$tr('ov_running')}</div>
       <div class="kpi-value">{runningCnt}</div>
-      <div class="kpi-sub">активных + пауза + стоп</div>
+      <div class="kpi-sub">{$tr('ov_running_sub')}</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Плановый бюджет</div>
+      <div class="kpi-label">{$tr('an_kpi_planned')}</div>
       <div class="kpi-value kpi-money">{formatMoney(totalPlanned)}</div>
-      <div class="kpi-sub">по всем кампаниям</div>
+      <div class="kpi-sub">{$tr('ov_planned_sub')}</div>
     </div>
     <div class="kpi-card kpi-card--accent">
-      <div class="kpi-label">Потрачено</div>
+      <div class="kpi-label">{$tr('an_kpi_spent')}</div>
       <div class="kpi-value kpi-money">{#if statsLoading}<span class="kpi-loading">…</span>{:else}{formatMoney(totalSpent)}{/if}</div>
       <div class="kpi-sub">
         {#if !statsLoading && totalPlanned > 0}
           <span class="kpi-pct-bar">
             <span class="kpi-pct-fill" style="width:{spentPct.toFixed(1)}%"></span>
           </span>
-          {spentPct.toFixed(1)}% от плана
-        {:else if !statsLoading}—{:else}загрузка…{/if}
+          {spentPct.toFixed(1)}% {$tr('an_kpi_from_plan')}
+        {:else if !statsLoading}—{:else}{$tr('loading')}{/if}
       </div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Показы (факт)</div>
+      <div class="kpi-label">{$tr('ov_impressions_fact')}</div>
       <div class="kpi-value">{#if statsLoading}<span class="kpi-loading">…</span>{:else}{fmt(totalShowed)}{/if}</div>
-      <div class="kpi-sub">{#if !statsLoading}OTS {fmt(totalOts)}{:else}загрузка…{/if}</div>
+      <div class="kpi-sub">{#if !statsLoading}OTS {fmt(totalOts)}{:else}{$tr('loading')}{/if}</div>
     </div>
   </div>
 
@@ -235,7 +236,7 @@
 
     <!-- By status -->
     <div class="ov-card">
-      <div class="ov-card-title">По статусу</div>
+      <div class="ov-card-title">{$tr('an_by_status')}</div>
       <div class="bar-list">
         {#each byStatus as s}
           <div class="bar-row">
@@ -254,7 +255,7 @@
 
     <!-- By type -->
     <div class="ov-card">
-      <div class="ov-card-title">По типу</div>
+      <div class="ov-card-title">{$tr('an_by_type')}</div>
       <div class="type-grid">
         {#each byType as t}
           <div class="type-item">
@@ -277,19 +278,19 @@
   <!-- Row 3: Monthly timeline -->
   {#if byMonth.length > 1}
   <div class="ov-card ov-card--full">
-    <div class="ov-card-title">Кампании по месяцам (старт)</div>
+    <div class="ov-card-title">{$tr('ov_by_month')}</div>
     <div class="month-chart">
       {#each byMonth as mo}
         <div class="month-col">
           <div class="month-bars">
             <div class="month-bar month-bar--plan"
               style="height:{(mo.budget/monthMaxBudget*100).toFixed(1)}%"
-              title="Плановый бюджет: {formatMoney(mo.budget)}">
+              title="{$tr('an_chart_planned')}: {formatMoney(mo.budget)}">
             </div>
             {#if !statsLoading && mo.spent > 0}
             <div class="month-bar month-bar--spent"
               style="height:{(mo.spent/monthMaxBudget*100).toFixed(1)}%"
-              title="Потрачено: {formatMoney(mo.spent)}">
+              title="{$tr('an_chart_spent')}: {formatMoney(mo.spent)}">
             </div>
             {/if}
           </div>
@@ -299,8 +300,8 @@
       {/each}
     </div>
     <div class="month-legend">
-      <span class="legend-dot" style="background:#bfdbfe"></span> Плановый бюджет
-      <span class="legend-dot" style="background:#3b82f6;margin-left:12px"></span> Потрачено
+      <span class="legend-dot" style="background:#bfdbfe"></span> {$tr('an_chart_planned')}
+      <span class="legend-dot" style="background:#3b82f6;margin-left:12px"></span> {$tr('an_chart_spent')}
     </div>
   </div>
   {/if}
@@ -308,7 +309,7 @@
   <!-- Row 4: Top campaigns by spend -->
   {#if !statsLoading && topBySpent.length > 0}
   <div class="ov-card ov-card--full">
-    <div class="ov-card-title">Топ кампаний по расходу</div>
+    <div class="ov-card-title">{$tr('ov_top_title')}</div>
     <div class="top-list">
       {#each topBySpent as c, i}
         <div class="top-row">
@@ -324,7 +325,7 @@
             <div class="top-bar-fill" style="width:{(c.spent/topMaxSpent*100).toFixed(1)}%"></div>
           </div>
           <div class="top-spent">{formatMoney(c.spent)}</div>
-          <div class="top-shows">{fmt(c.showed)} показов</div>
+          <div class="top-shows">{fmt(c.showed)} {$tr('ov_shows')}</div>
         </div>
       {/each}
     </div>
