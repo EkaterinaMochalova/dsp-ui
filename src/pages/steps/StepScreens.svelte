@@ -291,13 +291,16 @@
     preCampaignLoading = true
     preCampaignError   = ''
     try {
-      // Prefer campaign ID payload; fall back to targeting data
-      const payload = draft.id
-        ? { campaignId: Number(draft.id) }
-        : { type: draft.type ?? 'RTB',
-            targetAudience: (draft.dmpData?.length)
-              ? { enabled: true, dmpData: draft.dmpData }
-              : null }
+      let payload
+      if (draft.id) {
+        payload = { campaignId: Number(draft.id) }
+      } else {
+        // Campaign not saved yet — build payload from targeting data
+        payload = { type: draft.type ?? 'RTB' }
+        if (draft.dmpData?.length) {
+          payload.targetAudience = { enabled: true, dmpData: draft.dmpData }
+        }
+      }
       const res  = await api.campaigns.preCampaignResult(payload)
       const data = res?.data ?? []
       const map  = {}
@@ -318,7 +321,11 @@
         preCampaignOpen  = false   // collapse panel after success
       }
     } catch (e) {
-      preCampaignError = 'Ошибка запроса: ' + (e?.message ?? e)
+      // API throws { status, data } — extract a readable message
+      const apiMsg = e?.data?.message ?? e?.data?.error
+        ?? (typeof e?.data === 'string' ? e.data : null)
+        ?? e?.message
+      preCampaignError = 'Ошибка ' + (e?.status ? e.status + ': ' : '') + (apiMsg ?? 'неизвестная ошибка')
     } finally {
       preCampaignLoading = false
     }
