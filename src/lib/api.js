@@ -75,7 +75,12 @@ export const api = {
   },
 
   dmp: {
-    connections() { return request('/clients/dmp-connections') },
+    // GET /clients/dmp — list all DMP system connections for the account
+    list(params = {}) {
+      const q = new URLSearchParams(params)
+      const qs = q.toString()
+      return request(`/clients/dmp${qs ? '?' + qs : ''}`)
+    },
   },
 
   campaigns: {

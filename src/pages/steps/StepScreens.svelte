@@ -124,17 +124,17 @@
       pcDmpId = draft.dmpData[0].dmpId ?? null
     }
 
-    // 2. Try /clients/dmp-connections
+    // 2. GET /clients/dmp — correct endpoint (prod bundle: getDMPSystems)
     try {
-      const res = await api.dmp.connections()
+      const res = await api.dmp.list()
       const list = Array.isArray(res) ? res : (res?.content ?? [])
-      console.log('[PC] dmp-connections response:', JSON.stringify(list).substring(0, 300))
+      console.log('[PC] /clients/dmp response:', JSON.stringify(list).substring(0, 300))
       if (list.length > 0) {
         pcDmpConnections = list
         if (pcDmpId == null) pcDmpId = list[0].id
       }
     } catch (e) {
-      console.warn('[PC] dmp-connections failed:', e?.status, JSON.stringify(e?.data ?? e?.message ?? '').substring(0, 200))
+      console.warn('[PC] /clients/dmp failed:', e?.status, JSON.stringify(e?.data ?? e?.message ?? '').substring(0, 200))
     }
 
     // 3. Fallback: possibleDmpSegments — inspect first segment for a connection/dmp id
