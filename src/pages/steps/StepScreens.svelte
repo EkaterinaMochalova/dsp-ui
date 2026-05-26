@@ -46,20 +46,32 @@
   let scoreSortActive = false   // when true, sort by score desc
 
   // Interests for pre-campaign (local only, not persisted to draft)
-  let pcInterests = []          // available interest objects from API
+  // Fallback list mirrors the prod app (filters/interests endpoint returns 404)
+  const PC_INTERESTS_FALLBACK = [
+    'Автомобили','Досуг','Новости','Здоровье','Техника','Электроника',
+    'Мобильная связь','Красота и уход за собой','Кулинария','Недвижимость',
+    'Обустройство и ремонт','Зоотовары','Образование',
+    'Одежда, обувь и аксессуары','Семья','Путешествия',
+    'Страхование','Финансы','Детские товары','Доход',
+  ]
+  let pcInterests = []          // strings shown as chips
   let pcInterestsLoading = false
-  let pcSelectedInterests = []  // names/ids chosen by user
+  let pcSelectedInterests = []  // names chosen by user
 
   async function loadPcInterests() {
     if (pcInterests.length > 0) return
     pcInterestsLoading = true
     try {
-      const res = await api.campaigns.possibleDmpSegments(
-        draft.id ? { campaignId: Number(draft.id) } : {}
-      )
-      const list = Array.isArray(res) ? res : (res?.content ?? res?.data ?? [])
-      pcInterests = list
-    } catch { pcInterests = [] } finally { pcInterestsLoading = false }
+      const res = await api.filters.interests()
+      const list = Array.isArray(res) ? res : (res?.content ?? [])
+      pcInterests = list.length
+        ? list.map(x => x.name ?? x.id ?? String(x))
+        : PC_INTERESTS_FALLBACK
+    } catch {
+      pcInterests = PC_INTERESTS_FALLBACK
+    } finally {
+      pcInterestsLoading = false
+    }
   }
 
   function togglePcInterest(name) {
@@ -315,20 +327,16 @@
     preCampaignError   = ''
     try {
       // Step 1: submit campaign targeting → receive a requestId
-      let dataPayload
-      if (draft.id) {
-        dataPayload = { campaignId: Number(draft.id) }
-      } else {
-        dataPayload = {
-          type:   draft.type ?? 'RTB',
-          cities: draft.cityIds ?? [],
-        }
-        if (draft.dmpData?.length) {
-          dataPayload.targetAudience = { enabled: true, dmpData: draft.dmpData }
-        }
-        if (pcSelectedInterests.length) {
-          dataPayload.interests = pcSelectedInterests
-        }
+      // PreCampaignApiRequest always needs type + cities — never accepts campaignId
+      const dataPayload = {
+        type:   draft.type ?? 'RTB',
+        cities: draft.cityIds ?? [],
+      }
+      if (draft.dmpData?.length) {
+        dataPayload.targetAudience = { enabled: true, dmpData: draft.dmpData }
+      }
+      if (pcSelectedInterests.length) {
+        dataPayload.interests = pcSelectedInterests
       }
       const dataRes  = await api.campaigns.preCampaignData(dataPayload)
       const requestId = dataRes?.requestId ?? dataRes?.data?.requestId
@@ -1005,8 +1013,7 @@
             <div class="pc-warn">Загрузка…</div>
           {:else if pcInterests.length > 0}
             <div class="pc-interests">
-              {#each pcInterests as seg}
-                {@const name = seg.dmpName ?? seg.name ?? String(seg.dmpId ?? seg.id ?? seg)}
+              {#each pcInterests as name}
                 <button
                   class="pc-int-chip"
                   class:pc-int-chip--on={pcSelectedInterests.includes(name)}
