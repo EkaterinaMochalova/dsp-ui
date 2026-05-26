@@ -2216,7 +2216,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
                   const sid = (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
                   return ids.has(sid);
                 });
-                statusEl.textContent = `Найдено в инвентаре: ${matched.length} из ${ids.size} указанных GID-ов`;
+                statusEl.textContent = "Найдено в инвентаре: " + matched.length + " из " + ids.size + " указанных GID-ов";
                 statusEl.style.color = matched.length > 0 ? "#5b3ef5" : "#dc2626";
               }
             }
