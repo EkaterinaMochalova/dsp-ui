@@ -71,7 +71,16 @@
   }
   const PC_TOP_INTERESTS = Object.keys(PC_INTEREST_TREE)
 
-  let pcSelectedInterests = []  // names chosen by user (top + sub level)
+  // Flat list for subcategory dropdown: subcategories first, then parent-only categories
+  const PC_ALL_SUBCATEGORIES = [
+    ...Object.entries(PC_INTEREST_TREE).flatMap(([p, subs]) => subs.length ? subs : [p]),
+    ...PC_TOP_INTERESTS.filter(t => PC_INTEREST_TREE[t].length > 0),
+  ].filter((v, i, a) => a.indexOf(v) === i)
+
+  let pcSelectedInterests = []  // legacy (kept for pcInterestSlug compatibility)
+  let pcSelectedSub = ''        // single subcategory selection (new UI)
+  let pcEnabled     = true      // paid-feature toggle
+  let pcAffinityMin = 0         // 0-100 minimum affinity threshold
 
   // DMP connection for pre-campaign scoring
   let pcDmpId = null
@@ -423,7 +432,7 @@
     preCampaignError   = ''
     try {
       // Build payload matching the prod app structure
-      const slugs = pcSelectedInterests.map(pcInterestSlug).filter(Boolean)
+      const slugs = pcSelectedSub ? [pcInterestSlug(pcSelectedSub)] : []
       // Generate client-side UUID as required by PreCampaignApiRequest schema
       const clientRequestId = crypto.randomUUID()
       const payload = {
@@ -464,7 +473,8 @@
         const id = item.inventory?.id ?? item.inventoryId ?? item.id
         const sc = item.score ?? item.affinity ?? item.affinityScore
         if (id != null && sc != null) {
-          if (map[id] == null || sc > map[id]) map[id] = sc
+          const threshold = pcAffinityMin / 100
+          if (sc >= threshold && (map[id] == null || sc > map[id])) map[id] = sc
         }
       }
       scoreMap = map
@@ -497,6 +507,8 @@
     scoreMap = {}
     scoreSortActive = false
     preCampaignError = ''
+    pcSelectedSub = ''
+    pcAffinityMin = 0
     // Hide score column when scores are cleared
     const scoreCol = cols.find(c => c.id === 'score')
     if (scoreCol && scoreCol.visible) {
@@ -1115,75 +1127,82 @@
       {#if preCampaignOpen}
       <!-- svelte-ignore a11y-click-events-have-key-events -->
       <div class="pc-panel" on:click|stopPropagation>
-        <div class="pc-panel-title">Pre-campaign таргетинг</div>
 
-        <!-- City validation -->
+        <!-- Header -->
+        <div class="pc-panel-header">
+          <span class="pc-panel-title">Pre-campaign таргетинг</span>
+          <button class="pc-panel-close" on:click={() => preCampaignOpen = false}>
+            <svg viewBox="0 0 10 6" fill="none" width="11" height="11">
+              <path d="M9 5L5 1 1 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
         {#if !draft.id && !(draft.cityIds?.length)}
-          <div class="pc-warn">
-            Выберите хотя бы один город в&nbsp;«Основных параметрах»
+          <div class="pc-panel-body">
+            <div class="pc-warn">Выберите хотя бы один город в&nbsp;«Основных параметрах»</div>
           </div>
         {:else}
 
-          <!-- DMP connection -->
-          {#if pcDmpConnections.length > 1}
-            <div class="pc-section-label">DMP</div>
-            <div class="pc-dmp-row">
-              {#each pcDmpConnections as conn}
-                <button
-                  class="pc-int-chip"
-                  class:pc-int-chip--on={pcDmpId === conn.id}
-                  on:click={() => pcDmpId = conn.id}
-                >{conn.name ?? conn.id}</button>
-              {/each}
+          <div class="pc-panel-body">
+            <!-- Paid-feature toggle -->
+            <div class="pc-paid-row">
+              <span class="pc-paid-label">Опция доступна за дополнительную плату.</span>
+              <!-- svelte-ignore a11y-label-has-associated-control -->
+              <label class="pc-toggle-wrap">
+                <input type="checkbox" class="pc-toggle-input" bind:checked={pcEnabled}>
+                <span class="pc-toggle-track"></span>
+              </label>
             </div>
-          {:else if pcDmpId != null}
-            <div class="pc-info">
-              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#3b82f6;flex-shrink:0">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-              </svg>
-              DMP: {pcDmpConnections[0]?.name ?? pcDmpConnections[0]?.id ?? 'ID ' + pcDmpId}
-            </div>
-          {/if}
 
-          <!-- Interests two-level tree -->
-          <div class="pc-section-label">Интересы</div>
-          <div class="pc-interests">
-            {#each PC_TOP_INTERESTS as top}
-              {@const topOn = pcSelectedInterests.includes(top)}
-              {@const subs = PC_INTEREST_TREE[top]}
-              <button
-                class="pc-int-chip"
-                class:pc-int-chip--on={topOn}
-                on:click={() => togglePcInterest(top)}
-              >{top}</button>
-              {#if topOn && subs.length > 0}
-                {#each subs as sub}
-                  <button
-                    class="pc-int-chip pc-int-chip--sub"
-                    class:pc-int-chip--on={pcSelectedInterests.includes(sub)}
-                    on:click={() => togglePcInterest(sub)}
-                  >{sub}</button>
-                {/each}
-              {/if}
-            {/each}
+            <!-- DMP dropdown -->
+            <div class="pc-section-label">DMP</div>
+            <select class="pc-select" bind:value={pcDmpId} disabled={!pcEnabled}>
+              <option value={null}>Выберите DMP</option>
+              {#each pcDmpConnections as conn}
+                <option value={conn.id}>{conn.name ?? conn.id}</option>
+              {/each}
+            </select>
+
+            <!-- Subcategory dropdown -->
+            <div class="pc-section-label">Подкатегория интереса</div>
+            <select class="pc-select" bind:value={pcSelectedSub} disabled={!pcEnabled}>
+              <option value="">Выберите подкатегорию</option>
+              {#each PC_ALL_SUBCATEGORIES as item}
+                <option value={item}>{item}</option>
+              {/each}
+            </select>
+
+            <!-- Affinity index slider -->
+            <div class="pc-section-label">Индекс аффинитивности</div>
+            <input
+              type="range"
+              class="pc-affinity-slider"
+              min="0" max="100" step="1"
+              bind:value={pcAffinityMin}
+              disabled={!pcEnabled}
+            >
+
+            {#if preCampaignError}
+              <div class="pc-error">{preCampaignError}</div>
+            {/if}
           </div>
 
-          <button
-            class="pc-run-btn"
-            on:click={runPreCampaign}
-            disabled={preCampaignLoading}
-          >
-            {#if preCampaignLoading}
-              <div class="mini-spinner" style="width:12px;height:12px;border-width:2px"></div>
-              Загрузка…
-            {:else}
-              Показать аффинитивность
-            {/if}
-          </button>
-
-          {#if preCampaignError}
-            <div class="pc-error">{preCampaignError}</div>
-          {/if}
+          <!-- Footer buttons -->
+          <div class="pc-panel-footer">
+            <button class="pc-footer-clear" on:click={clearPreCampaign}>Очистить</button>
+            <button
+              class="pc-footer-apply"
+              on:click={runPreCampaign}
+              disabled={preCampaignLoading || !pcEnabled}
+            >
+              {#if preCampaignLoading}
+                <div class="mini-spinner" style="width:11px;height:11px;border-width:2px;border-color:#fff transparent #fff #fff"></div>
+              {:else}
+                Применить
+              {/if}
+            </button>
+          </div>
 
         {/if}
       </div>
@@ -2763,59 +2782,202 @@
     padding: 1px 5px;
     line-height: 1.4;
   }
+  /* ── Pre-campaign panel ─────────────────────────────────── */
   .pc-panel {
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
-    width: 220px;
+    width: 280px;
     background: #fff;
     border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,.14);
-    padding: 12px;
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.16);
+    overflow: hidden;
     z-index: 900;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+  }
+  .pc-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 14px 12px;
+    background: linear-gradient(135deg, #f7fee7 0%, #ecfdf5 50%, #ffffff 100%);
+    border-bottom: 1px solid #e5e7eb;
   }
   .pc-panel-title {
-    font-size: 12px;
+    font-size: 13.5px;
     font-weight: 700;
     color: #111827;
   }
-  .pc-info {
+  .pc-panel-close {
+    background: none;
+    border: none;
+    padding: 2px;
+    cursor: pointer;
+    color: #6b7280;
     display: flex;
     align-items: center;
-    gap: 5px;
+  }
+  .pc-panel-close:hover { color: #111827; }
+  .pc-panel-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .pc-panel-footer {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px 14px;
+    border-top: 1px solid #f3f4f6;
+  }
+  /* Paid toggle row */
+  .pc-paid-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .pc-paid-label {
     font-size: 12px;
     color: #374151;
+    line-height: 1.4;
   }
-  .pc-warn {
+  .pc-toggle-wrap {
+    position: relative;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .pc-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 0; height: 0;
+  }
+  .pc-toggle-track {
+    display: block;
+    width: 40px;
+    height: 22px;
+    background: #d1d5db;
+    border-radius: 999px;
+    position: relative;
+    transition: background 0.2s;
+  }
+  .pc-toggle-track::after {
+    content: '';
+    position: absolute;
+    left: 3px; top: 3px;
+    width: 16px; height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+    transition: left 0.2s;
+  }
+  .pc-toggle-input:checked ~ .pc-toggle-track { background: #3b82f6; }
+  .pc-toggle-input:checked ~ .pc-toggle-track::after { left: calc(100% - 19px); }
+  /* Section label */
+  .pc-section-label {
     font-size: 11.5px;
-    color: #9ca3af;
-    font-style: italic;
+    font-weight: 600;
+    color: #374151;
+    margin: 8px 0 4px;
   }
-  .pc-run-btn {
+  .pc-section-label:first-of-type { margin-top: 0; }
+  /* Select dropdown */
+  .pc-select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+    font-size: 13px;
+    font-family: inherit;
+    color: #374151;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+  .pc-select:focus { outline: none; border-color: #3b82f6; background-color: #fff; }
+  .pc-select:disabled { opacity: 0.5; cursor: default; }
+  /* Affinity gradient slider */
+  .pc-affinity-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #ef4444 0%, #f59e0b 35%, #84cc16 65%, #22c55e 100%);
+    outline: none;
+    cursor: pointer;
+    margin: 4px 0 2px;
+  }
+  .pc-affinity-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #9ca3af;
+    box-shadow: 0 1px 4px rgba(0,0,0,.2);
+    cursor: pointer;
+  }
+  .pc-affinity-slider::-moz-range-thumb {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #9ca3af;
+    box-shadow: 0 1px 4px rgba(0,0,0,.2);
+    cursor: pointer;
+  }
+  .pc-affinity-slider:disabled { opacity: 0.5; cursor: default; }
+  /* Footer buttons */
+  .pc-footer-clear {
+    flex: 1;
+    background: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #374151;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .pc-footer-clear:hover { background: #f9fafb; }
+  .pc-footer-apply {
+    flex: 2;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    background: #112853;
-    color: #fff;
+    background: #9ca3af;
     border: none;
-    border-radius: 6px;
-    padding: 7px 12px;
-    font-size: 12px;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 13px;
     font-weight: 600;
     font-family: inherit;
+    color: #fff;
     cursor: pointer;
-    transition: opacity .15s;
+    transition: background .15s;
   }
-  .pc-run-btn:disabled { opacity: .55; cursor: default; }
-  .pc-run-btn:not(:disabled):hover { opacity: .88; }
+  .pc-footer-apply:not(:disabled) { background: #112853; cursor: pointer; }
+  .pc-footer-apply:not(:disabled):hover { background: #1a3a6e; }
+  .pc-footer-apply:disabled { opacity: 0.7; cursor: default; }
+  /* Misc */
+  .pc-warn {
+    font-size: 12px;
+    color: #9ca3af;
+    font-style: italic;
+    padding: 8px 0;
+  }
   .pc-error {
-    font-size: 11.5px;
+    font-size: 12px;
     color: #ef4444;
+    margin-top: 4px;
   }
   .pc-result {
     display: flex;
@@ -2824,6 +2986,11 @@
     font-size: 11.5px;
     color: #374151;
     flex-wrap: wrap;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    padding: 5px 8px;
+    margin-top: 4px;
   }
   .pc-clear-btn {
     margin-left: auto;
@@ -2836,46 +3003,4 @@
     font-family: inherit;
   }
   .pc-clear-btn:hover { color: #ef4444; }
-
-  .pc-section-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted, #94a3b8);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin: 8px 0 5px;
-  }
-  .pc-interests {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    margin-bottom: 10px;
-    max-height: 200px;
-    overflow-y: auto;
-  }
-  .pc-int-chip {
-    background: var(--chip-bg, #F1F5F9);
-    border: 1.5px solid transparent;
-    border-radius: 6px;
-    padding: 3px 8px;
-    font-size: 11.5px;
-    font-family: inherit;
-    color: var(--text, #334155);
-    cursor: pointer;
-    transition: all 0.12s;
-    white-space: nowrap;
-  }
-  .pc-int-chip:hover { border-color: var(--navy-light, #DAECF6); }
-  .pc-int-chip--on {
-    background: var(--navy, #112853);
-    color: #fff;
-    border-color: var(--navy, #112853);
-  }
-  .pc-int-chip--sub {
-    font-size: 10.5px;
-    padding: 2px 7px;
-    margin-left: 6px;
-    opacity: 0.85;
-  }
-  .pc-int-chip--sub.pc-int-chip--on { opacity: 1; }
 </style>
