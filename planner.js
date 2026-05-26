@@ -4234,6 +4234,18 @@ async function onCalcClick() {
     });
   }
 
+  // Global deduplication: same screen_id/GID may appear in multiple region pools
+  // (e.g. when a screen's city matches several selected regions via fuzzy logic).
+  {
+    const seenIds = new Set();
+    chosenAll = chosenAll.filter(s => {
+      const sid = _screenIdOf(s);
+      if (!sid || seenIds.has(sid)) return false;
+      seenIds.add(sid);
+      return true;
+    });
+  }
+
   if (!chosenAll.length) {
     alert("Не удалось подобрать экраны: по выбранным условиям не осталось доступных экранов.");
     setStatus("");
