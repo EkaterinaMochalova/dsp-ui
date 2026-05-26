@@ -45,6 +45,29 @@
   let scoreMap = {}        // inventoryId → score (0..1)
   let scoreSortActive = false   // when true, sort by score desc
 
+  // Interests for pre-campaign (local only, not persisted to draft)
+  let pcInterests = []          // available interest objects from API
+  let pcInterestsLoading = false
+  let pcSelectedInterests = []  // names/ids chosen by user
+
+  async function loadPcInterests() {
+    if (pcInterests.length > 0) return
+    pcInterestsLoading = true
+    try {
+      const res = await api.campaigns.possibleDmpSegments(
+        draft.id ? { campaignId: Number(draft.id) } : {}
+      )
+      const list = Array.isArray(res) ? res : (res?.content ?? res?.data ?? [])
+      pcInterests = list
+    } catch { pcInterests = [] } finally { pcInterestsLoading = false }
+  }
+
+  function togglePcInterest(name) {
+    pcSelectedInterests = pcSelectedInterests.includes(name)
+      ? pcSelectedInterests.filter(x => x !== name)
+      : [...pcSelectedInterests, name]
+  }
+
   // Freehand draw tool
   let drawMode = false       // lasso active
   let drawPoints = []        // array of L.LatLng
@@ -302,6 +325,9 @@
         }
         if (draft.dmpData?.length) {
           dataPayload.targetAudience = { enabled: true, dmpData: draft.dmpData }
+        }
+        if (pcSelectedInterests.length) {
+          dataPayload.interests = pcSelectedInterests
         }
       }
       const dataRes  = await api.campaigns.preCampaignData(dataPayload)
@@ -937,7 +963,7 @@
       <button
         class="map-float-btn"
         class:map-float-btn--active={scoreSortActive}
-        on:click={() => preCampaignOpen = !preCampaignOpen}
+        on:click={() => { preCampaignOpen = !preCampaignOpen; if (preCampaignOpen) loadPcInterests() }}
       >
         <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0">
           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
@@ -956,42 +982,69 @@
       <div class="pc-panel" on:click|stopPropagation>
         <div class="pc-panel-title">Pre-campaign таргетинг</div>
 
-        {#if draft.dmpData?.length}
-          <div class="pc-info">
-            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#3b82f6;flex-shrink:0">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-            </svg>
-            DMP: {draft.dmpData.length} сегм.
+        <!-- City validation -->
+        {#if !draft.id && !(draft.cityIds?.length)}
+          <div class="pc-warn">
+            Выберите хотя бы один город в&nbsp;«Основных параметрах»
           </div>
         {:else}
-          <div class="pc-warn">Таргетинг DMP не настроен</div>
-        {/if}
 
-        <button
-          class="pc-run-btn"
-          on:click={runPreCampaign}
-          disabled={preCampaignLoading}
-        >
-          {#if preCampaignLoading}
-            <div class="mini-spinner" style="width:12px;height:12px;border-width:2px"></div>
-            Загрузка…
-          {:else}
-            Рассчитать скоры
+          <!-- DMP info -->
+          {#if draft.dmpData?.length}
+            <div class="pc-info">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#3b82f6;flex-shrink:0">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              DMP: {draft.dmpData.length} сегм.
+            </div>
           {/if}
-        </button>
 
-        {#if preCampaignError}
-          <div class="pc-error">{preCampaignError}</div>
-        {/if}
+          <!-- Interests -->
+          <div class="pc-section-label">Интересы</div>
+          {#if pcInterestsLoading}
+            <div class="pc-warn">Загрузка…</div>
+          {:else if pcInterests.length > 0}
+            <div class="pc-interests">
+              {#each pcInterests as seg}
+                {@const name = seg.dmpName ?? seg.name ?? String(seg.dmpId ?? seg.id ?? seg)}
+                <button
+                  class="pc-int-chip"
+                  class:pc-int-chip--on={pcSelectedInterests.includes(name)}
+                  on:click={() => togglePcInterest(name)}
+                >{name}</button>
+              {/each}
+            </div>
+          {:else}
+            <div class="pc-warn" style="font-size:11.5px">Интересы не загружены</div>
+          {/if}
 
-        {#if scoreSortActive}
-          <div class="pc-result">
-            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#16a34a;flex-shrink:0">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-            </svg>
-            {Object.keys(scoreMap).length} скринов — отсортировано
-            <button class="pc-clear-btn" on:click={clearPreCampaign}>× Сбросить</button>
-          </div>
+          <button
+            class="pc-run-btn"
+            on:click={runPreCampaign}
+            disabled={preCampaignLoading}
+          >
+            {#if preCampaignLoading}
+              <div class="mini-spinner" style="width:12px;height:12px;border-width:2px"></div>
+              Загрузка…
+            {:else}
+              Рассчитать скоры
+            {/if}
+          </button>
+
+          {#if preCampaignError}
+            <div class="pc-error">{preCampaignError}</div>
+          {/if}
+
+          {#if scoreSortActive}
+            <div class="pc-result">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#16a34a;flex-shrink:0">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              {Object.keys(scoreMap).length} скринов — отсортировано
+              <button class="pc-clear-btn" on:click={clearPreCampaign}>× Сбросить</button>
+            </div>
+          {/if}
+
         {/if}
       </div>
       {/if}
@@ -2633,4 +2686,39 @@
     font-family: inherit;
   }
   .pc-clear-btn:hover { color: #ef4444; }
+
+  .pc-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted, #94a3b8);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 8px 0 5px;
+  }
+  .pc-interests {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 10px;
+    max-height: 140px;
+    overflow-y: auto;
+  }
+  .pc-int-chip {
+    background: var(--chip-bg, #F1F5F9);
+    border: 1.5px solid transparent;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11.5px;
+    font-family: inherit;
+    color: var(--text, #334155);
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .pc-int-chip:hover { border-color: var(--navy-light, #DAECF6); }
+  .pc-int-chip--on {
+    background: var(--navy, #112853);
+    color: #fff;
+    border-color: var(--navy, #112853);
+  }
 </style>
