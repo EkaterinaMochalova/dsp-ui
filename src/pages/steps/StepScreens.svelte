@@ -398,7 +398,7 @@
     ? sortedFiltered.filter(s => draft.screenIds.includes(s.id))
     : sortedFiltered
 
-  $: if (map && markersLayer) renderMarkers(filtered)
+  $: if (map && markersLayer) { scoreMap; renderMarkers(filtered) }
 
   function isSelected(id) { return draft.screenIds.includes(id) }
 
@@ -718,18 +718,35 @@
       ? [...selected, ...unselected]
       : [...selected, ...unselected.slice(0, maxUnsel)]
 
+    // Pre-compute score range for normalised coloring
+    const scoreValues = Object.values(scoreMap)
+    const scoreMin = scoreValues.length ? Math.min(...scoreValues) : 0
+    const scoreMax = scoreValues.length ? Math.max(...scoreValues) : 1
+    const scoreRange = scoreMax - scoreMin || 1
+
+    // Interpolate red→yellow→green given a 0..1 normalised t
+    function scoreColor(sc) {
+      const t = Math.max(0, Math.min(1, (sc - scoreMin) / scoreRange))
+      if (t >= 0.67) return { fill: '#22c55e', stroke: '#15803d' }   // green
+      if (t >= 0.40) return { fill: '#84cc16', stroke: '#4d7c0f' }   // lime
+      if (t >= 0.20) return { fill: '#f59e0b', stroke: '#b45309' }   // amber
+      return              { fill: '#ef4444', stroke: '#b91c1c' }      // red
+    }
+
+    const hasScores = scoreValues.length > 0
+
     for (const s of toRender) {
       const sel      = isSelected(s.id)
       const inactive = s.requestHourlyAvg != null && s.requestHourlyAvg <= 1
-      // selected = navy | inactive = red | scored = amber/orange | normal = blue
-      let fill, stroke
+      let fill, stroke, opacity = 0.75
       if (sel) {
-        fill = '#112853'; stroke = '#112853'
+        fill = '#112853'; stroke = '#112853'; opacity = 0.95
       } else if (scoreMap[s.id] != null) {
-        const sc = scoreMap[s.id]
-        if (sc >= 0.06) { fill = '#f59e0b'; stroke = '#b45309' }
-        else if (sc >= 0.03) { fill = '#fb923c'; stroke = '#c2410c' }
-        else { fill = '#55C1FA'; stroke = '#2a8fb5' }
+        const c = scoreColor(scoreMap[s.id])
+        fill = c.fill; stroke = c.stroke; opacity = 0.85
+      } else if (hasScores) {
+        // Unscored screen while score mode is active — dim grey
+        fill = '#d1d5db'; stroke = '#9ca3af'; opacity = 0.45
       } else if (inactive) {
         fill = '#EF4444'; stroke = '#B91C1C'
       } else {
@@ -740,7 +757,7 @@
         fillColor: fill,
         color: stroke,
         weight: sel ? 2 : 1,
-        fillOpacity: sel ? 0.95 : 0.75,
+        fillOpacity: opacity,
       })
       m.bindTooltip(
         `<strong>${s.address || s.city}</strong><br/>${s.format || ''}${s.minBid ? `<br/>от ${formatMoney(s.minBid)}` : ''}`,
