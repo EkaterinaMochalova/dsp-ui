@@ -3908,7 +3908,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const targetBudget  = Number(detail?.brief?.budget?.amount) || spentBudget;
     const totalBudget   = targetBudget; // badge shows target; unspent is shown via warning
     const totalPlays   = perRegion.reduce((a,r)=> a + (Number(r.plays)||0), 0);
-    const totalScreens = perRegion.reduce((a,r)=> a + (Number(r.screens)||0), 0);
+    const totalScreens = Array.isArray(detail?.chosen) ? detail.chosen.length
+      : perRegion.reduce((a,r)=> a + (Number(r.screens)||0), 0);
 
     const days = daysFromRaw();
     const hpd  = hoursPerDayFromRaw();
