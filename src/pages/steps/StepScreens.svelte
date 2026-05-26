@@ -366,6 +366,11 @@
     if (!inRange(s.requestHourlyAvg, colFilters.requestHourlyAvg)) return false
     if (!inRange(s.lat, colFilters.lat)) return false
     if (!inRange(s.lon, colFilters.lon)) return false
+    // Live affinity threshold filter — hide screens below slider value
+    if (scoreSortActive) {
+      const sc = scoreMap[s.id]
+      if (sc == null || sc < pcAffinityMin / 100) return false
+    }
     if (!tableSearch) return true
     const q = tableSearch.toLowerCase()
     return s.address.toLowerCase().includes(q)
@@ -398,7 +403,7 @@
     ? sortedFiltered.filter(s => draft.screenIds.includes(s.id))
     : sortedFiltered
 
-  $: if (map && markersLayer) { scoreMap; renderMarkers(filtered) }
+  $: if (map && markersLayer) { scoreMap; pcAffinityMin; renderMarkers(filtered) }
 
   function isSelected(id) { return draft.screenIds.includes(id) }
 
@@ -472,8 +477,7 @@
         const id = item.inventory?.id ?? item.inventoryId ?? item.id
         const sc = item.score ?? item.affinity ?? item.affinityScore
         if (id != null && sc != null) {
-          const threshold = pcAffinityMin / 100
-          if (sc >= threshold && (map[id] == null || sc > map[id])) map[id] = sc
+          if (map[id] == null || sc > map[id]) map[id] = sc
         }
       }
       scoreMap = map
@@ -1226,7 +1230,7 @@
           <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#16a34a;flex-shrink:0">
             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
           </svg>
-          {Object.keys(scoreMap).length} скринов — отсортировано по аффинитивности
+          {filtered.filter(s => scoreMap[s.id] != null).length} из {Object.keys(scoreMap).length} скринов
           <button class="pc-clear-btn" on:click={clearPreCampaign}>× Сбросить</button>
         </div>
       {/if}
