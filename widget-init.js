@@ -1099,6 +1099,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <div id="manual-gids-status" style="font-size:12px; color:#667085; margin-top:6px;">
             Введите GID-ы — после расчёта будут использованы только эти экраны.
           </div>
+          <!-- Прогресс загрузки инвентаря в GID-режиме -->
+          <div id="gid-inventory-progress" style="display:none; margin-top:8px; padding:8px 12px;
+               background:#f4f1ff; border-radius:8px; font-size:12px; color:#5b3ef5;
+               display:flex; align-items:center; gap:8px;">
+            <div style="width:12px; height:12px; border:2px solid #5B3EF5; border-top-color:transparent;
+                 border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
+            <span id="gid-inventory-progress-text">Загружаю инвентарь…</span>
+          </div>
           <button id="manual-gids-download-unmatched" type="button" style="display:none; margin-top:8px;
             padding:6px 14px; background:#fff3cd; border:1px solid #ffc107; border-radius:8px;
             font-size:12px; color:#856404; cursor:pointer; font-weight:600;">
@@ -1301,7 +1309,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <!-- STEP 4 -->
 <div class="wiz-step" id="wiz-step-4">
   <!-- Форматы -->
-  <div class="planner-block">
+  <div class="planner-block" id="step4-formats-block">
     <div class="planner-label">Форматы</div>
     <div class="fmt-toolbar" id="formats-presets">
       <button type="button" class="fmt-pill" data-preset="all">Все</button>
@@ -1318,7 +1326,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <!-- Стратегия подбора -->
-  <div class="planner-block reach-mode-block">
+  <div class="planner-block reach-mode-block" id="step4-strategy-block">
     <div class="planner-label">Стратегия подбора</div>
     <div class="strategy-chips">
       <label class="str-chip">
@@ -1391,7 +1399,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <!-- Режим ставки -->
-  <div class="planner-block">
+  <div class="planner-block" id="step4-bid-mode-block">
     <div class="planner-label">Режим ставки</div>
     <div class="strategy-chips">
       <label class="str-chip">
@@ -1446,7 +1454,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       </div>
     </div>
   <!-- Зона на карте (перед "Как собираем") -->
-  <div class="planner-block">
+  <div class="planner-block" id="step4-map-zone-block">
     <div class="planner-label">Зона на карте</div>
     <div id="poly-badge" style="display:none; align-items:center; gap:8px; margin-bottom:8px;
          padding:8px 12px; background:#EDE9FD; border-radius:8px; font-size:13px; color:#3a2bb5;">
@@ -1463,7 +1471,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <!-- Как собираем программу -->
-  <div class="planner-block">
+  <div class="planner-block" id="step4-selection-block">
     <div class="planner-label">Как собираем программу</div>
     <div class="sel-chips" id="selection-mode-chips">
       <button type="button" class="sel-chip active" data-mode="city_even">
@@ -1488,6 +1496,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <option value="near_address">Рядом с адресом</option>
       <option value="highway">Вдоль магистрали / шоссе</option>
       <option value="route">Вдоль маршрута</option>
+      <option value="manual_screens">По GID-списку</option>
     </select>
     <div id="selection-extra" style="margin-top:10px;"></div>
   </div>
@@ -1755,27 +1764,20 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (step === 4) window._plannerStep4Visited = true;
     _origSetStep(step);
     if (step === 4) {
-      // В GID-режиме скрываем лишние блоки шага 4
+      // В GID-режиме скрываем всё лишнее — только кнопка «Рассчитать» + «Назад»
       const gidsBlock = el("geo-gids-block");
       const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
-      const hideInGidMode = ["selection-mode-chips", "pool-preview-block",
-        "additional-filters-divider".split(",")[0]];
-      // Скрываем весь блок выбора способа подбора, превью пула, операторов и GRP
-      ["selection-mode-chips", "pool-preview-block"].forEach(id => {
-        const node = el(id);
-        if (node) node.style.display = isGidMode ? "none" : "";
-      });
-      // Операторы и GRP живут внутри .planner-block — скрываем через ближайший общий родитель
+      const d = isGidMode ? "none" : "";
+      [
+        "step4-formats-block", "step4-strategy-block", "step4-bid-mode-block",
+        "audience-block", "step4-map-zone-block", "step4-selection-block",
+        "pool-preview-block"
+      ].forEach(id => { const n = el(id); if (n) n.style.display = d; });
+      document.querySelectorAll("#wiz-step-4 .additional-filters-divider").forEach(n => n.style.display = d);
+      // Операторы и GRP по label (у них нет ID)
       document.querySelectorAll("#wiz-step-4 .planner-block").forEach(block => {
-        const label = block.querySelector(".planner-label");
-        const labelText = label?.textContent?.trim() || "";
-        if (labelText === "Операторы" || labelText === "GRP") {
-          block.style.display = isGidMode ? "none" : "";
-        }
-      });
-      // Дополнительные ограничения-разделитель
-      document.querySelectorAll("#wiz-step-4 .additional-filters-divider").forEach(d => {
-        d.style.display = isGidMode ? "none" : "";
+        const lbl = block.querySelector(".planner-label")?.textContent?.trim() || "";
+        if (lbl === "Операторы" || lbl === "GRP") block.style.display = d;
       });
     }
     if (typeof window.renderProgress === "function") window.renderProgress();
@@ -2228,29 +2230,64 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         selEl.dispatchEvent(new Event("change", { bubbles: true }));
       }
 
+      // При переходе в GID-режим: показать прогресс загрузки инвентаря, если ещё не загружен
+      if (isGid && window.DSP_AUTH_ENABLED) {
+        const progressEl = el("gid-inventory-progress");
+        const progressText = el("gid-inventory-progress-text");
+        const planner = window.PLANNER;
+        const screensLoaded = (planner?.state?.screensAll?.length || planner?.state?.screens?.length || 0) > 0;
+        if (!screensLoaded && progressEl) {
+          progressEl.style.display = "flex";
+          if (progressText) progressText.textContent = "Загружаю инвентарь — подождите…";
+        } else if (progressEl) {
+          progressEl.style.display = "none";
+        }
+        // Hide progress when inventory finishes
+        window.addEventListener("planner:screens-ready", function _hideGidProgress() {
+          const p = el("gid-inventory-progress");
+          if (p) p.style.display = "none";
+          window.removeEventListener("planner:screens-ready", _hideGidProgress);
+        });
+      }
+
       // Attach GID counter once
       if (isGid) {
         const ta = el("manual-gids");
         const statusEl = el("manual-gids-status");
         if (ta && statusEl && !ta.dataset.counterBound) {
           ta.dataset.counterBound = "1";
-          ta.addEventListener("input", () => {
-            if (window.PLANNER?._parseManualGids) {
-              const ids = window.PLANNER._parseManualGids(ta.value);
-              if (!ids.size) {
-                statusEl.textContent = "Введите GID-ы — после расчёта будут использованы только эти экраны.";
-                statusEl.style.color = "#667085";
+          function _runGidCounter() {
+            if (!window.PLANNER?._parseManualGids) return;
+            const ids = window.PLANNER._parseManualGids(ta.value);
+            if (!ids.size) {
+              statusEl.textContent = "Введите GID-ы — после расчёта будут использованы только эти экраны.";
+              statusEl.style.color = "#667085";
+            } else {
+              // Prefer screensAll (full inventory), fallback to filtered screens
+              const allScreens = window.PLANNER?.state?.screensAll?.length
+                ? window.PLANNER.state.screensAll
+                : (window.PLANNER?.state?.screens || []);
+              const matched = allScreens.filter(s => {
+                const sid = (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
+                return ids.has(sid);
+              });
+              if (!allScreens.length) {
+                statusEl.textContent = ids.size + " GID-ов введено — инвентарь ещё загружается…";
+                statusEl.style.color = "#9ca3af";
               } else {
-                const allScreens = window.PLANNER?.state?.screens || [];
-                const matched = allScreens.filter(s => {
-                  const sid = (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
-                  return ids.has(sid);
-                });
                 statusEl.textContent = "Найдено в инвентаре: " + matched.length + " из " + ids.size + " указанных GID-ов";
                 statusEl.style.color = matched.length > 0 ? "#5b3ef5" : "#dc2626";
               }
             }
             renderProgress();
+          }
+          ta.addEventListener("input", _runGidCounter);
+          // Re-run counter when inventory finishes loading
+          window.addEventListener("planner:screens-ready", () => {
+            const gidsBlockEl = el("geo-gids-block");
+            if (gidsBlockEl && gidsBlockEl.style.display !== "none" && ta.value.trim()) {
+              _runGidCounter();
+            }
           });
         }
       }
