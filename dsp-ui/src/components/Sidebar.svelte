@@ -95,41 +95,43 @@
 
 <style>
   .lang-toggle-wrap {
-    padding: 8px 10px 4px;
+    padding: 6px 10px 4px;
+    flex-shrink: 0;
   }
   .lang-btn {
     width: 100%;
-    background: rgba(255,255,255,0.10);
-    border: 1px solid rgba(255,255,255,0.18);
+    background: var(--chip-bg, #E3E8ED);
+    border: 1px solid var(--border, #E3E8ED);
     border-radius: 6px;
-    color: rgba(255,255,255,0.85);
-    font-size: 12px;
-    font-weight: 600;
+    color: var(--text-muted, #606771);
+    font-size: 11px;
+    font-weight: 700;
     font-family: inherit;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
     padding: 5px 0;
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
   }
   .lang-btn:hover {
-    background: rgba(255,255,255,0.22);
-    color: #fff;
+    background: var(--navy-light, #DAECF6);
+    color: var(--navy, #112853);
+    border-color: var(--navy-light, #DAECF6);
   }
 
   .sidebar-footer {
-    margin-top: auto;
-    padding: 12px 8px;
+    padding: 10px 8px 12px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 8px;
-    border-top: 1px solid rgba(255,255,255,0.1);
+    border-top: 1px solid var(--border, #E3E8ED);
   }
 
   .user-avatar {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.15);
+    background: var(--navy, #112853);
     color: #fff;
     display: flex;
     align-items: center;
@@ -146,7 +148,7 @@
 
   .user-name {
     font-size: 11px;
-    color: rgba(255,255,255,0.7);
+    color: var(--text-muted, #606771);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
