@@ -118,13 +118,46 @@
   async function loadPcDmpConnections() {
     if (pcDmpLoaded) return
     pcDmpLoaded = true
+
+    // 1. If user already has DMP segments selected, grab the connection ID from there
+    if (draft.dmpData?.length > 0 && pcDmpId == null) {
+      pcDmpId = draft.dmpData[0].dmpId ?? null
+    }
+
+    // 2. Try /clients/dmp-connections
     try {
       const res = await api.dmp.connections()
-      pcDmpConnections = Array.isArray(res) ? res : (res?.content ?? [])
-      if (pcDmpConnections.length > 0 && pcDmpId == null) {
-        pcDmpId = pcDmpConnections[0].id
+      const list = Array.isArray(res) ? res : (res?.content ?? [])
+      console.log('[PC] dmp-connections response:', JSON.stringify(list).substring(0, 300))
+      if (list.length > 0) {
+        pcDmpConnections = list
+        if (pcDmpId == null) pcDmpId = list[0].id
       }
-    } catch { /* silently ignore — scoring may still work without explicit dmpId */ }
+    } catch (e) {
+      console.warn('[PC] dmp-connections failed:', e?.status, JSON.stringify(e?.data ?? e?.message ?? '').substring(0, 200))
+    }
+
+    // 3. Fallback: possibleDmpSegments — inspect first segment for a connection/dmp id
+    if (pcDmpId == null) {
+      try {
+        const payload = draft.id ? { campaignId: draft.id } : {}
+        const res = await api.campaigns.possibleDmpSegments(payload)
+        const segs = Array.isArray(res) ? res : (res?.content ?? res?.data ?? [])
+        console.log('[PC] possibleDmpSegments first seg keys:', segs.length > 0 ? Object.keys(segs[0]) : 'empty', JSON.stringify(segs[0] ?? {}).substring(0, 300))
+        if (segs.length > 0) {
+          // Look for a field that represents the DMP connection ID
+          const connectionId = segs[0].connectionId ?? segs[0].dmpConnectionId ?? segs[0].dmpId ?? segs[0].id
+          if (connectionId != null) {
+            pcDmpId = connectionId
+            pcDmpConnections = [{ id: connectionId, name: segs[0].dmpName ?? segs[0].provider ?? segs[0].name ?? String(connectionId) }]
+          }
+        }
+      } catch (e) {
+        console.warn('[PC] possibleDmpSegments failed:', e?.status)
+      }
+    }
+
+    console.log('[PC] final pcDmpId:', pcDmpId)
   }
 
   $: if (preCampaignOpen) loadPcDmpConnections()
@@ -396,6 +429,7 @@
         unionSegments: false,
       }
       if (pcDmpId != null) payload.dmpId = pcDmpId
+      console.log('[PC] payload:', JSON.stringify({ ...payload, inventories: `[${payload.inventories.length} ids]` }))
 
       // Step 1: submit targeting → get requestId
       const res1 = await api.campaigns.preCampaignData(payload)
@@ -1069,12 +1103,12 @@
                 >{conn.name ?? conn.id}</button>
               {/each}
             </div>
-          {:else if pcDmpConnections.length === 1}
+          {:else if pcDmpId != null}
             <div class="pc-info">
               <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#3b82f6;flex-shrink:0">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
               </svg>
-              DMP: {pcDmpConnections[0].name ?? pcDmpConnections[0].id}
+              DMP: {pcDmpConnections[0]?.name ?? pcDmpConnections[0]?.id ?? 'ID ' + pcDmpId}
             </div>
           {/if}
 
@@ -1110,7 +1144,7 @@
               <div class="mini-spinner" style="width:12px;height:12px;border-width:2px"></div>
               Загрузка…
             {:else}
-              Рассчитать скоры
+              Показать аффинитивность
             {/if}
           </button>
 
