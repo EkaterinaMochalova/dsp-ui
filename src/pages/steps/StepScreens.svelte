@@ -79,7 +79,6 @@
 
   let pcSelectedInterests = []  // legacy (kept for pcInterestSlug compatibility)
   let pcSelectedSub = ''        // single subcategory selection (new UI)
-  let pcEnabled     = true      // paid-feature toggle
   let pcAffinityMin = 0         // 0-100 minimum affinity threshold
 
   // DMP connection for pre-campaign scoring
@@ -137,8 +136,8 @@
     try {
       const res = await api.dmp.list()
       const all = Array.isArray(res) ? res : (res?.content ?? [])
-      // Only show DMPs that are actively connected for this account
-      const list = all.filter(d => d.active !== false)
+      // Only show DMPs that are explicitly active/connected for this account
+      const list = all.filter(d => d.active === true || d.connected === true || d.status === 'CONNECTED')
       console.log('[PC] /clients/dmp active DMPs:', JSON.stringify(list).substring(0, 300))
       if (list.length > 0) {
         pcDmpConnections = list
@@ -1145,19 +1144,9 @@
         {:else}
 
           <div class="pc-panel-body">
-            <!-- Paid-feature toggle -->
-            <div class="pc-paid-row">
-              <span class="pc-paid-label">Опция доступна за дополнительную плату.</span>
-              <!-- svelte-ignore a11y-label-has-associated-control -->
-              <label class="pc-toggle-wrap">
-                <input type="checkbox" class="pc-toggle-input" bind:checked={pcEnabled}>
-                <span class="pc-toggle-track"></span>
-              </label>
-            </div>
-
             <!-- DMP dropdown -->
             <div class="pc-section-label">DMP</div>
-            <select class="pc-select" bind:value={pcDmpId} disabled={!pcEnabled}>
+            <select class="pc-select" bind:value={pcDmpId}>
               <option value={null}>Выберите DMP</option>
               {#each pcDmpConnections as conn}
                 <option value={conn.id}>{conn.name ?? conn.id}</option>
@@ -1166,7 +1155,7 @@
 
             <!-- Subcategory dropdown -->
             <div class="pc-section-label">Подкатегория интереса</div>
-            <select class="pc-select" bind:value={pcSelectedSub} disabled={!pcEnabled}>
+            <select class="pc-select" bind:value={pcSelectedSub}>
               <option value="">Выберите подкатегорию</option>
               {#each PC_ALL_SUBCATEGORIES as item}
                 <option value={item}>{item}</option>
@@ -1180,7 +1169,6 @@
               class="pc-affinity-slider"
               min="0" max="100" step="1"
               bind:value={pcAffinityMin}
-              disabled={!pcEnabled}
             >
 
             {#if preCampaignError}
@@ -1194,7 +1182,7 @@
             <button
               class="pc-footer-apply"
               on:click={runPreCampaign}
-              disabled={preCampaignLoading || !pcEnabled}
+              disabled={preCampaignLoading}
             >
               {#if preCampaignLoading}
                 <div class="mini-spinner" style="width:11px;height:11px;border-width:2px;border-color:#fff transparent #fff #fff"></div>
@@ -2832,50 +2820,6 @@
     padding: 10px 14px 14px;
     border-top: 1px solid #f3f4f6;
   }
-  /* Paid toggle row */
-  .pc-paid-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-  .pc-paid-label {
-    font-size: 12px;
-    color: #374151;
-    line-height: 1.4;
-  }
-  .pc-toggle-wrap {
-    position: relative;
-    flex-shrink: 0;
-    cursor: pointer;
-  }
-  .pc-toggle-input {
-    position: absolute;
-    opacity: 0;
-    width: 0; height: 0;
-  }
-  .pc-toggle-track {
-    display: block;
-    width: 40px;
-    height: 22px;
-    background: #d1d5db;
-    border-radius: 999px;
-    position: relative;
-    transition: background 0.2s;
-  }
-  .pc-toggle-track::after {
-    content: '';
-    position: absolute;
-    left: 3px; top: 3px;
-    width: 16px; height: 16px;
-    background: #fff;
-    border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0,0,0,.2);
-    transition: left 0.2s;
-  }
-  .pc-toggle-input:checked ~ .pc-toggle-track { background: #3b82f6; }
-  .pc-toggle-input:checked ~ .pc-toggle-track::after { left: calc(100% - 19px); }
   /* Section label */
   .pc-section-label {
     font-size: 11.5px;
