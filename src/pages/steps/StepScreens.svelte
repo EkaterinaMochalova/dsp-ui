@@ -291,17 +291,22 @@
     preCampaignLoading = true
     preCampaignError   = ''
     try {
-      let payload
+      // Step 1: submit campaign targeting → receive a requestId
+      let dataPayload
       if (draft.id) {
-        payload = { campaignId: Number(draft.id) }
+        dataPayload = { campaignId: Number(draft.id) }
       } else {
-        // Campaign not saved yet — build payload from targeting data
-        payload = { type: draft.type ?? 'RTB' }
+        dataPayload = { type: draft.type ?? 'RTB' }
         if (draft.dmpData?.length) {
-          payload.targetAudience = { enabled: true, dmpData: draft.dmpData }
+          dataPayload.targetAudience = { enabled: true, dmpData: draft.dmpData }
         }
       }
-      const res  = await api.campaigns.preCampaignResult(payload)
+      const dataRes  = await api.campaigns.preCampaignData(dataPayload)
+      const requestId = dataRes?.requestId ?? dataRes?.data?.requestId
+      if (!requestId) throw new Error('Сервер не вернул requestId')
+
+      // Step 2: fetch scored inventories by requestId
+      const res  = await api.campaigns.preCampaignResult({ requestId })
       const data = res?.data ?? []
       const map  = {}
       for (const cityGroup of data) {
@@ -318,7 +323,7 @@
         preCampaignError = 'Нет данных скоров для этой кампании'
       } else {
         scoreSortActive  = true
-        preCampaignOpen  = false   // collapse panel after success
+        preCampaignOpen  = false
       }
     } catch (e) {
       // API throws { status, data } — extract a readable message
