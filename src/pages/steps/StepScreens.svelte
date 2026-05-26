@@ -45,39 +45,44 @@
   let scoreMap = {}        // inventoryId → score (0..1)
   let scoreSortActive = false   // when true, sort by score desc
 
-  // Interests for pre-campaign (local only, not persisted to draft)
-  // Fallback list mirrors the prod app (filters/interests endpoint returns 404)
-  const PC_INTERESTS_FALLBACK = [
-    'Автомобили','Досуг','Новости','Здоровье','Техника','Электроника',
-    'Мобильная связь','Красота и уход за собой','Кулинария','Недвижимость',
-    'Обустройство и ремонт','Зоотовары','Образование',
-    'Одежда, обувь и аксессуары','Семья','Путешествия',
-    'Страхование','Финансы','Детские товары','Доход',
-  ]
-  let pcInterests = []          // strings shown as chips
-  let pcInterestsLoading = false
-  let pcSelectedInterests = []  // names chosen by user
-
-  async function loadPcInterests() {
-    if (pcInterests.length > 0) return
-    pcInterestsLoading = true
-    try {
-      const res = await api.filters.interests()
-      const list = Array.isArray(res) ? res : (res?.content ?? [])
-      pcInterests = list.length
-        ? list.map(x => x.name ?? x.id ?? String(x))
-        : PC_INTERESTS_FALLBACK
-    } catch {
-      pcInterests = PC_INTERESTS_FALLBACK
-    } finally {
-      pcInterestsLoading = false
-    }
+  // Interests for pre-campaign — two-level tree scraped from prod app
+  // filters/interests endpoint returns 404; tree is hardcoded as fallback
+  const PC_INTEREST_TREE = {
+    'Автомобили':              ['Премиум класс','Средний класс','Эконом класс','Автобарахолка','Автосервисы','Запчасти и сервис','Покупка нового автомобиля','Автовладельцы','Мотоциклы'],
+    'Досуг':                   ['Досуг и развлечения','Знакомства','Фильмы и сериалы','Книги','Культурный отдых, афиша','Рестораны, Кафе','Бары','Онлайн кинотеатры','Футбол','Юмор','Цветы'],
+    'Новости':                 ['Культура','Наука и техника','Общество','Политика','События','Спорт','Экономика'],
+    'Здоровье':                ['Аптеки','Здоровое питание','Клиники','Лекарственные препараты и БАДы'],
+    'Техника':                 [],
+    'Электроника':             [],
+    'Мобильная связь':         [],
+    'Красота и уход за собой': ['Средства по уходу','Косметика и парфюмерия','Техника для красоты и здоровья','Лазерная эпиляция','Салоны красоты','Маникюр'],
+    'Кулинария':               [],
+    'Недвижимость':            [],
+    'Обустройство и ремонт':   [],
+    'Зоотовары':               [],
+    'Образование':             [],
+    'Одежда, обувь и аксессуары': [],
+    'Семья':                   [],
+    'Путешествия':             [],
+    'Страхование':             [],
+    'Финансы':                 [],
+    'Детские товары':          [],
+    'Доход':                   ['Премиум класс','Средний класс','Эконом класс'],
   }
+  const PC_TOP_INTERESTS = Object.keys(PC_INTEREST_TREE)
 
+  let pcSelectedInterests = []  // names chosen by user (top + sub level)
+
+  // When a top-level interest is toggled OFF, also remove its sub-interests
   function togglePcInterest(name) {
-    pcSelectedInterests = pcSelectedInterests.includes(name)
-      ? pcSelectedInterests.filter(x => x !== name)
-      : [...pcSelectedInterests, name]
+    const isTop = PC_TOP_INTERESTS.includes(name)
+    if (pcSelectedInterests.includes(name)) {
+      let next = pcSelectedInterests.filter(x => x !== name)
+      if (isTop) next = next.filter(x => !PC_INTEREST_TREE[name]?.includes(x))
+      pcSelectedInterests = next
+    } else {
+      pcSelectedInterests = [...pcSelectedInterests, name]
+    }
   }
 
   // Freehand draw tool
@@ -330,7 +335,7 @@
       // PreCampaignApiRequest always needs type + cities — never accepts campaignId
       const dataPayload = {
         type:   draft.type ?? 'RTB',
-        cities: draft.cityIds ?? [],
+        cities: (draft.cityIds ?? []).map(id => ({ id })),
       }
       if (draft.dmpData?.length) {
         dataPayload.targetAudience = { enabled: true, dmpData: draft.dmpData }
@@ -971,7 +976,7 @@
       <button
         class="map-float-btn"
         class:map-float-btn--active={scoreSortActive}
-        on:click={() => { preCampaignOpen = !preCampaignOpen; if (preCampaignOpen) loadPcInterests() }}
+        on:click={() => { preCampaignOpen = !preCampaignOpen }}
       >
         <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0">
           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
@@ -1007,23 +1012,28 @@
             </div>
           {/if}
 
-          <!-- Interests -->
+          <!-- Interests two-level tree -->
           <div class="pc-section-label">Интересы</div>
-          {#if pcInterestsLoading}
-            <div class="pc-warn">Загрузка…</div>
-          {:else if pcInterests.length > 0}
-            <div class="pc-interests">
-              {#each pcInterests as name}
-                <button
-                  class="pc-int-chip"
-                  class:pc-int-chip--on={pcSelectedInterests.includes(name)}
-                  on:click={() => togglePcInterest(name)}
-                >{name}</button>
-              {/each}
-            </div>
-          {:else}
-            <div class="pc-warn" style="font-size:11.5px">Интересы не загружены</div>
-          {/if}
+          <div class="pc-interests">
+            {#each PC_TOP_INTERESTS as top}
+              {@const topOn = pcSelectedInterests.includes(top)}
+              {@const subs = PC_INTEREST_TREE[top]}
+              <button
+                class="pc-int-chip"
+                class:pc-int-chip--on={topOn}
+                on:click={() => togglePcInterest(top)}
+              >{top}</button>
+              {#if topOn && subs.length > 0}
+                {#each subs as sub}
+                  <button
+                    class="pc-int-chip pc-int-chip--sub"
+                    class:pc-int-chip--on={pcSelectedInterests.includes(sub)}
+                    on:click={() => togglePcInterest(sub)}
+                  >{sub}</button>
+                {/each}
+              {/if}
+            {/each}
+          </div>
 
           <button
             class="pc-run-btn"
@@ -2707,7 +2717,7 @@
     flex-wrap: wrap;
     gap: 5px;
     margin-bottom: 10px;
-    max-height: 140px;
+    max-height: 200px;
     overflow-y: auto;
   }
   .pc-int-chip {
@@ -2728,4 +2738,11 @@
     color: #fff;
     border-color: var(--navy, #112853);
   }
+  .pc-int-chip--sub {
+    font-size: 10.5px;
+    padding: 2px 7px;
+    margin-left: 6px;
+    opacity: 0.85;
+  }
+  .pc-int-chip--sub.pc-int-chip--on { opacity: 1; }
 </style>
