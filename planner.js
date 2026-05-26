@@ -4083,7 +4083,14 @@ async function onCalcClick() {
     let avgChosenBid = pr.avgBid;
     let effectiveChosenBid = effectiveBid;
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // В GID-режиме берём весь пул как есть — без grid-фильтрации (она выбрасывает экраны без координат).
+    if (region === "__gid_mode__") {
+      chosen = [...pool];
+      avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
+      effectiveChosenBid = avgEffectiveBid(chosen, brief.bidMode, avgChosenBid * BID_MULTIPLIER);
+    }
+
+    for (let attempt = 0; attempt < (region === "__gid_mode__" ? 0 : 2); attempt++) {
       const stepKm = gridStepKmForCount(screensChosenCount);
       const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
 
