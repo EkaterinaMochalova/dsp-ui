@@ -337,11 +337,10 @@
         type:   draft.type ?? 'RTB',
         cities: (draft.cityIds ?? []).map(id => ({ id })),
       }
+      // segmentation is non-nullable — always send (empty array = no filter)
+      dataPayload.segmentation = pcSelectedInterests
       if (draft.dmpData?.length) {
         dataPayload.targetAudience = { enabled: true, dmpData: draft.dmpData }
-      }
-      if (pcSelectedInterests.length) {
-        dataPayload.interests = pcSelectedInterests
       }
       const dataRes  = await api.campaigns.preCampaignData(dataPayload)
       const requestId = dataRes?.requestId ?? dataRes?.data?.requestId
