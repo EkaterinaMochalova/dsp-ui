@@ -424,7 +424,10 @@
     try {
       // Build payload matching the prod app structure
       const slugs = pcSelectedInterests.map(pcInterestSlug).filter(Boolean)
+      // Generate client-side UUID as required by PreCampaignApiRequest schema
+      const clientRequestId = crypto.randomUUID()
       const payload = {
+        requestId:     clientRequestId,
         cities:        (draft.cityIds ?? []).map(id => ({ id, zipCodes: [] })),
         inventories:   screens.map(s => s.id),
         segmentation:  slugs,
@@ -433,10 +436,11 @@
       if (pcDmpId != null) payload.dmpId = pcDmpId
       console.log('[PC] payload:', JSON.stringify({ ...payload, inventories: `[${payload.inventories.length} ids]` }))
 
-      // Step 1: submit targeting → get requestId
+      // Step 1: submit targeting → get requestId echoed back
       const res1 = await api.campaigns.preCampaignData(payload)
       console.log('[PC] pre-campaign-data response:', JSON.stringify(res1))
-      const requestId = res1?.requestId ?? res1?.data?.requestId ?? res1?.result?.requestId
+      // Server echoes requestId back; fall back to the one we sent if not in response
+      const requestId = res1?.requestId ?? res1?.data?.requestId ?? res1?.result?.requestId ?? clientRequestId
       if (!requestId) throw new Error('Сервер не вернул requestId: ' + JSON.stringify(res1))
 
       // Step 2: fetch scored inventories by requestId
