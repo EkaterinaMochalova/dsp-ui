@@ -331,21 +331,7 @@
     preCampaignLoading = true
     preCampaignError   = ''
     try {
-      // Step 1: submit campaign targeting → receive a requestId
-      // PreCampaignApiRequest always needs type + cities — never accepts campaignId
-      const dataPayload = {
-        type:   draft.type ?? 'RTB',
-        cities: (draft.cityIds ?? []).map(id => ({ id })),
-      }
-      // segmentation is non-nullable — always send (empty array = no filter)
-      dataPayload.segmentation = pcSelectedInterests
-      if (draft.dmpData?.length) {
-        dataPayload.targetAudience = { enabled: true, dmpData: draft.dmpData }
-      }
-      const dataRes  = await api.campaigns.preCampaignData(dataPayload)
-      const requestId = dataRes?.requestId ?? dataRes?.data?.requestId
-      if (!requestId) throw new Error('Сервер не вернул requestId')
-
+      const requestId = await _fetchPreCampaignRequestId(pcSelectedInterests)
       // Step 2: fetch scored inventories by requestId
       const res  = await api.campaigns.preCampaignResult({ requestId })
       const data = res?.data ?? []
@@ -374,6 +360,36 @@
       preCampaignError = 'Ошибка ' + (e?.status ? e.status + ': ' : '') + (apiMsg ?? 'неизвестная ошибка')
     } finally {
       preCampaignLoading = false
+    }
+  }
+
+  // Helper: submit targeting data and return requestId.
+  // If segmentation causes a 500 (DMP not configured), retries without it.
+  async function _fetchPreCampaignRequestId(segmentation) {
+    const base = {
+      type:   draft.type ?? 'RTB',
+      cities: (draft.cityIds ?? []).map(id => ({ id })),
+      segmentation,
+    }
+    if (draft.dmpData?.length) {
+      base.targetAudience = { enabled: true, dmpData: draft.dmpData }
+    }
+    try {
+      const res = await api.campaigns.preCampaignData(base)
+      const rid = res?.requestId ?? res?.data?.requestId
+      if (!rid) throw new Error('Сервер не вернул requestId')
+      return rid
+    } catch (e) {
+      // 500 "dmpSettings is null" — DMP not configured, retry without segmentation
+      const msg = e?.data?.message ?? e?.data?.error ?? e?.message ?? ''
+      if (e?.status === 500 && msg.includes('dmpSettings') && segmentation.length > 0) {
+        preCampaignError = 'DMP не настроен — интересы проигнорированы'
+        const res2 = await api.campaigns.preCampaignData({ ...base, segmentation: [] })
+        const rid2 = res2?.requestId ?? res2?.data?.requestId
+        if (!rid2) throw new Error('Сервер не вернул requestId')
+        return rid2
+      }
+      throw e
     }
   }
 
