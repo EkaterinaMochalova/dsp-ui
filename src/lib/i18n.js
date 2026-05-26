@@ -187,7 +187,7 @@ const TR = {
     ov_stats_ready: 'stats are current',
     ov_by_month: 'Campaigns by month (start)',
     ov_top_title: 'Top campaigns by spend',
-    ov_shows: 'impressions',
+    ov_shows: 'plays',
     // Analytics
     an_title: 'Analytics',
     an_campaigns: 'campaigns',
