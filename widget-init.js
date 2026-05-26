@@ -1769,7 +1769,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
       const d = isGidMode ? "none" : "";
       [
-        "step4-formats-block", "step4-strategy-block", "step4-bid-mode-block",
+        "step4-formats-block", "step4-strategy-block",
         "audience-block", "step4-map-zone-block", "step4-selection-block",
         "pool-preview-block"
       ].forEach(id => { const n = el(id); if (n) n.style.display = d; });
