@@ -4114,7 +4114,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <div class="ps-card">
             <div class="ps-region-top">
               <div>
-                <div class="ps-region-name">\${String(r.region || "—")}</div>
+                <div class="ps-region-name">\${r.region === "__gid_mode__" ? "По GID-списку" : String(r.region || "—")}</div>
                 <div class="ps-sub">\${note || "Разбивка по региону"}</div>
               </div>
               <div class="ps-chip">\${fmtInt(r.screens)} экранов</div>

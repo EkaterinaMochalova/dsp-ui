@@ -3424,9 +3424,10 @@ async function onCalcClick() {
   for (const region of regions) {
     const tier = getTierForGeo(region);
     const selectedNorm = normalizeGeoName(region);
-    // __gid_mode__: no region filter — GIDs act as the sole selector
+    // __gid_mode__: no region filter — GIDs act as the sole selector.
+    // Always use screensAll (full inventory) to avoid stale state.screens from a prior session.
     let pool = region === "__gid_mode__"
-      ? [...sourceScreens]
+      ? [...(Array.isArray(state.screensAll) && state.screensAll.length ? state.screensAll : sourceScreens)]
       : sourceScreens.filter(s => {
           const r = String(s.region || "").trim();
           const c = String(s.city || "").trim();
