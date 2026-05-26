@@ -127,8 +127,10 @@
     // 2. GET /clients/dmp — correct endpoint (prod bundle: getDMPSystems)
     try {
       const res = await api.dmp.list()
-      const list = Array.isArray(res) ? res : (res?.content ?? [])
-      console.log('[PC] /clients/dmp response:', JSON.stringify(list).substring(0, 300))
+      const all = Array.isArray(res) ? res : (res?.content ?? [])
+      // Only show DMPs that are actively connected for this account
+      const list = all.filter(d => d.active !== false)
+      console.log('[PC] /clients/dmp active DMPs:', JSON.stringify(list).substring(0, 300))
       if (list.length > 0) {
         pcDmpConnections = list
         if (pcDmpId == null) pcDmpId = list[0].id
@@ -433,8 +435,9 @@
 
       // Step 1: submit targeting → get requestId
       const res1 = await api.campaigns.preCampaignData(payload)
-      const requestId = res1?.requestId ?? res1?.data?.requestId
-      if (!requestId) throw new Error('Сервер не вернул requestId')
+      console.log('[PC] pre-campaign-data response:', JSON.stringify(res1))
+      const requestId = res1?.requestId ?? res1?.data?.requestId ?? res1?.result?.requestId
+      if (!requestId) throw new Error('Сервер не вернул requestId: ' + JSON.stringify(res1))
 
       // Step 2: fetch scored inventories by requestId
       const res  = await api.campaigns.preCampaignResult({ requestId })
