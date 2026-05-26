@@ -1156,9 +1156,17 @@
             <!-- Subcategory dropdown -->
             <div class="pc-section-label">Подкатегория интереса</div>
             <select class="pc-select" bind:value={pcSelectedSub}>
-              <option value="">Выберите подкатегорию</option>
-              {#each PC_ALL_SUBCATEGORIES as item}
-                <option value={item}>{item}</option>
+              <option value="">Выберите категорию</option>
+              {#each PC_TOP_INTERESTS as cat}
+                {#if PC_INTEREST_TREE[cat].length > 0}
+                  <optgroup label={cat}>
+                    {#each PC_INTEREST_TREE[cat] as sub}
+                      <option value={sub}>{sub}</option>
+                    {/each}
+                  </optgroup>
+                {:else}
+                  <option value={cat}>{cat}</option>
+                {/if}
               {/each}
             </select>
 
