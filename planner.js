@@ -3422,6 +3422,7 @@ async function onCalcClick() {
     : (Array.isArray(state.screensAll) ? state.screensAll : []);
 
   for (const region of regions) {
+    const regionDisplay = region === "__gid_mode__" ? "По GID-списку" : region;
     const tier = getTierForGeo(region);
     const selectedNorm = normalizeGeoName(region);
     // __gid_mode__: no region filter — GIDs act as the sole selector.
@@ -3478,7 +3479,7 @@ async function onCalcClick() {
     }
 
     if (pool.length === 0) {
-      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов" });
+      perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов" });
       continue;
     }
 
@@ -3508,7 +3509,7 @@ async function onCalcClick() {
       pool = pickScreensNearPOIs(pool, pois, screenRadius);
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у POI" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у POI" });
         continue;
       }
 
@@ -3543,7 +3544,7 @@ async function onCalcClick() {
       pool = [...screenSet];
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у адресов" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у адресов" });
         continue;
       }
 
@@ -3557,7 +3558,7 @@ async function onCalcClick() {
       const screenRadius = Number(brief.selection.radius_m || 300);
 
       if (!fromTxt || !toTxt) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задан маршрут" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задан маршрут" });
         continue;
       }
 
@@ -3572,8 +3573,8 @@ async function onCalcClick() {
       }
 
       if (!A || !B || !Number.isFinite(A.lat) || !Number.isFinite(A.lon) || !Number.isFinite(B.lat) || !Number.isFinite(B.lon)) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "точки маршрута не найдены" });
-        warnings.push(`⚠️ Регион «${region}»: не удалось геокодировать маршрут (${fromTxt} → ${toTxt}).`);
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "точки маршрута не найдены" });
+        warnings.push(`⚠️ Регион «${regionDisplay}»: не удалось геокодировать маршрут (${fromTxt} → ${toTxt}).`);
         continue;
       }
 
@@ -3585,14 +3586,14 @@ async function onCalcClick() {
 
       if (!Array.isArray(routeLine) || routeLine.length < 2) {
         routeLine = [[A.lon, A.lat], [B.lon, B.lat]];
-        warnings.push(`⚠️ Регион «${region}»: OSRM недоступен, использую прямую линию A–B.`);
+        warnings.push(`⚠️ Регион «${regionDisplay}»: OSRM недоступен, использую прямую линию A–B.`);
       }
 
       const before = pool.length;
       pool = pickScreensNearPolyline(pool, routeLine, screenRadius);
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у маршрута" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у маршрута" });
         continue;
       }
 
@@ -3605,7 +3606,7 @@ async function onCalcClick() {
       const screenRadius = Number(brief.selection.radius_m || 500);
 
       if (!hwName) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задана магистраль" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задана магистраль" });
         continue;
       }
 
@@ -3619,8 +3620,8 @@ async function onCalcClick() {
       }
 
       if (!Array.isArray(hwLine) || hwLine.length < 2) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "дорога не найдена" });
-        warnings.push(`⚠️ Регион «${region}»: не удалось найти дорогу «${hwName}» через OpenStreetMap.`);
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "дорога не найдена" });
+        warnings.push(`⚠️ Регион «${regionDisplay}»: не удалось найти дорогу «${hwName}» через OpenStreetMap.`);
         continue;
       }
 
@@ -3628,7 +3629,7 @@ async function onCalcClick() {
       pool = pickScreensNearPolyline(pool, hwLine, screenRadius);
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у магистрали" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у магистрали" });
         continue;
       }
 
@@ -3651,7 +3652,7 @@ async function onCalcClick() {
           return false;
         });
         if (!pool.length) {
-          perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null,
+          perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null,
             note: `ни один из ${gidSet.size} GID-ов не найден в регионе` });
           continue;
         }
@@ -3681,7 +3682,7 @@ async function onCalcClick() {
         pool = withScore.slice(0, keepN).map(x => x.s);
         setStatus(`Аудитория: топ ${Math.round(topPct * 100)}% → ${pool.length} из ${before}`);
         if (!pool.length) {
-          perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null,
+          perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null,
             note: `аффинити-фильтр: нет экранов в топ ${Math.round(topPct * 100)}% по [${segs.join(", ")}]` });
           continue;
         }
@@ -3724,17 +3725,17 @@ async function onCalcClick() {
       );
 
       if (pool.length === 0) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "GRP выкинул всё" });
-        warnings.push(`⚠️ Регион «${region}»: GRP-фильтр исключил все экраны (без GRP было: ${grpDroppedNoValue}).`);
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "GRP выкинул всё" });
+        warnings.push(`⚠️ Регион «${regionDisplay}»: GRP-фильтр исключил все экраны (без GRP было: ${grpDroppedNoValue}).`);
         continue;
       }
 
-      warnings.push(`⚠️ Регион «${region}»: GRP-фильтр включён, без GRP исключены (без GRP: ${grpDroppedNoValue}).`);
+      warnings.push(`⚠️ Регион «${regionDisplay}»: GRP-фильтр включён, без GRP исключены (без GRP: ${grpDroppedNoValue}).`);
     }
 
     const avgBid = avgNumber(pool.map(s => s.minBid));
     if (avgBid == null) {
-      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет minBid" });
+      perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет minBid" });
       continue;
     }
     const bidPlus20 = avgBid * BID_MULTIPLIER;
@@ -3749,7 +3750,7 @@ async function onCalcClick() {
     const capOtsAbs = (avgOts == null) ? null : (capPlaysAbs * avgOts);
 
     prepared.push({
-      region, tier, pool,
+      region: regionDisplay, tier, pool,
       avgBid, bidPlus20,
       avgOts,
       capPlaysAbs, capBudgetAbs, capBudgetAbsMin, capOtsAbs
@@ -4039,7 +4040,7 @@ async function onCalcClick() {
     let budget = Number(budgets[region] || 0);
 
     if (!Number.isFinite(budget) || budget <= 0) {
-      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "budget=0" });
+      perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "budget=0" });
       continue;
     }
 
@@ -4055,7 +4056,7 @@ async function onCalcClick() {
     }
 
     if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory <= 0) {
-      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "цель=0" });
+      perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "цель=0" });
       continue;
     }
 
@@ -4068,9 +4069,12 @@ async function onCalcClick() {
     );
 
     // Если пользователь задал кол-во конструкций — распределяем пропорционально по регионам.
-    const constructionsTarget = (brief.constructions?.enabled && brief.constructions.count > 0)
-      ? (_perRegionConstructionsTarget[region] ?? brief.constructions.count)
-      : null;
+    // In GID mode all screens are pre-selected by the user — use the entire pool.
+    const constructionsTarget = (region === "__gid_mode__")
+      ? pool.length
+      : (brief.constructions?.enabled && brief.constructions.count > 0)
+        ? (_perRegionConstructionsTarget[region] ?? brief.constructions.count)
+        : null;
     let screensChosenCount = constructionsTarget !== null
       ? Math.min(pool.length, constructionsTarget)
       : Math.min(pool.length, screensNeeded);
@@ -4220,7 +4224,7 @@ async function onCalcClick() {
     if (brief.budget.mode !== "goal_ots" && brief.budget.mode !== "goal_plays") {
       const playsPerHourPerScreen = (totalPlaysEffective / days / hpd) / Math.max(1, chosen.length);
       if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
-        warnings.push(`⚠️ Регион «${region}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
+        warnings.push(`⚠️ Регион «${regionDisplay}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
       }
     }
 
