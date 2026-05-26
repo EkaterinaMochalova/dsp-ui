@@ -436,23 +436,23 @@
       if (pcDmpId != null) payload.dmpId = pcDmpId
       console.log('[PC] payload:', JSON.stringify({ ...payload, inventories: `[${payload.inventories.length} ids]` }))
 
-      // Step 1: submit targeting → get requestId echoed back
+      // pre-campaign-data returns scored inventories directly as a flat array
       const res1 = await api.campaigns.preCampaignData(payload)
-      console.log('[PC] pre-campaign-data response:', JSON.stringify(res1))
-      // Server echoes requestId back; fall back to the one we sent if not in response
-      const requestId = res1?.requestId ?? res1?.data?.requestId ?? res1?.result?.requestId ?? clientRequestId
-      if (!requestId) throw new Error('Сервер не вернул requestId: ' + JSON.stringify(res1))
+      console.log('[PC] pre-campaign-data response (first 3):', JSON.stringify(Array.isArray(res1) ? res1.slice(0, 3) : res1))
 
-      // Step 2: fetch scored inventories by requestId
-      const res  = await api.campaigns.preCampaignResult({ requestId })
-      const data = res?.data ?? []
+      // Normalise: may be array, or { data: [...] }, or { content: [...] }
+      const items = Array.isArray(res1)
+        ? res1
+        : Array.isArray(res1?.data) ? res1.data
+        : Array.isArray(res1?.content) ? res1.content
+        : []
+
       const map  = {}
-      for (const cityGroup of data) {
-        for (const item of cityGroup.inventories ?? []) {
-          const id = item.inventory?.id
-          if (id != null && item.score != null) {
-            if (map[id] == null || item.score > map[id]) map[id] = item.score
-          }
+      for (const item of items) {
+        const id = item.inventory?.id ?? item.id
+        const sc = item.score ?? item.affinity
+        if (id != null && sc != null) {
+          if (map[id] == null || sc > map[id]) map[id] = sc
         }
       }
       scoreMap = map
