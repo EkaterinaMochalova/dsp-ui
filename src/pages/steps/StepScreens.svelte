@@ -296,7 +296,10 @@
       if (draft.id) {
         dataPayload = { campaignId: Number(draft.id) }
       } else {
-        dataPayload = { type: draft.type ?? 'RTB' }
+        dataPayload = {
+          type:   draft.type ?? 'RTB',
+          cities: draft.cityIds ?? [],
+        }
         if (draft.dmpData?.length) {
           dataPayload.targetAudience = { enabled: true, dmpData: draft.dmpData }
         }
