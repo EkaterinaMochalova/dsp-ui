@@ -474,6 +474,13 @@
       } else {
         scoreSortActive  = true
         preCampaignOpen  = false
+        // Auto-show the Score column so users see affinity values
+        const scoreCol = cols.find(c => c.id === 'score')
+        if (scoreCol && !scoreCol.visible) {
+          scoreCol.visible = true
+          cols = cols
+          saveColState()
+        }
       }
     } catch (e) {
       // API throws { status, data } — extract a readable message
@@ -490,6 +497,13 @@
     scoreMap = {}
     scoreSortActive = false
     preCampaignError = ''
+    // Hide score column when scores are cleared
+    const scoreCol = cols.find(c => c.id === 'score')
+    if (scoreCol && scoreCol.visible) {
+      scoreCol.visible = false
+      cols = cols
+      saveColState()
+    }
   }
 
   onMount(() => {
@@ -1171,18 +1185,18 @@
             <div class="pc-error">{preCampaignError}</div>
           {/if}
 
-          {#if scoreSortActive}
-            <div class="pc-result">
-              <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#16a34a;flex-shrink:0">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-              </svg>
-              {Object.keys(scoreMap).length} скринов — отсортировано
-              <button class="pc-clear-btn" on:click={clearPreCampaign}>× Сбросить</button>
-            </div>
-          {/if}
-
         {/if}
       </div>
+      {/if}
+
+      {#if scoreSortActive}
+        <div class="pc-result">
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#16a34a;flex-shrink:0">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+          </svg>
+          {Object.keys(scoreMap).length} скринов — отсортировано по аффинитивности
+          <button class="pc-clear-btn" on:click={clearPreCampaign}>× Сбросить</button>
+        </div>
       {/if}
     </div>
 
