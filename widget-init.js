@@ -1781,8 +1781,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   setInterval(updateNext1Btn, 1000);
 
   el("wiz-next-1")?.addEventListener("click", () => {
-    const regions = window.PLANNER_UI.getSelectedRegionsArr();
-    if(!regions.length) return alert("Выберите регион, чтобы продолжить.");
+    const gidsBlockEl = el("geo-gids-block");
+    const isGidMode = gidsBlockEl && gidsBlockEl.style.display !== "none";
+    if (isGidMode) {
+      if (!el("manual-gids")?.value?.trim()) return alert("Введите хотя бы один GID экрана.");
+    } else {
+      const regions = window.PLANNER_UI.getSelectedRegionsArr();
+      if(!regions.length) return alert("Выберите регион, чтобы продолжить.");
+    }
     if(window.DSP_AUTH_ENABLED && !window.PLANNER?.state?.dspInventoryWarmupDone){
       return alert("Инвентарь ещё загружается, подождите немного.");
     }
