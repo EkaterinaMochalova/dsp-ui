@@ -2267,16 +2267,19 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
               const allScreens = window.PLANNER?.state?.screensAll?.length
                 ? window.PLANNER.state.screensAll
                 : (window.PLANNER?.state?.screens || []);
-              const matched = allScreens.filter(s => {
-                const sid = (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
-                return ids.has(sid);
-              });
               if (!allScreens.length) {
                 statusEl.textContent = ids.size + " GID-ов введено — инвентарь ещё загружается…";
                 statusEl.style.color = "#9ca3af";
               } else {
-                statusEl.textContent = "Найдено в инвентаре: " + matched.length + " из " + ids.size + " указанных GID-ов";
-                statusEl.style.color = matched.length > 0 ? "#5b3ef5" : "#dc2626";
+                // Deduplicate: one GID → at most one match
+                const seenSids = new Set();
+                allScreens.forEach(s => {
+                  const sid = (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
+                  if (ids.has(sid)) seenSids.add(sid);
+                });
+                const matchedCount = seenSids.size;
+                statusEl.textContent = "Найдено в инвентаре: " + matchedCount + " из " + ids.size + " указанных GID-ов";
+                statusEl.style.color = matchedCount > 0 ? "#5b3ef5" : "#dc2626";
               }
             }
             renderProgress();
