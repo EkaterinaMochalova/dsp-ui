@@ -38,6 +38,13 @@
   let cameraOverlay = false
   let activeOnly = false   // hide screens with requestHourlyAvg ≤ 1
 
+  // ── Pre-campaign scoring ──────────────────────────────────────────────
+  let preCampaignOpen  = false
+  let preCampaignLoading = false
+  let preCampaignError = ''
+  let scoreMap = {}        // inventoryId → score (0..1)
+  let scoreSortActive = false   // when true, sort by score desc
+
   // Freehand draw tool
   let drawMode = false       // lasso active
   let drawPoints = []        // array of L.LatLng
@@ -230,17 +237,23 @@
 
   // Sort comparator
   function cmpVal(s, col) {
-    const numCols = ['minBid','ots','grp','duration','requestHourlyAvg']
+    if (col === 'score') return scoreMap[s.id] ?? -Infinity
+    const numCols = ['minBid','ots','grp','duration','requestHourlyAvg','score']
     if (numCols.includes(col)) return s[col] ?? -Infinity
     return (s[col] ?? '').toString().toLowerCase()
   }
 
-  $: sortedFiltered = sortCol
-    ? [...filtered].sort((a, b) => {
-        const av = cmpVal(a, sortCol), bv = cmpVal(b, sortCol)
-        return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir
-      })
-    : filtered
+  $: sortedFiltered = (() => {
+    if (scoreSortActive && !sortCol) {
+      // Sort by pre-campaign score descending (unscored screens go last)
+      return [...filtered].sort((a, b) => (scoreMap[b.id] ?? -1) - (scoreMap[a.id] ?? -1))
+    }
+    if (!sortCol) return filtered
+    return [...filtered].sort((a, b) => {
+      const av = cmpVal(a, sortCol), bv = cmpVal(b, sortCol)
+      return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir
+    })
+  })()
 
   $: tabRows = activeTab === 'selected'
     ? sortedFiltered.filter(s => draft.screenIds.includes(s.id))
@@ -272,6 +285,49 @@
   // Keep draft.screenObjects in sync so StepSummary can display screen details
   $: if (screens.length > 0) {
     draft.screenObjects = screens.filter(s => draft.screenIds.includes(s.id))
+  }
+
+  async function runPreCampaign() {
+    preCampaignLoading = true
+    preCampaignError   = ''
+    try {
+      // Prefer campaign ID payload; fall back to targeting data
+      const payload = draft.id
+        ? { campaignId: Number(draft.id) }
+        : { type: draft.type ?? 'RTB',
+            targetAudience: (draft.dmpData?.length)
+              ? { enabled: true, dmpData: draft.dmpData }
+              : null }
+      const res  = await api.campaigns.preCampaignResult(payload)
+      const data = res?.data ?? []
+      const map  = {}
+      for (const cityGroup of data) {
+        for (const item of cityGroup.inventories ?? []) {
+          const id = item.inventory?.id
+          if (id != null && item.score != null) {
+            if (map[id] == null || item.score > map[id]) map[id] = item.score
+          }
+        }
+      }
+      scoreMap = map
+      const cnt = Object.keys(map).length
+      if (cnt === 0) {
+        preCampaignError = 'Нет данных скоров для этой кампании'
+      } else {
+        scoreSortActive  = true
+        preCampaignOpen  = false   // collapse panel after success
+      }
+    } catch (e) {
+      preCampaignError = 'Ошибка запроса: ' + (e?.message ?? e)
+    } finally {
+      preCampaignLoading = false
+    }
+  }
+
+  function clearPreCampaign() {
+    scoreMap = {}
+    scoreSortActive = false
+    preCampaignError = ''
   }
 
   onMount(() => {
@@ -478,9 +534,20 @@
     for (const s of toRender) {
       const sel      = isSelected(s.id)
       const inactive = s.requestHourlyAvg != null && s.requestHourlyAvg <= 1
-      // selected = navy | inactive = red | normal = blue
-      const fill  = sel ? '#112853' : inactive ? '#EF4444' : '#55C1FA'
-      const stroke = sel ? '#112853' : inactive ? '#B91C1C' : '#2a8fb5'
+      // selected = navy | inactive = red | scored = amber/orange | normal = blue
+      let fill, stroke
+      if (sel) {
+        fill = '#112853'; stroke = '#112853'
+      } else if (scoreMap[s.id] != null) {
+        const sc = scoreMap[s.id]
+        if (sc >= 0.06) { fill = '#f59e0b'; stroke = '#b45309' }
+        else if (sc >= 0.03) { fill = '#fb923c'; stroke = '#c2410c' }
+        else { fill = '#55C1FA'; stroke = '#2a8fb5' }
+      } else if (inactive) {
+        fill = '#EF4444'; stroke = '#B91C1C'
+      } else {
+        fill = '#55C1FA'; stroke = '#2a8fb5'
+      }
       const m = L.circleMarker([s.lat, s.lon], {
         radius: sel ? 8 : zoom >= 10 ? 6 : 4,
         fillColor: fill,
@@ -539,6 +606,7 @@
     { id:'grp',              label:'GRP',             filterType:'range',    visible: false, width: 80  },
     { id:'duration',         label:'Длительность, с', filterType:'range',    visible: false, width: 130 },
     { id:'requestHourlyAvg', label:'Запросы/час',     filterType:'range',    visible: true,  width: 110 },
+    { id:'score',            label:'Score',           filterType:'range',    visible: false, width: 80  },
     { id:'resolution',       label:'Разрешение',                             visible: false, width: 110 },
     { id:'address',          label:'Адрес',                                  visible: true,  width: 200 },
     { id:'lat',              label:'Широта',          filterType:'range',    visible: false, width: 90  },
@@ -596,6 +664,10 @@
       case 'grp':              return s.grp    != null ? s.grp.toLocaleString('ru-RU') : '—'
       case 'duration':         return s.duration != null ? s.duration.toLocaleString('ru-RU') : '—'
       case 'requestHourlyAvg': return s.requestHourlyAvg != null ? s.requestHourlyAvg.toLocaleString('ru-RU') : '—'
+      case 'score': {
+        const sc = scoreMap[s.id]
+        return sc != null ? (sc * 100).toFixed(1) + '%' : '—'
+      }
       case 'resolution':       return s.resolution || '—'
       case 'address':          return s.address || '—'
       case 'lat':              return Number.isFinite(s.lat) ? s.lat.toFixed(5) : '—'
@@ -847,12 +919,67 @@
 
     <!-- Floating: Pre-campaign targeting -->
     <div class="map-float-top-left">
-      <button class="map-float-btn">
-        Pre-campaign таргетинг
-        <svg viewBox="0 0 10 6" fill="none" width="10" height="6">
+      <button
+        class="map-float-btn"
+        class:map-float-btn--active={scoreSortActive}
+        on:click={() => preCampaignOpen = !preCampaignOpen}
+      >
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor" style="flex-shrink:0">
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+        </svg>
+        Pre-campaign
+        {#if scoreSortActive}
+          <span class="pc-score-count">{Object.keys(scoreMap).length}</span>
+        {/if}
+        <svg class="chip-arrow" viewBox="0 0 10 6" fill="none" width="9" height="9">
           <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
+
+      {#if preCampaignOpen}
+      <!-- svelte-ignore a11y-click-events-have-key-events -->
+      <div class="pc-panel" on:click|stopPropagation>
+        <div class="pc-panel-title">Pre-campaign таргетинг</div>
+
+        {#if draft.dmpData?.length}
+          <div class="pc-info">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#3b82f6;flex-shrink:0">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+            DMP: {draft.dmpData.length} сегм.
+          </div>
+        {:else}
+          <div class="pc-warn">Таргетинг DMP не настроен</div>
+        {/if}
+
+        <button
+          class="pc-run-btn"
+          on:click={runPreCampaign}
+          disabled={preCampaignLoading}
+        >
+          {#if preCampaignLoading}
+            <div class="mini-spinner" style="width:12px;height:12px;border-width:2px"></div>
+            Загрузка…
+          {:else}
+            Рассчитать скоры
+          {/if}
+        </button>
+
+        {#if preCampaignError}
+          <div class="pc-error">{preCampaignError}</div>
+        {/if}
+
+        {#if scoreSortActive}
+          <div class="pc-result">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#16a34a;flex-shrink:0">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+            {Object.keys(scoreMap).length} скринов — отсортировано
+            <button class="pc-clear-btn" on:click={clearPreCampaign}>× Сбросить</button>
+          </div>
+        {/if}
+      </div>
+      {/if}
     </div>
 
     <!-- Floating: Geocode search -->
@@ -2402,4 +2529,93 @@
     background: #EFF6FF !important;
     box-shadow: inset 3px 0 0 var(--navy);
   }
+
+  /* ── Pre-campaign panel ─────────────────────────────────────────────── */
+  .map-float-btn--active {
+    background: #eff6ff !important;
+    border-color: #3b82f6 !important;
+    color: #1d4ed8 !important;
+  }
+  .pc-score-count {
+    background: #3b82f6;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 99px;
+    padding: 1px 5px;
+    line-height: 1.4;
+  }
+  .pc-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 220px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.14);
+    padding: 12px;
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pc-panel-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #111827;
+  }
+  .pc-info {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #374151;
+  }
+  .pc-warn {
+    font-size: 11.5px;
+    color: #9ca3af;
+    font-style: italic;
+  }
+  .pc-run-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #112853;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .pc-run-btn:disabled { opacity: .55; cursor: default; }
+  .pc-run-btn:not(:disabled):hover { opacity: .88; }
+  .pc-error {
+    font-size: 11.5px;
+    color: #ef4444;
+  }
+  .pc-result {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    color: #374151;
+    flex-wrap: wrap;
+  }
+  .pc-clear-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    font-size: 11px;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: 0 2px;
+    font-family: inherit;
+  }
+  .pc-clear-btn:hover { color: #ef4444; }
 </style>
