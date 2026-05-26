@@ -436,21 +436,33 @@
       if (pcDmpId != null) payload.dmpId = pcDmpId
       console.log('[PC] payload:', JSON.stringify({ ...payload, inventories: `[${payload.inventories.length} ids]` }))
 
-      // pre-campaign-data returns scored inventories directly as a flat array
+      // pre-campaign-data returns scored inventories
       const res1 = await api.campaigns.preCampaignData(payload)
-      console.log('[PC] pre-campaign-data response (first 3):', JSON.stringify(Array.isArray(res1) ? res1.slice(0, 3) : res1))
+      console.log('[PC] res1 isArray:', Array.isArray(res1), 'type:', typeof res1,
+        'keys:', (!Array.isArray(res1) && res1) ? Object.keys(res1) : '-',
+        'length:', Array.isArray(res1) ? res1.length : '-')
+      console.log('[PC] res1 first item:', JSON.stringify(Array.isArray(res1) ? res1[0] : res1))
 
-      // Normalise: may be array, or { data: [...] }, or { content: [...] }
-      const items = Array.isArray(res1)
-        ? res1
-        : Array.isArray(res1?.data) ? res1.data
-        : Array.isArray(res1?.content) ? res1.content
+      // Normalise to flat list of scored items — handle all known wrapper shapes:
+      // flat array / { data:[...] } / { content:[...] } / { inventories:[...] }
+      // or city-grouped: [ { inventories:[...] }, ... ]
+      let items = Array.isArray(res1) ? res1
+        : Array.isArray(res1?.data)        ? res1.data
+        : Array.isArray(res1?.content)     ? res1.content
+        : Array.isArray(res1?.inventories) ? res1.inventories
         : []
+
+      // If items look like city groups ({inventories:[...]}) flatten them
+      if (items.length > 0 && Array.isArray(items[0]?.inventories)) {
+        items = items.flatMap(g => g.inventories ?? [])
+      }
+
+      console.log('[PC] items count:', items.length, 'first:', JSON.stringify(items[0]))
 
       const map  = {}
       for (const item of items) {
-        const id = item.inventory?.id ?? item.id
-        const sc = item.score ?? item.affinity
+        const id = item.inventory?.id ?? item.inventoryId ?? item.id
+        const sc = item.score ?? item.affinity ?? item.affinityScore
         if (id != null && sc != null) {
           if (map[id] == null || sc > map[id]) map[id] = sc
         }
