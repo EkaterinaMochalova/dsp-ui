@@ -73,6 +73,62 @@
 
   let pcSelectedInterests = []  // names chosen by user (top + sub level)
 
+  // DMP connection for pre-campaign scoring
+  let pcDmpId = null
+  let pcDmpConnections = []
+  let pcDmpLoaded = false
+
+  // Transliterate Russian display name → interest slug (GOST 7.79-2000 system B).
+  // е after a consonant → "ie" (confirmed from prod capture: "Премиум" → "priemium")
+  function _pcTranslit(str) {
+    const VOWELS = new Set('аеёиоуыэюя')
+    const MAP = {
+      'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z',
+      'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+      'с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh',
+      'щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+    }
+    const chars = str.toLowerCase().split('')
+    const out = []
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i]
+      if (c === 'е') {
+        const prev = i > 0 ? chars[i - 1] : null
+        out.push(!prev || prev === ' ' || prev === ',' || VOWELS.has(prev) ? 'e' : 'ie')
+      } else if (c === ' ' || c === ',') {
+        out.push('_')
+      } else if (MAP[c] !== undefined) {
+        out.push(MAP[c])
+      } else if (/[a-z0-9]/.test(c)) {
+        out.push(c)
+      }
+    }
+    return out.join('').replace(/_+/g, '_').replace(/^_|_$/g, '')
+  }
+
+  // Convert display name → backend slug. Sub-items get parent_slug prefix.
+  function pcInterestSlug(name) {
+    if (PC_INTEREST_TREE.hasOwnProperty(name)) return _pcTranslit(name)
+    for (const [parent, children] of Object.entries(PC_INTEREST_TREE)) {
+      if (children.includes(name)) return _pcTranslit(parent) + '_' + _pcTranslit(name)
+    }
+    return _pcTranslit(name)
+  }
+
+  async function loadPcDmpConnections() {
+    if (pcDmpLoaded) return
+    pcDmpLoaded = true
+    try {
+      const res = await api.dmp.connections()
+      pcDmpConnections = Array.isArray(res) ? res : (res?.content ?? [])
+      if (pcDmpConnections.length > 0 && pcDmpId == null) {
+        pcDmpId = pcDmpConnections[0].id
+      }
+    } catch { /* silently ignore — scoring may still work without explicit dmpId */ }
+  }
+
+  $: if (preCampaignOpen) loadPcDmpConnections()
+
   // When a top-level interest is toggled OFF, also remove its sub-interests
   function togglePcInterest(name) {
     const isTop = PC_TOP_INTERESTS.includes(name)
@@ -331,7 +387,21 @@
     preCampaignLoading = true
     preCampaignError   = ''
     try {
-      const requestId = await _fetchPreCampaignRequestId(pcSelectedInterests)
+      // Build payload matching the prod app structure
+      const slugs = pcSelectedInterests.map(pcInterestSlug).filter(Boolean)
+      const payload = {
+        cities:        (draft.cityIds ?? []).map(id => ({ id, zipCodes: [] })),
+        inventories:   screens.map(s => s.id),
+        segmentation:  slugs,
+        unionSegments: false,
+      }
+      if (pcDmpId != null) payload.dmpId = pcDmpId
+
+      // Step 1: submit targeting → get requestId
+      const res1 = await api.campaigns.preCampaignData(payload)
+      const requestId = res1?.requestId ?? res1?.data?.requestId
+      if (!requestId) throw new Error('Сервер не вернул requestId')
+
       // Step 2: fetch scored inventories by requestId
       const res  = await api.campaigns.preCampaignResult({ requestId })
       const data = res?.data ?? []
@@ -360,36 +430,6 @@
       preCampaignError = 'Ошибка ' + (e?.status ? e.status + ': ' : '') + (apiMsg ?? 'неизвестная ошибка')
     } finally {
       preCampaignLoading = false
-    }
-  }
-
-  // Helper: submit targeting data and return requestId.
-  // If segmentation causes a 500 (DMP not configured), retries without it.
-  async function _fetchPreCampaignRequestId(segmentation) {
-    const base = {
-      type:   draft.type ?? 'RTB',
-      cities: (draft.cityIds ?? []).map(id => ({ id })),
-      segmentation,
-    }
-    if (draft.dmpData?.length) {
-      base.targetAudience = { enabled: true, dmpData: draft.dmpData }
-    }
-    try {
-      const res = await api.campaigns.preCampaignData(base)
-      const rid = res?.requestId ?? res?.data?.requestId
-      if (!rid) throw new Error('Сервер не вернул requestId')
-      return rid
-    } catch (e) {
-      // 500 "dmpSettings is null" — DMP not configured, retry without segmentation
-      const msg = e?.data?.message ?? e?.data?.error ?? e?.message ?? ''
-      if (e?.status === 500 && msg.includes('dmpSettings') && segmentation.length > 0) {
-        preCampaignError = 'DMP не настроен — интересы проигнорированы'
-        const res2 = await api.campaigns.preCampaignData({ ...base, segmentation: [] })
-        const rid2 = res2?.requestId ?? res2?.data?.requestId
-        if (!rid2) throw new Error('Сервер не вернул requestId')
-        return rid2
-      }
-      throw e
     }
   }
 
@@ -1017,13 +1057,24 @@
           </div>
         {:else}
 
-          <!-- DMP info -->
-          {#if draft.dmpData?.length}
+          <!-- DMP connection -->
+          {#if pcDmpConnections.length > 1}
+            <div class="pc-section-label">DMP</div>
+            <div class="pc-dmp-row">
+              {#each pcDmpConnections as conn}
+                <button
+                  class="pc-int-chip"
+                  class:pc-int-chip--on={pcDmpId === conn.id}
+                  on:click={() => pcDmpId = conn.id}
+                >{conn.name ?? conn.id}</button>
+              {/each}
+            </div>
+          {:else if pcDmpConnections.length === 1}
             <div class="pc-info">
               <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style="color:#3b82f6;flex-shrink:0">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
               </svg>
-              DMP: {draft.dmpData.length} сегм.
+              DMP: {pcDmpConnections[0].name ?? pcDmpConnections[0].id}
             </div>
           {/if}
 

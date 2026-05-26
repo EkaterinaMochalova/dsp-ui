@@ -74,6 +74,10 @@ export const api = {
     return request('/users/current')
   },
 
+  dmp: {
+    connections() { return request('/clients/dmp-connections') },
+  },
+
   campaigns: {
     list(params = {}) {
       const q = new URLSearchParams()
