@@ -942,7 +942,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@ae1e6bbe6fa789bf9fe39a6fcdb1f1918cf64231/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@fe7e8b0/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -1754,6 +1754,30 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   window.setStep = function(step) {
     if (step === 4) window._plannerStep4Visited = true;
     _origSetStep(step);
+    if (step === 4) {
+      // В GID-режиме скрываем лишние блоки шага 4
+      const gidsBlock = el("geo-gids-block");
+      const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
+      const hideInGidMode = ["selection-mode-chips", "pool-preview-block",
+        "additional-filters-divider".split(",")[0]];
+      // Скрываем весь блок выбора способа подбора, превью пула, операторов и GRP
+      ["selection-mode-chips", "pool-preview-block"].forEach(id => {
+        const node = el(id);
+        if (node) node.style.display = isGidMode ? "none" : "";
+      });
+      // Операторы и GRP живут внутри .planner-block — скрываем через ближайший общий родитель
+      document.querySelectorAll("#wiz-step-4 .planner-block").forEach(block => {
+        const label = block.querySelector(".planner-label");
+        const labelText = label?.textContent?.trim() || "";
+        if (labelText === "Операторы" || labelText === "GRP") {
+          block.style.display = isGidMode ? "none" : "";
+        }
+      });
+      // Дополнительные ограничения-разделитель
+      document.querySelectorAll("#wiz-step-4 .additional-filters-divider").forEach(d => {
+        d.style.display = isGidMode ? "none" : "";
+      });
+    }
     if (typeof window.renderProgress === "function") window.renderProgress();
   };
 
