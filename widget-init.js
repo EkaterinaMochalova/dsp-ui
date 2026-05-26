@@ -976,101 +976,137 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
     <!-- STEP 1 -->
     <div class="wiz-step active" id="wiz-step-1">
-      <div class="planner-block">
-        <div class="planner-label">Регион</div>
-        <div class="region-field" id="region-field">
-          <input id="city-search" type="text" placeholder="Загружаю список регионов…" class="ux-input" disabled autocomplete="off" />
-          <span class="region-spinner" id="region-spinner" aria-hidden="true"></span>
-          <div class="region-overlay" id="region-overlay">
-            <div class="region-overlay-inner">
-              <span class="region-overlay-spinner" aria-hidden="true"></span>
-              <span>Загружаю регионы…</span>
-            </div>
-          </div>
-        </div>
-        <div id="city-suggestions" class="city-suggestions"></div>
-        <div id="city-selected" class="city-selected"></div>
-        <!-- City import + select all -->
-        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <label style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
-                 border:1.5px dashed #c4b5fd; border-radius:10px; background:#faf8ff;
-                 color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:500;">
-            ↓ Импорт городов из файла
-            <input type="file" id="region-file-input" accept=".xlsx,.csv,.txt" style="display:none;">
-          </label>
-          <button type="button" id="regions-paste-btn"
-            style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
-                   background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
-            📋 Вставить список
-          </button>
-          <button type="button" id="regions-select-all"
-            style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
-                   background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
-            Выбрать все
-          </button>
-        </div>
-        <!-- Paste area (скрыт до клика на кнопку) -->
-        <div id="regions-paste-wrap" style="display:none; margin-top:8px;">
-          <textarea id="regions-paste-area"
-            placeholder="Москва&#10;Санкт-Петербург&#10;Екатеринбург&#10;или через запятую: Москва, Казань, Уфа"
-            style="width:100%; height:90px; padding:8px 10px; border:1.5px solid #c4b5fd;
-                   border-radius:10px; font-size:13px; color:#0b1220; resize:vertical;
-                   font-family:inherit; box-sizing:border-box; outline:none;"></textarea>
-          <div style="display:flex; gap:8px; margin-top:6px;">
-            <button type="button" id="regions-paste-go"
-              style="padding:7px 18px; background:#5B3EF5; color:#fff; border:none;
-                     border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;">
-              Добавить
-            </button>
-            <button type="button" id="regions-paste-cancel"
-              style="padding:7px 14px; background:#f3f4f6; color:#374151; border:none;
-                     border-radius:10px; font-size:13px; cursor:pointer;">
-              Отмена
-            </button>
-          </div>
-        </div>
-        <div id="region-import-status" style="margin-top:6px; font-size:12px; color:#667085; display:none;"></div>
-        <div class="planner-note">
-          Под "регион" у нас попадают: крупные города (как отдельные), МО/ЛО (областью) и т.д.
-        </div>
-      </div>
-      <div id="region-selected" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
-      <!-- Only-active-bids toggle -->
-      <div style="margin-top:12px; display:flex; align-items:center; gap:8px;">
-        <label class="ux-toggle-label" for="only-active-bids" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151;font-weight:500;">
-          <span class="ux-toggle-track">
-            <input type="checkbox" id="only-active-bids" class="ux-toggle-input">
-            <span class="ux-toggle-thumb"></span>
-          </span>
-          Только активные
-        </label>
-        <span style="font-size:12px;color:#9ca3af;">экраны с известной ставкой</span>
+      <!-- Geo mode tabs -->
+      <div id="geo-mode-tabs" style="display:flex; gap:8px; margin-bottom:14px;">
+        <button type="button" id="geo-tab-cities"
+          style="flex:1; padding:9px 14px; border-radius:10px; border:1.5px solid #5B3EF5;
+                 background:#5B3EF5; color:#fff; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s;">
+          🗺 Выбрать города
+        </button>
+        <button type="button" id="geo-tab-gids"
+          style="flex:1; padding:9px 14px; border-radius:10px; border:1.5px solid #e0d9fd;
+                 background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s;">
+          📋 По GID-списку
+        </button>
       </div>
 
-      <!-- Pool mini badge (step 1) -->
-      <div id="pool-mini-badge" style="display:none; margin-top:10px; padding:10px 14px;
-           background:#f4f1ff; border-radius:10px; font-size:13px; color:#5b3ef5;
-           align-items:center; gap:8px; flex-wrap:wrap;">
-        <span style="font-size:16px;">📺</span>
-        <span>Доступно экранов: <strong id="pool-mini-count" style="font-size:16px; font-weight:700;"></strong></span>
-        <span id="pool-mini-filters" style="font-size:12px; color:#9b8aff; margin-left:2px;"></span>
-      </div>
-      <button id="regions-clear" type="button"
-        style="margin-top:10px; display:none; padding:8px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;">
-        Очистить регионы
-      </button>
-      <!-- DSP loading progress (shown only while inventory loads) -->
-      <div id="dsp-load-progress" style="display:none; margin-top:12px;
-           padding:10px 14px; background:#F4F1FF; border-radius:10px; font-size:13px; color:#5B3EF5;">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div style="width:16px; height:16px; border:2px solid #5B3EF5; border-top-color:transparent;
-               border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
-          <span id="dsp-load-status-text">Загружаю инвентарь…</span>
+      <!-- CITIES block -->
+      <div id="geo-cities-block">
+        <div class="planner-block">
+          <div class="planner-label">Регион</div>
+          <div class="region-field" id="region-field">
+            <input id="city-search" type="text" placeholder="Загружаю список регионов…" class="ux-input" disabled autocomplete="off" />
+            <span class="region-spinner" id="region-spinner" aria-hidden="true"></span>
+            <div class="region-overlay" id="region-overlay">
+              <div class="region-overlay-inner">
+                <span class="region-overlay-spinner" aria-hidden="true"></span>
+                <span>Загружаю регионы…</span>
+              </div>
+            </div>
+          </div>
+          <div id="city-suggestions" class="city-suggestions"></div>
+          <div id="city-selected" class="city-selected"></div>
+          <!-- City import + select all -->
+          <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <label style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
+                   border:1.5px dashed #c4b5fd; border-radius:10px; background:#faf8ff;
+                   color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:500;">
+              ↓ Импорт городов из файла
+              <input type="file" id="region-file-input" accept=".xlsx,.csv,.txt" style="display:none;">
+            </label>
+            <button type="button" id="regions-paste-btn"
+              style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
+              📋 Вставить список
+            </button>
+            <button type="button" id="regions-select-all"
+              style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
+              Выбрать все
+            </button>
+          </div>
+          <!-- Paste area (скрыт до клика на кнопку) -->
+          <div id="regions-paste-wrap" style="display:none; margin-top:8px;">
+            <textarea id="regions-paste-area"
+              placeholder="Москва&#10;Санкт-Петербург&#10;Екатеринбург&#10;или через запятую: Москва, Казань, Уфа"
+              style="width:100%; height:90px; padding:8px 10px; border:1.5px solid #c4b5fd;
+                     border-radius:10px; font-size:13px; color:#0b1220; resize:vertical;
+                     font-family:inherit; box-sizing:border-box; outline:none;"></textarea>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+              <button type="button" id="regions-paste-go"
+                style="padding:7px 18px; background:#5B3EF5; color:#fff; border:none;
+                       border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;">
+                Добавить
+              </button>
+              <button type="button" id="regions-paste-cancel"
+                style="padding:7px 14px; background:#f3f4f6; color:#374151; border:none;
+                       border-radius:10px; font-size:13px; cursor:pointer;">
+                Отмена
+              </button>
+            </div>
+          </div>
+          <div id="region-import-status" style="margin-top:6px; font-size:12px; color:#667085; display:none;"></div>
+          <div class="planner-note">
+            Под "регион" у нас попадают: крупные города (как отдельные), МО/ЛО (областью) и т.д.
+          </div>
         </div>
-        <div style="margin-top:8px; height:4px; background:rgba(91,62,245,0.15); border-radius:2px; overflow:hidden;">
-          <div id="dsp-load-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:2px; transition:width 0.3s;"></div>
+        <div id="region-selected" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
+        <!-- Only-active-bids toggle -->
+        <div style="margin-top:12px; display:flex; align-items:center; gap:8px;">
+          <label class="ux-toggle-label" for="only-active-bids" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151;font-weight:500;">
+            <span class="ux-toggle-track">
+              <input type="checkbox" id="only-active-bids" class="ux-toggle-input">
+              <span class="ux-toggle-thumb"></span>
+            </span>
+            Только активные
+          </label>
+          <span style="font-size:12px;color:#9ca3af;">экраны с известной ставкой</span>
+        </div>
+        <!-- Pool mini badge (step 1) -->
+        <div id="pool-mini-badge" style="display:none; margin-top:10px; padding:10px 14px;
+             background:#f4f1ff; border-radius:10px; font-size:13px; color:#5b3ef5;
+             align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:16px;">📺</span>
+          <span>Доступно экранов: <strong id="pool-mini-count" style="font-size:16px; font-weight:700;"></strong></span>
+          <span id="pool-mini-filters" style="font-size:12px; color:#9b8aff; margin-left:2px;"></span>
+        </div>
+        <button id="regions-clear" type="button"
+          style="margin-top:10px; display:none; padding:8px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;">
+          Очистить регионы
+        </button>
+        <!-- DSP loading progress (shown only while inventory loads) -->
+        <div id="dsp-load-progress" style="display:none; margin-top:12px;
+             padding:10px 14px; background:#F4F1FF; border-radius:10px; font-size:13px; color:#5B3EF5;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="width:16px; height:16px; border:2px solid #5B3EF5; border-top-color:transparent;
+                 border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
+            <span id="dsp-load-status-text">Загружаю инвентарь…</span>
+          </div>
+          <div style="margin-top:8px; height:4px; background:rgba(91,62,245,0.15); border-radius:2px; overflow:hidden;">
+            <div id="dsp-load-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:2px; transition:width 0.3s;"></div>
+          </div>
         </div>
       </div>
+
+      <!-- GID block (initially hidden) -->
+      <div id="geo-gids-block" style="display:none;">
+        <div class="planner-block">
+          <div class="planner-label">Список GID-ов экранов</div>
+          <textarea id="manual-gids"
+            placeholder="Вставьте GID-ы экранов — по одному на строку или через запятую/пробел/таб.&#10;&#10;Пример:&#10;GID-12345&#10;GID-67890, GID-11111"
+            style="width:100%; height:160px; padding:10px; border:1.5px solid #c4b5fd; border-radius:10px;
+                   font-size:13px; resize:vertical; box-sizing:border-box; font-family:monospace; outline:none;"></textarea>
+          <div id="manual-gids-status" style="font-size:12px; color:#667085; margin-top:6px;">
+            Введите GID-ы — после расчёта будут использованы только эти экраны.
+          </div>
+          <button id="manual-gids-download-unmatched" type="button" style="display:none; margin-top:8px;
+            padding:6px 14px; background:#fff3cd; border:1px solid #ffc107; border-radius:8px;
+            font-size:12px; color:#856404; cursor:pointer; font-weight:600;">
+            ↓ Скачать не найденные GID-ы
+          </button>
+        </div>
+      </div>
+
       <div class="wiz-nav">
         <button type="button" class="wiz-btn" id="wiz-next-1">Дальше</button>
       </div>
@@ -1445,9 +1481,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <button type="button" class="sel-chip" data-mode="route">
         <span class="sel-chip-ico">🚗</span><span>Маршрут</span>
       </button>
-      <button type="button" class="sel-chip" data-mode="manual_screens">
-        <span class="sel-chip-ico">📋</span><span>По GID</span>
-      </button>
     </div>
     <select id="selection-mode" style="display:none;">
       <option value="city_even">Равномерно по региону</option>
@@ -1455,7 +1488,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <option value="near_address">Рядом с адресом</option>
       <option value="highway">Вдоль магистрали / шоссе</option>
       <option value="route">Вдоль маршрута</option>
-      <option value="manual_screens">Конкретные экраны (по GID)</option>
     </select>
     <div id="selection-extra" style="margin-top:10px;"></div>
   </div>
@@ -2016,7 +2048,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       (budgetMode === "goal_ots" && goalVal > 0) ||
       (budgetMode === "goal_plays" && goalPlaysVal > 0);
 
-    const step1 = !!regionsLabel;
+    const gidsBlock = el("geo-gids-block");
+    const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
+    const gidsEntered = isGidMode && !!(el("manual-gids")?.value?.trim());
+    const step1 = isGidMode ? gidsEntered : !!regionsLabel;
     const step2 = !!(dates.start && dates.end);
     const step3 = !!budgetOk;
     const step4 = true; // форматы опциональны: нет выбора = все форматы
@@ -2092,7 +2127,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           const reasons = [];
           const st = window.PLANNER?.state;
           const regions = Array.isArray(st?.selectedRegions) ? st.selectedRegions : [];
-          if(!regions.length) reasons.push("не выбран регион");
+          const _gidsBlockEl = el("geo-gids-block");
+          const _isGidModeNow = _gidsBlockEl && _gidsBlockEl.style.display !== "none";
+          if(!regions.length && !_isGidModeNow) reasons.push("не выбран регион");
+          if(_isGidModeNow && !el("manual-gids")?.value?.trim()) reasons.push("не введены GID-ы");
           if(!p.dates.start || !p.dates.end) reasons.push("не указаны даты");
           const mode = getBudgetMode();
           const bval = mode === "goal_ots" ? el("goal-ots")?.value : el("budget-input")?.value;
@@ -2129,6 +2167,70 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         renderProgress();
       });
     });
+
+    // ── Geo mode tabs (step 1): По городам / По GID ──────────────────────────
+    function setGeoMode(mode) {
+      const citiesBlock = el("geo-cities-block");
+      const gidsBlock   = el("geo-gids-block");
+      const tabCities   = el("geo-tab-cities");
+      const tabGids     = el("geo-tab-gids");
+      const selEl       = el("selection-mode");
+
+      const isGid = mode === "gids";
+      if (citiesBlock) citiesBlock.style.display = isGid ? "none" : "";
+      if (gidsBlock)   gidsBlock.style.display   = isGid ? ""     : "none";
+
+      // Active tab style
+      if (tabCities) {
+        tabCities.style.background    = isGid ? "#faf8ff"  : "#5B3EF5";
+        tabCities.style.color         = isGid ? "#5B3EF5"  : "#fff";
+        tabCities.style.borderColor   = isGid ? "#e0d9fd"  : "#5B3EF5";
+      }
+      if (tabGids) {
+        tabGids.style.background    = isGid ? "#5B3EF5"  : "#faf8ff";
+        tabGids.style.color         = isGid ? "#fff"      : "#5B3EF5";
+        tabGids.style.borderColor   = isGid ? "#5B3EF5"  : "#e0d9fd";
+      }
+
+      // Sync selection-mode select
+      if (selEl) {
+        selEl.value = isGid ? "manual_screens" : (selEl.value === "manual_screens" ? "city_even" : selEl.value);
+        selEl.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      // Attach GID counter once
+      if (isGid) {
+        const ta = el("manual-gids");
+        const statusEl = el("manual-gids-status");
+        if (ta && statusEl && !ta.dataset.counterBound) {
+          ta.dataset.counterBound = "1";
+          ta.addEventListener("input", () => {
+            if (window.PLANNER?._parseManualGids) {
+              const ids = window.PLANNER._parseManualGids(ta.value);
+              if (!ids.size) {
+                statusEl.textContent = "Введите GID-ы — после расчёта будут использованы только эти экраны.";
+                statusEl.style.color = "#667085";
+              } else {
+                const allScreens = window.PLANNER?.state?.screens || [];
+                const matched = allScreens.filter(s => {
+                  const sid = (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
+                  return ids.has(sid);
+                });
+                statusEl.textContent = `Найдено в инвентаре: ${matched.length} из ${ids.size} указанных GID-ов`;
+                statusEl.style.color = matched.length > 0 ? "#5b3ef5" : "#dc2626";
+              }
+            }
+            renderProgress();
+          });
+        }
+      }
+
+      renderProgress();
+    }
+    window.setGeoMode = setGeoMode;
+
+    el("geo-tab-cities")?.addEventListener("click", () => setGeoMode("cities"));
+    el("geo-tab-gids")?.addEventListener("click",   () => setGeoMode("gids"));
 
     // Schedule chips
     document.querySelectorAll('#schedule-chips .sch-chip').forEach(chip => {

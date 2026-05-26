@@ -924,6 +924,9 @@ function renderSelectionExtra() {
   }
 
   if (mode === "manual_screens") {
+    // GID textarea lives in step 1 (geo-gids-block) — don't re-render
+    if (el("manual-gids")) { extra.innerHTML = ""; return; }
+    // Fallback: render inline (legacy / direct embed)
     extra.innerHTML = `
       <textarea id="manual-gids"
         placeholder="Вставьте GID-ы экранов — по одному на строку или через запятую/пробел/таб.&#10;&#10;Пример:&#10;GID-12345&#10;GID-67890, GID-11111"
@@ -945,7 +948,7 @@ function renderSelectionExtra() {
     if (ta && statusEl) {
       ta.addEventListener("input", () => {
         const ids = _parseManualGids(ta.value);
-        if (!ids.length) {
+        if (!ids.size) {
           statusEl.textContent = "Введите GID-ы — после расчёта будут использованы только эти экраны.";
           statusEl.style.color = "#666";
           return;
@@ -3268,13 +3271,19 @@ async function onCalcClick() {
     return;
   }
 
-  const regions = Array.isArray(brief?.geo?.regions) && brief.geo.regions.length
+  const _selModeForRegions = brief?.selection?.mode;
+  let regions = Array.isArray(brief?.geo?.regions) && brief.geo.regions.length
     ? brief.geo.regions.map(x => String(x || "").trim()).filter(Boolean)
     : (brief?.geo?.region ? [String(brief.geo.region).trim()] : []);
 
   if (!regions.length) {
-    alert("Выберите регион(ы).");
-    return;
+    if (_selModeForRegions === "manual_screens") {
+      // GID mode without regions: treat all screens as one pool
+      regions = ["__gid_mode__"];
+    } else {
+      alert("Выберите регион(ы).");
+      return;
+    }
   }
 
   // ✅ formats variables (fixes ReferenceError formatsMode is not defined)
@@ -3415,20 +3424,23 @@ async function onCalcClick() {
   for (const region of regions) {
     const tier = getTierForGeo(region);
     const selectedNorm = normalizeGeoName(region);
-    let pool = sourceScreens.filter(s => {
-      const r = String(s.region || "").trim();
-      const c = String(s.city || "").trim();
-      if (r === region || c === region) return true;
-      if (!selectedNorm) return false;
-      const rn = normalizeGeoName(r);
-      const cn = normalizeGeoName(c);
-      if (rn === selectedNorm || cn === selectedNorm) return true;
-      // Fuzzy fallback for suffix/prefix variants in API city labels.
-      return (
-        (rn && (rn.includes(selectedNorm) || selectedNorm.includes(rn))) ||
-        (cn && (cn.includes(selectedNorm) || selectedNorm.includes(cn)))
-      );
-    });
+    // __gid_mode__: no region filter — GIDs act as the sole selector
+    let pool = region === "__gid_mode__"
+      ? [...sourceScreens]
+      : sourceScreens.filter(s => {
+          const r = String(s.region || "").trim();
+          const c = String(s.city || "").trim();
+          if (r === region || c === region) return true;
+          if (!selectedNorm) return false;
+          const rn = normalizeGeoName(r);
+          const cn = normalizeGeoName(c);
+          if (rn === selectedNorm || cn === selectedNorm) return true;
+          // Fuzzy fallback for suffix/prefix variants in API city labels.
+          return (
+            (rn && (rn.includes(selectedNorm) || selectedNorm.includes(rn))) ||
+            (cn && (cn.includes(selectedNorm) || selectedNorm.includes(cn)))
+          );
+        });
 
     if (!pool.length) {
       console.warn("[DSP] empty pool at region step", {
@@ -5400,7 +5412,13 @@ function restoreBriefToUI(brief) {
     const radEl = el("planner-radius") || el("radius"); if (radEl) radEl.value = brief.selection?.radius_m ?? 500;
   }
   if (selMode === "manual_screens") {
-    const mgEl = el("manual-gids"); if (mgEl) mgEl.value = (brief.selection?.manual_gids || []).join("\n");
+    // Switch step 1 to GID tab
+    if (typeof window.setGeoMode === "function") window.setGeoMode("gids");
+    const mgEl = el("manual-gids");
+    if (mgEl) {
+      mgEl.value = (brief.selection?.manual_gids || []).join("\n");
+      mgEl.dispatchEvent(new Event("input", { bubbles: true }));
+    }
   }
 
   // 7. GRP
@@ -5491,6 +5509,7 @@ window.PLANNER.saveCalcToHistory = saveCalcToHistory;
 window.PLANNER.restoreBriefToUI = restoreBriefToUI;
 window.PLANNER.buildMediaPlanBlob = buildMediaPlanBlob;
 window.PLANNER.computeRecoBudgetTiers = computeRecoBudgetTiers;
+window.PLANNER._parseManualGids = _parseManualGids;
 function getDspAgencyId() { return sessionStorage.getItem("dsp_agency_id") || ""; }
 function setDspAgencyId(id) { id ? sessionStorage.setItem("dsp_agency_id", String(id)) : sessionStorage.removeItem("dsp_agency_id"); }
 // additionalCharge — множитель надбавки агентства (напр. 0.15 = +15%), platformFee — фиксированная надбавка платформы (в той же валюте что и ставка)
