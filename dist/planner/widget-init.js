@@ -1510,38 +1510,30 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     <div class="planner-label">Категория бизнеса рядом с экраном</div>
     <select id="poi-category" style="width:100%; padding:9px 12px; border:1.5px solid #c4b5fd;
         border-radius:10px; font-size:13px; color:#0b1220; background:#fff; outline:none; cursor:pointer;">
-      <option value="orgs.gas_station">АЗС</option>
-      <option value="orgs.food">Рестораны и кафе</option>
-      <option value="orgs.groceries">Продуктовые магазины</option>
-      <option value="orgs.mall">Торговые центры</option>
-      <option value="orgs.pharmacy">Аптеки</option>
-      <option value="orgs.beauty">Красота и уход</option>
-      <option value="orgs.banks_atms">Банки и банкоматы</option>
-      <option value="orgs.auto">Автосервисы</option>
-      <option value="orgs.health">Медицина</option>
-      <option value="orgs.sport">Спорт</option>
-      <option value="orgs.hotels">Гостиницы</option>
-      <option value="orgs.tech_stores">Техника и электроника</option>
-      <option value="orgs.clothes_and_accessories">Одежда и аксессуары</option>
-      <option value="orgs.furniture">Мебель</option>
-      <option value="orgs.alcohol">Алкоголь</option>
-      <option value="orgs.kindergarten">Детские сады</option>
-      <option value="orgs.apartment_complex">Жилые комплексы</option>
-      <option value="orgs.pets">Зоотовары</option>
-      <option value="orgs.flowers">Цветы</option>
-      <option value="orgs.jewelry">Ювелирные</option>
-      <option value="orgs.childrens_stores">Детские товары</option>
-      <option value="orgs.home">Товары для дома</option>
-      <option value="orgs.books_stationery">Книги и канцелярия</option>
-      <option value="orgs.optics">Оптика</option>
-      <option value="orgs.celebration">Праздники и услуги</option>
-      <option value="orgs.legal_services">Юридические услуги</option>
-      <option value="orgs.tabacco_and_vapes">Табак и вейпы</option>
-      <option value="orgs.hardware_stores_and_renovation">Строительство и ремонт</option>
-      <option value="orgs.orders_pickups_lockers">Пункты выдачи</option>
-      <option value="orgs.clothes_shoes_repair">Ремонт одежды и обуви</option>
-      <option value="orgs.tech_repairs">Ремонт техники</option>
-      <option value="orgs.photo_and_printing">Фото и печать</option>
+      <option value="searches.pharmacy">Аптеки</option>
+      <option value="searches.food">Рестораны и кафе</option>
+      <option value="searches.grocery">Продуктовые магазины</option>
+      <option value="searches.mall">Торговые центры</option>
+      <option value="searches.gas_station">АЗС</option>
+      <option value="searches.beauty">Красота и уход</option>
+      <option value="searches.bank">Банки и банкоматы</option>
+      <option value="searches.auto_service">Автосервисы</option>
+      <option value="searches.clinic">Медицина</option>
+      <option value="searches.sport">Спорт и фитнес</option>
+      <option value="searches.hotel">Гостиницы</option>
+      <option value="searches.electronics">Техника и электроника</option>
+      <option value="searches.clothes">Одежда и аксессуары</option>
+      <option value="searches.furniture">Мебель и товары для дома</option>
+      <option value="searches.alcohol">Алкоголь</option>
+      <option value="searches.kindergarten">Детские сады</option>
+      <option value="searches.pets">Зоотовары</option>
+      <option value="searches.flowers">Цветы</option>
+      <option value="searches.jewelry">Ювелирные украшения</option>
+      <option value="searches.children">Детские товары</option>
+      <option value="searches.books">Книги и канцелярия</option>
+      <option value="searches.optics">Оптика</option>
+      <option value="searches.hardware">Строительство и ремонт</option>
+      <option value="searches.pickup_point">Пункты выдачи</option>
     </select>
 
     <div class="planner-label" style="margin-top:14px;">Минимальная плотность POI</div>
@@ -2412,7 +2404,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const progBar  = el("poi-progress-bar");
       const progText = el("poi-progress-text");
 
-      const category = el("poi-category")?.value || "orgs.gas_station";
+      const category = el("poi-category")?.value || "searches.pharmacy";
       const minColor = Number(el("poi-selected-density")?.value || 3);
 
       const screensAll = window.PLANNER?.state?.screensAll || [];
@@ -2459,14 +2451,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const BATCH = 25;
         let done = 0;
 
-        // Try to discover current version from page (fallback to known)
-        const GEO_VERSION = "2025-02-10T14%3A43%3A42Z";
+        // Yandex GeoAnalytics tile API — requires active Yandex session (cookies)
+        const GEO_BASE = "https://yandex.ru/geoanalytics/platform/api/geoanalytics/layer/tile";
+        const GEO_VERSION = "2025-02-10T14%3A43%3A35Z";
 
         for (let i = 0; i < tiles.length; i += BATCH) {
           const batch = tiles.slice(i, i + BATCH);
           const results = await Promise.all(batch.map(({x, y}) =>
-            fetch("/geoanalytics/platform/api/geoanalytics/layer/tile?version=" + GEO_VERSION +
-                  "&resolution=7&x=" + x + "&y=" + y + "&z=" + TILE_Z + "&layer=" + category)
+            fetch(GEO_BASE + "?version=" + GEO_VERSION +
+                  "&resolution=7&x=" + x + "&y=" + y + "&z=" + TILE_Z +
+                  "&layer=" + category + "&mocks=undefined",
+                  { credentials: "include" })
               .then(r => r.ok ? r.json() : null)
               .catch(() => null)
           ));
