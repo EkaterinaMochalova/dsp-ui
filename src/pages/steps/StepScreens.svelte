@@ -1256,12 +1256,29 @@
 
             <!-- Affinity index slider -->
             <div class="pc-section-label">Индекс аффинитивности</div>
-            <input
-              type="range"
-              class="pc-affinity-slider"
-              min="0" max="100" step="1"
-              bind:value={pcAffinityMin}
-            >
+            <div class="pc-slider-wrap">
+              <input
+                type="range"
+                class="pc-affinity-slider"
+                min="0" max="100" step="1"
+                bind:value={pcAffinityMin}
+              >
+              <!-- threshold tick marks: positions match scoreColor() breakpoints -->
+              <div class="pc-ticks" aria-hidden="true">
+                <span class="pc-tick" style="left:20%">
+                  <span class="pc-tick-line" style="background:#f59e0b"></span>
+                  <span class="pc-tick-dot" style="color:#f59e0b">●</span>
+                </span>
+                <span class="pc-tick" style="left:40%">
+                  <span class="pc-tick-line" style="background:#84cc16"></span>
+                  <span class="pc-tick-dot" style="color:#84cc16">●</span>
+                </span>
+                <span class="pc-tick" style="left:67%">
+                  <span class="pc-tick-line" style="background:#22c55e"></span>
+                  <span class="pc-tick-dot" style="color:#22c55e">●</span>
+                </span>
+              </div>
+            </div>
 
             {#if preCampaignError}
               <div class="pc-error">{preCampaignError}</div>
@@ -2940,6 +2957,11 @@
   .pc-select:focus { outline: none; border-color: #3b82f6; background-color: #fff; }
   .pc-select:disabled { opacity: 0.5; cursor: default; }
   /* Affinity gradient slider */
+  .pc-slider-wrap {
+    position: relative;
+    padding-bottom: 18px;   /* room for tick dots below the track */
+    margin: 4px 0 2px;
+  }
   .pc-affinity-slider {
     -webkit-appearance: none;
     appearance: none;
@@ -2949,13 +2971,13 @@
     /* Fixed red→amber→lime→green gradient — percentages match scoreColor thresholds */
     background: linear-gradient(to right,
       #ef4444 0%,    /* red    (t < 0.20) */
-      #f59e0b 20%,   /* amber  (t 0.20-0.40) */
-      #84cc16 40%,   /* lime   (t 0.40-0.67) */
+      #f59e0b 20%,   /* amber  (t 0.20–0.40) */
+      #84cc16 40%,   /* lime   (t 0.40–0.67) */
       #22c55e 67%    /* green  (t ≥ 0.67)  */
     );
     outline: none;
     cursor: pointer;
-    margin: 4px 0 2px;
+    margin: 0;
   }
   .pc-affinity-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -2975,6 +2997,34 @@
     cursor: pointer;
   }
   .pc-affinity-slider:disabled { opacity: 0.5; cursor: default; }
+  /* Threshold tick marks below the slider track */
+  .pc-ticks {
+    position: absolute;
+    top: 0;
+    left: 0; right: 0;
+    pointer-events: none;
+  }
+  .pc-tick {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transform: translateX(-50%);
+    top: 3px;   /* align with centre of 6px track */
+  }
+  .pc-tick-line {
+    width: 1.5px;
+    height: 8px;
+    opacity: 0.7;
+    border-radius: 1px;
+    display: block;
+  }
+  .pc-tick-dot {
+    font-size: 8px;
+    line-height: 1;
+    margin-top: 1px;
+    opacity: 0.85;
+  }
   /* Footer buttons */
   .pc-footer-clear {
     flex: 1;
