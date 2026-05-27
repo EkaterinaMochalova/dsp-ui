@@ -157,22 +157,27 @@
       pcDmpId = draft.dmpData[0].dmpId ?? null
     }
 
-    // 2. Try to get agency-specific DMP IDs from the current user's agency profile
-    let agencyDmpIds = null
+    // 2. Try to get agency-configured DMP names from current user's agency profile
+    // NOTE: agency dmpConnections use a *connection* id (e.g. 14), not the DMP
+    // system id used by /clients/dmp — so we match by name, not by id.
+    let agencyDmpNames = null   // Set of lower-cased DMP names the agency has configured
     try {
       const me = get(currentUser)
       console.log('[PC] currentUser snippet:', JSON.stringify(me).substring(0, 400))
 
+      // Helper: extract DMP name set from an array of {id,name} connections
+      const toNameSet = arr => arr?.length
+        ? new Set(arr.map(d => (d.name ?? '').toLowerCase().trim()).filter(Boolean))
+        : null
+
       // Check if DMP connections are embedded directly in the user/agency object
       const directDmps = me?.agency?.dmpConnections ?? me?.agency?.dmps
         ?? me?.agency?.dmpData ?? me?.dmpConnections ?? null
-      if (Array.isArray(directDmps) && directDmps.length > 0) {
-        agencyDmpIds = new Set(directDmps.map(d => d.id ?? d.dmpId).filter(Boolean))
-        console.log('[PC] agency DMP IDs from user profile:', [...agencyDmpIds])
-      }
+      agencyDmpNames = toNameSet(directDmps)
+      if (agencyDmpNames) console.log('[PC] agency DMP names from user profile:', [...agencyDmpNames])
 
       // Otherwise, fetch the agency profile explicitly
-      if (!agencyDmpIds?.size) {
+      if (!agencyDmpNames?.size) {
         const agencyId = me?.agency?.id ?? me?.agencyId
           ?? me?.accountDetails?.agencyId ?? null
         if (agencyId != null) {
@@ -181,10 +186,8 @@
             console.log('[PC] agency profile snippet:', JSON.stringify(agencyRes).substring(0, 400))
             const dmps = agencyRes?.dmpConnections ?? agencyRes?.dmps
               ?? agencyRes?.dmpData ?? []
-            if (dmps.length > 0) {
-              agencyDmpIds = new Set(dmps.map(d => d.id ?? d.dmpId).filter(Boolean))
-              console.log('[PC] agency DMP IDs from agency profile:', [...agencyDmpIds])
-            }
+            agencyDmpNames = toNameSet(dmps)
+            if (agencyDmpNames) console.log('[PC] agency DMP names from agency profile:', [...agencyDmpNames])
           } catch (e) {
             console.warn('[PC] agency profile fetch failed:', e?.status)
           }
@@ -194,15 +197,15 @@
       console.warn('[PC] failed to read currentUser:', e?.message)
     }
 
-    // 3. GET /clients/dmp — list DMPs, filtered by agency config when available
+    // 3. GET /clients/dmp — list DMPs, filtered by agency-configured DMP names
     try {
       const res = await api.dmp.list()
       const all = Array.isArray(res) ? res : (res?.content ?? [])
       let list
-      if (agencyDmpIds?.size > 0) {
-        // Show only DMPs the agency has configured
-        list = all.filter(d => agencyDmpIds.has(d.id))
-        console.log('[PC] DMPs filtered by agency config:', JSON.stringify(list).substring(0, 300))
+      if (agencyDmpNames?.size > 0) {
+        // Match by name (case-insensitive) — connection ids ≠ DMP system ids
+        list = all.filter(d => agencyDmpNames.has((d.name ?? '').toLowerCase().trim()))
+        console.log('[PC] DMPs filtered by agency name:', JSON.stringify(list).substring(0, 300))
       } else {
         // Fallback: show explicitly active/connected DMPs
         list = all.filter(d => d.active === true || d.connected === true || d.status === 'CONNECTED')
