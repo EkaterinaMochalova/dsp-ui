@@ -1886,7 +1886,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const btn = el("wiz-next-1");
     if(!btn) return;
     const loading = window.DSP_AUTH_ENABLED && !window.PLANNER?.state?.dspInventoryWarmupDone;
-    btn.textContent = loading ? "Загружаю экраны…" : "Дальше";
+    btn.textContent = loading ? "Загружаю экраны\u2026" : "Дальше";
     btn.style.opacity = loading ? "0.6" : "";
     btn.style.cursor  = loading ? "default" : "";
   }
@@ -1954,15 +1954,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   function getScheduleSummary(){
     const t = getScheduleType();
-    if(t === "all_day") return "Весь день (07:00–22:00)";
-    if(t === "peak") return "Часы пик (07:00–10:00 / 17:00–21:00)";
+    if(t === "all_day") return "Весь день (07:00\u201322:00)";
+    if(t === "peak") return "Часы пик (07:00\u201310:00 / 17:00\u201321:00)";
     if(t === "weekly") return "Рваный график (по дням недели)";
     if(t === "custom"){
       const f = el("time-from")?.value || "07:00";
       const to = el("time-to")?.value || "22:00";
-      return \`Своё время (\${f}–\${to})\`;
+      return \`Своё время (\${f}\u2013\${to})\`;
     }
-    return "—";
+    return "\u2014";
   }
 
   function getBudgetSummary(){
@@ -1977,7 +1977,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     // fixed
     const v = Number(el("budget-input")?.value || 0);
-    return v > 0 ? (Math.floor(v).toLocaleString("ru-RU") + " ₽") : "не задан";
+    return v > 0 ? (Math.floor(v).toLocaleString("ru-RU") + " \u20BD") : "не задан";
   }
 
   function renderAudienceSegments() {
@@ -2035,10 +2035,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             letter-spacing:.05em;text-transform:uppercase;color:#9ca3af;background:none;
             border:none;cursor:pointer;padding:0;margin-bottom:0;">
           <span>Интересы</span>
-          <span id="interests-arrow" style="font-size:10px;">▼</span>
+          <span id="interests-arrow" style="font-size:10px;">\u25BC</span>
         </button>
         <div id="interests-body" style="display:block;margin-top:8px;">
-          <input type="text" id="interests-search" placeholder="Поиск интереса…"
+          <input type="text" id="interests-search" placeholder="Поиск интереса\u2026"
             style="width:100%;box-sizing:border-box;padding:5px 10px;border:1px solid #e0d9ff;
               border-radius:8px;font-size:12px;margin-bottom:8px;outline:none;">
           <div id="interests-chips" style="display:flex;flex-wrap:wrap;gap:6px;">
@@ -2055,12 +2055,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const interestsBody = wrap.querySelector('#interests-body');
     const arrow = wrap.querySelector('#interests-arrow');
     let interestsOpen = true;
-    if (arrow) arrow.textContent = '▲';
+    if (arrow) arrow.textContent = '\u25B2';
     if (toggleBtn && interestsBody) {
       toggleBtn.addEventListener('click', () => {
         interestsOpen = !interestsOpen;
         interestsBody.style.display = interestsOpen ? 'block' : 'none';
-        if (arrow) arrow.textContent = interestsOpen ? '▲' : '▼';
+        if (arrow) arrow.textContent = interestsOpen ? '\u25B2' : '\u25BC';
       });
     }
 
@@ -2213,14 +2213,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         { label: "Регион",    ok: !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length) },
         { label: "Даты",      ok: !!(p.dates.start && p.dates.end) },
         { label: "Бюджет/цель", ok: p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); const gpv = Number(el("goal-plays")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0)||(bm==="goal_plays"&&gpv>0); })() },
-        { label: "Форматы",   ok: true }, // опциональны — нет выбора = все форматы
+        { label: "Форматы",   ok: true }, // опциональны \u2014 нет выбора = все форматы
       ];
       chkEl.innerHTML = steps.map(s => \`
         <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:3px 9px;border-radius:999px;
           background:\${s.ok?"#f0fdf4":"#f8f9fb"};
           border:1px solid \${s.ok?"#86efac":"#e5e7eb"};
           color:\${s.ok?"#166534":"#9ca3af"};">
-          \${s.ok?"✓":"○"} \${s.label}
+          \${s.ok?"\u2713":"\u25CB"} \${s.label}
         </span>
       \`).join("");
     }
@@ -2328,7 +2328,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const screensLoaded = (planner?.state?.screensAll?.length || planner?.state?.screens?.length || 0) > 0;
         if (!screensLoaded && progressEl) {
           progressEl.style.display = "flex";
-          if (progressText) progressText.textContent = "Загружаю инвентарь — подождите…";
+          if (progressText) progressText.textContent = "Загружаю инвентарь \u2014 подождите\u2026";
         } else if (progressEl) {
           progressEl.style.display = "none";
         }
@@ -2350,7 +2350,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             if (!window.PLANNER?._parseManualGids) return;
             const ids = window.PLANNER._parseManualGids(ta.value);
             if (!ids.size) {
-              statusEl.textContent = "Введите GID-ы — после расчёта будут использованы только эти экраны.";
+              statusEl.textContent = "Введите GID-ы \u2014 после расчёта будут использованы только эти экраны.";
               statusEl.style.color = "#667085";
             } else {
               // Prefer screensAll (full inventory), fallback to filtered screens
@@ -2358,7 +2358,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
                 ? window.PLANNER.state.screensAll
                 : (window.PLANNER?.state?.screens || []);
               if (!allScreens.length) {
-                statusEl.textContent = ids.size + " GID-ов введено — инвентарь ещё загружается…";
+                statusEl.textContent = ids.size + " GID-ов введено \u2014 инвентарь ещё загружается\u2026";
                 statusEl.style.color = "#9ca3af";
               } else {
                 // Deduplicate: one GID -> at most one match
@@ -2421,7 +2421,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       }
 
       btn.disabled = true;
-      btn.textContent = "Ищу экраны…";
+      btn.textContent = "Ищу экраны\u2026";
       statusEl.textContent = "";
       if (progWrap) progWrap.style.display = "block";
       if (progBar)  progBar.style.width = "0%";
@@ -2429,7 +2429,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       try {
         // Load h3-js once
         if (!window.h3) {
-          statusEl.textContent = "Загружаю H3-библиотеку…";
+          statusEl.textContent = "Загружаю H3-библиотеку\u2026";
           await new Promise((resolve, reject) => {
             const s = document.createElement("script");
             s.src = "https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js";
@@ -2515,7 +2515,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             selEl.value = "manual_screens";
             selEl.dispatchEvent(new Event("change", { bubbles: true }));
           }
-          statusEl.textContent = "Найдено экранов: " + matchingGids.length + " — нажмите «Рассчитать»";
+          statusEl.textContent = "Найдено экранов: " + matchingGids.length + " \u2014 нажмите \u00ABРассчитать\u00BB";
           statusEl.style.color = "#5b3ef5";
           renderProgress();
         }
@@ -2526,7 +2526,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       }
 
       btn.disabled = false;
-      btn.textContent = "🔍 Найти экраны";
+      btn.textContent = "\uD83D\uDD0D Найти экраны";
     });
 
     // Schedule chips
@@ -2605,7 +2605,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         inp.max = mode === "pct" ? "100" : "";
       });
       document.querySelectorAll("#per-city-rows .per-city-row .per-city-unit").forEach(u => {
-        u.textContent = mode === "pct" ? "%" : "₽";
+        u.textContent = mode === "pct" ? "%" : "\u20BD";
       });
       // Show/hide the total budget input depending on mode
       const perCityOn = !!el("per-city-enabled")?.checked;
@@ -2659,7 +2659,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const row = document.createElement("div");
         row.className = "per-city-row";
         row.dataset.region = region;
-        const unit = _perCityMode === "pct" ? "%" : "₽";
+        const unit = _perCityMode === "pct" ? "%" : "\u20BD";
         const step = _perCityMode === "pct" ? "1" : "1000";
         const maxAttr = _perCityMode === "pct" ? ' max="100"' : '';
         row.innerHTML = '<span class="per-city-row-label">' + region + '</span>'
@@ -2688,7 +2688,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         }
         // Keep budget-input value unchanged (total entered before switching to %)
       } else {
-        if (totalEl) { totalEl.textContent = Math.floor(sum).toLocaleString("ru-RU") + " ₽"; totalEl.style.color = "#5b3ef5"; }
+        if (totalEl) { totalEl.textContent = Math.floor(sum).toLocaleString("ru-RU") + " \u20BD"; totalEl.style.color = "#5b3ef5"; }
         const main = el("budget-input");
         if (main && sum > 0) main.value = Math.floor(sum);
       }
@@ -2780,7 +2780,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   window.addEventListener("planner:affinity-loaded", () => {
     const statusEl = el("audience-load-status");
-    if (statusEl) statusEl.textContent = "✓ Данные загружены (" + (window.PLANNER?.state?.affinityMap?.size || 0).toLocaleString("ru-RU") + " экранов)";
+    if (statusEl) statusEl.textContent = "\u2713 Данные загружены (" + (window.PLANNER?.state?.affinityMap?.size || 0).toLocaleString("ru-RU") + " экранов)";
     renderAudienceSegments();
     renderProgress();
   });
@@ -2810,11 +2810,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const total  = window.PLANNER?.state?.dspInventoryTotal || 0;
       if(statusText){
         if(loaded > 0 && total > 0){
-          statusText.textContent = \`Загружаю инвентарь… \${loaded.toLocaleString("ru-RU")} из \${total.toLocaleString("ru-RU")} экранов\`;
+          statusText.textContent = \`Загружаю инвентарь\u2026 \${loaded.toLocaleString("ru-RU")} из \${total.toLocaleString("ru-RU")} экранов\`;
         } else if(loaded > 0){
-          statusText.textContent = \`Загружаю инвентарь… \${loaded.toLocaleString("ru-RU")} экранов\`;
+          statusText.textContent = \`Загружаю инвентарь\u2026 \${loaded.toLocaleString("ru-RU")} экранов\`;
         } else {
-          statusText.textContent = "Загружаю инвентарь…";
+          statusText.textContent = "Загружаю инвентарь\u2026";
         }
       }
       if(progressBar){
@@ -3239,17 +3239,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border-bottom:1px solid #eee;">
           <div style="font-weight:800;">\${escapeHtml(getGid(s) || "Экран")}</div>
           <div style="display:flex; gap:8px; align-items:center;">
-            <button type="button" id="lb-prev" style="padding:8px 10px; border-radius:12px; border:1px solid #ddd; background:#fff; cursor:pointer;">←</button>
-            <button type="button" id="lb-next" style="padding:8px 10px; border-radius:12px; border:1px solid #ddd; background:#fff; cursor:pointer;">→</button>
-            <button type="button" id="lb-close" style="padding:8px 10px; border-radius:12px; border:1px solid #ddd; background:#fff; cursor:pointer;">✕</button>
+            <button type="button" id="lb-prev" style="padding:8px 10px; border-radius:12px; border:1px solid #ddd; background:#fff; cursor:pointer;">\u2190</button>
+            <button type="button" id="lb-next" style="padding:8px 10px; border-radius:12px; border:1px solid #ddd; background:#fff; cursor:pointer;">\u2192</button>
+            <button type="button" id="lb-close" style="padding:8px 10px; border-radius:12px; border:1px solid #ddd; background:#fff; cursor:pointer;">\u2715</button>
           </div>
         </div>
         <div style="background:#111; height:min(64vh, 520px); display:flex; align-items:center; justify-content:center;">
           <img src="\${escapeHtml(url)}" alt="" style="max-width:100%; max-height:100%; object-fit:contain;">
         </div>
         <div style="padding:12px 14px;">
-          <div style="font-size:13px;"><b>Оператор:</b> \${escapeHtml(getOwner(s) || "—")}</div>
-          <div style="font-size:13px; margin-top:6px; color:#444;"><b>Адрес:</b> \${escapeHtml(getAddr(s) || "—")}</div>
+          <div style="font-size:13px;"><b>Оператор:</b> \${escapeHtml(getOwner(s) || "\u2014")}</div>
+          <div style="font-size:13px; margin-top:6px; color:#444;"><b>Адрес:</b> \${escapeHtml(getAddr(s) || "\u2014")}</div>
           <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
             <div style="font-size:12px; color:#777;">\${idx+1}/\${items.length}</div>
             <div style="margin-left:auto; display:flex; gap:6px;">
@@ -3306,7 +3306,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   function groupByRegion(items){
     const map = new Map();
     for(const s of items){
-      const r = getRegion(s) || "—";
+      const r = getRegion(s) || "\u2014";
       if(!map.has(r)) map.set(r, []);
       map.get(r).push(s);
     }
@@ -3335,7 +3335,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const arrAll = allItems.filter(s => !!getImg(s));
     const coordCount = allItems.filter(s => Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon))).length;
     const mapBtn = coordCount > 0
-      ? \`<button id="carousel-map-download-btn" style="padding:5px 12px;border:1px solid #5B3EF5;border-radius:8px;background:#fff;color:#5B3EF5;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">⬇ Скачать карту</button>\`
+      ? \`<button id="carousel-map-download-btn" style="padding:5px 12px;border:1px solid #5B3EF5;border-radius:8px;background:#fff;color:#5B3EF5;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">\u2B07 Скачать карту</button>\`
       : "";
 
     if(arrAll.length === 0){
@@ -3377,8 +3377,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
               <img src="\${url}" alt="\${gid}" loading="lazy" style="width:100%; height:100%; object-fit:cover;">
             </div>
             <div style="padding:10px;">
-              <div style="font-weight:800; font-size:13px; line-height:1.2;">\${gid || "—"}</div>
-              <div style="font-size:12px; color:#555; margin-top:4px;">\${own || "—"}</div>
+              <div style="font-weight:800; font-size:13px; line-height:1.2;">\${gid || "\u2014"}</div>
+              <div style="font-size:12px; color:#555; margin-top:4px;">\${own || "\u2014"}</div>
               <div style="font-size:12px; color:#777; margin-top:4px; line-height:1.25; max-height:2.5em; overflow:hidden;">\${addr || ""}</div>
               <div style="display:flex; gap:6px; margin-top:8px;">
                 <button type="button" class="card-remove-btn" data-gid="\${gid}" style="flex:1; padding:4px 6px; border-radius:6px; border:1px solid #e04444; background:#fff5f5; color:#e04444; font-size:11px; cursor:pointer; font-weight:500;">Убрать</button>
@@ -3392,7 +3392,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       return \`
         <div class="img-section" style="margin-top:14px;">
           <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:8px;">
-            <div style="font-weight:800;">Фото экранов — \${escapeHtml(regionName)}</div>
+            <div style="font-weight:800;">Фото экранов \u2014 \${escapeHtml(regionName)}</div>
             <div style="font-size:12px; color:#666;">Всего: \${regItems.length.toLocaleString("ru-RU")}</div>
           </div>
           <div class="img-row" data-region="\${escapeHtml(regionName)}"
@@ -3537,7 +3537,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     header.innerHTML = \`
       <div style="font-weight:700;font-size:14px;color:#111827;">Карта экранов</div>
       <button id="map-download-btn" style="padding:5px 12px;border:1px solid #5B3EF5;border-radius:8px;background:#fff;color:#5B3EF5;font-size:12px;font-weight:600;cursor:pointer;">
-        ⬇ Скачать карту
+        \u2B07 Скачать карту
       </button>
     \`;
     box.parentNode.insertBefore(header, box);
@@ -3672,16 +3672,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <div style="font-size:13px; min-width:220px;">
           <div style="font-weight:700;">\${esc(getGid(s) || "Экран")}</div>
           <div style="margin-top:4px;color:#555;">\${esc(s?.format || "")}</div>
-          <div style="margin-top:4px;"><b>Оператор:</b> \${esc(getOwner(s) || "—")}</div>
-          <div style="margin-top:4px;"><b>Адрес:</b> \${esc(getAddr(s) || "—")}</div>
+          <div style="margin-top:4px;"><b>Оператор:</b> \${esc(getOwner(s) || "\u2014")}</div>
+          <div style="margin-top:4px;"><b>Адрес:</b> \${esc(getAddr(s) || "\u2014")}</div>
           <div style="margin-top:10px;display:flex;gap:6px;">
             <button id="btn-remove-\${esc(gid)}"
               style="flex:1;padding:6px 8px;background:#fee2e2;border:none;border-radius:8px;cursor:pointer;font-size:12px;color:#991b1b;font-weight:600;">
-              ✕ Убрать
+              \u2715 Убрать
             </button>
             <button id="btn-replace-\${esc(gid)}"
               style="flex:1;padding:6px 8px;background:#ede9fe;border:none;border-radius:8px;cursor:pointer;font-size:12px;color:#5b3ef5;font-weight:600;">
-              ⇄ Заменить
+              \u21C4 Заменить
             </button>
           </div>
         </div>
@@ -3767,9 +3767,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   const el = id => document.getElementById(id);
 
   let polyMap    = null;
-  let drawLayer   = null;   // L.FeatureGroup — хранит нарисованные полигоны
-  let dotsLayer   = null;   // L.FeatureGroup — точки всех экранов
-  let currentPolys = [];    // L.Polygon[] — все завершённые полигоны
+  let drawLayer   = null;   // L.FeatureGroup \u2014 хранит нарисованные полигоны
+  let dotsLayer   = null;   // L.FeatureGroup \u2014 точки всех экранов
+  let currentPolys = [];    // L.Polygon[] \u2014 все завершённые полигоны
   let drawControl = null;
 
   // -- helpers ---------------------------------------------------------
@@ -3809,12 +3809,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       ).length : 0;
       const n = polys.length;
       const zonesLabel = n === 1 ? "зона" : n < 5 ? "зоны" : "зон";
-      text.textContent = \`\${n} \${zonesLabel} — \${cnt.toLocaleString("ru-RU")} экранов\`;
+      text.textContent = \`\${n} \${zonesLabel} \u2014 \${cnt.toLocaleString("ru-RU")} экранов\`;
       badge.style.display = "flex";
-      if (btn) btn.textContent = "✏️ Изменить зоны";
+      if (btn) btn.textContent = "\u270F\uFE0F Изменить зоны";
     } else {
       badge.style.display = "none";
-      if (btn) btn.textContent = "🗺 Нарисовать зону";
+      if (btn) btn.textContent = "\uD83D\uDDFA Нарисовать зону";
     }
   }
 
@@ -3845,7 +3845,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (!polyMap) {
       polyMap = L.map(box, { scrollWheelZoom: true, zoomControl: true });
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19, attribution: "© OpenStreetMap"
+        maxZoom: 19, attribution: "\u00A9 OpenStreetMap"
       }).addTo(polyMap);
 
       drawLayer = new L.FeatureGroup().addTo(polyMap);
@@ -3993,19 +3993,19 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const cnt = countInside(currentPolys);
       const n = currentPolys.length;
       const zonesLabel = n === 1 ? "зона" : n < 5 ? "зоны" : "зон";
-      countBadge.textContent = \`\${n} \${zonesLabel} · \${cnt.toLocaleString("ru-RU")} экранов\`;
+      countBadge.textContent = \`\${n} \${zonesLabel} \u00B7 \${cnt.toLocaleString("ru-RU")} экранов\`;
       countBadge.style.display = "block";
       const drawingMore = hasVerts
-        ? \` Рисуете зону \${n + 1} — добавлено \${vertices.length} точек.\`
-        : " Нажмите «Применить» или нарисуйте ещё зону.";
+        ? \` Рисуете зону \${n + 1} \u2014 добавлено \${vertices.length} точек.\`
+        : " Нажмите \u00ABПрименить\u00BB или нарисуйте ещё зону.";
       if (hint) hint.textContent = cnt > 0
         ? \`В \${n === 1 ? "зоне" : "зонах"} \${cnt.toLocaleString("ru-RU")} экранов.\${drawingMore}\`
-        : \`В зонах нет экранов — попробуйте перерисовать.\${drawingMore}\`;
+        : \`В зонах нет экранов \u2014 попробуйте перерисовать.\${drawingMore}\`;
     } else {
       if (countBadge) countBadge.style.display = "none";
       if (hint) hint.textContent = hasVerts
-        ? \`Добавлено \${vertices.length} точек. Кликните на первую точку или нажмите «Завершить».\`
-        : "Кликайте на карту, чтобы добавлять точки полигона. Замкните его — кликните на первую точку или нажмите «Завершить».";
+        ? \`Добавлено \${vertices.length} точек. Кликните на первую точку или нажмите \u00ABЗавершить\u00BB.\`
+        : "Кликайте на карту, чтобы добавлять точки полигона. Замкните его \u2014 кликните на первую точку или нажмите \u00ABЗавершить\u00BB.";
     }
   }
 
@@ -4271,18 +4271,18 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   const fmtInt = (n) => {
     const x = Number(n);
-    return Number.isFinite(x) ? Math.round(x).toLocaleString("ru-RU") : "—";
+    return Number.isFinite(x) ? Math.round(x).toLocaleString("ru-RU") : "\u2014";
   };
   const fmtMoney = (n) => {
     const x = Number(n);
-    return (Number.isFinite(x) && x > 0) ? (Math.round(x).toLocaleString("ru-RU") + " ₽") : "—";
+    return (Number.isFinite(x) && x > 0) ? (Math.round(x).toLocaleString("ru-RU") + " \u20BD") : "\u2014";
   };
   const fmtRange = (n) => {
     const x = Number(n);
-    if (!Number.isFinite(x) || x <= 0) return "—";
-    if (x >= 1_000_000) return (x / 1_000_000).toLocaleString("ru-RU", {maximumFractionDigits:1}) + " М ₽";
-    if (x >= 1_000)     return Math.round(x / 1_000).toLocaleString("ru-RU") + " тыс. ₽";
-    return Math.round(x).toLocaleString("ru-RU") + " ₽";
+    if (!Number.isFinite(x) || x <= 0) return "\u2014";
+    if (x >= 1_000_000) return (x / 1_000_000).toLocaleString("ru-RU", {maximumFractionDigits:1}) + "\u202FМ\u202F\u20BD";
+    if (x >= 1_000)     return Math.round(x / 1_000).toLocaleString("ru-RU") + "\u202Fтыс.\u202F\u20BD";
+    return Math.round(x).toLocaleString("ru-RU") + "\u202F\u20BD";
   };
 
   function hoursPerDayFromRaw(){
@@ -4325,23 +4325,23 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     // Warnings: prefer direct array from event detail, fallback to parsing raw text
     const warnArr = Array.isArray(detail?.warnings) && detail.warnings.length
       ? detail.warnings
-      : raw.split("\\n").filter(l => l.trim().startsWith("⚠️")).map(l => l.replace(/^⚠️\\s*/, ""));
+      : raw.split("\\n").filter(l => l.trim().startsWith("\u26A0\uFE0F")).map(l => l.replace(/^\u26A0\uFE0F\\s*/, ""));
 
     const warnsHtml = warnArr.length
-      ? \`<div class="ps-warn"><b>Предупреждения:</b><br>\${warnArr.map(x => x.replace(/^⚠️\\s*/, "")).join("<br>")}</div>\`
+      ? \`<div class="ps-warn"><b>Предупреждения:</b><br>\${warnArr.map(x => x.replace(/^\u26A0\uFE0F\\s*/, "")).join("<br>")}</div>\`
       : "";
 
     const regionCards = perRegion
       .slice()
       .sort((a,b)=> (Number(b.budget||0)-Number(a.budget||0)))
       .map(r => {
-        const ots = (Number.isFinite(Number(r.ots)) && Number(r.ots)>0) ? fmtInt(r.ots) : "—";
+        const ots = (Number.isFinite(Number(r.ots)) && Number(r.ots)>0) ? fmtInt(r.ots) : "\u2014";
         const note = String(r.note || "").trim();
         return \`
           <div class="ps-card">
             <div class="ps-region-top">
               <div>
-                <div class="ps-region-name">\${r.region === "__gid_mode__" ? "По GID-списку" : String(r.region || "—")}</div>
+                <div class="ps-region-name">\${r.region === "__gid_mode__" ? "По GID-списку" : String(r.region || "\u2014")}</div>
                 <div class="ps-sub">\${note || "Разбивка по региону"}</div>
               </div>
               <div class="ps-chip">\${fmtInt(r.screens)} экранов</div>
@@ -4364,9 +4364,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       .sort((a,b) => b[1].screens - a[1].screens)
       .map(([fmtName, fd]) => {
         const otsPerPlay  = fd.otsPerPlay  != null
-          ? fmtInt(fd.otsPerPlay)  + "\u202fOTS" : "—";
+          ? fmtInt(fd.otsPerPlay)  + "\u202fOTS" : "\u2014";
         const costPerPlay = fd.costPerPlay != null
-          ? fmtInt(fd.costPerPlay) + "\u202f₽"   : "—";
+          ? fmtInt(fd.costPerPlay) + "\u202f\u20BD"   : "\u2014";
         const esc = s => String(s||"").replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
         return \`<div class="ps-metric">
           <div class="k">\${esc(fmtName)}</div>
@@ -4394,11 +4394,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
           <div class="ps-grid">
             <div class="ps-metric"><div class="k">Выходов всего</div><div class="v">\${fmtInt(totalPlays)}</div></div>
-            <div class="ps-metric"><div class="k">Стоимость выхода</div><div class="v">\${(totalBudget > 0 && totalPlays > 0) ? Math.round(totalBudget / totalPlays).toLocaleString("ru-RU") + "\u202f₽" : "—"}</div></div>
-            <div class="ps-metric"><div class="k">Выходов в день</div><div class="v">\${playsPerDay == null ? "—" : fmtInt(playsPerDay)}</div></div>
-            <div class="ps-metric"><div class="k">OTS всего</div><div class="v">\${otsTotal == null ? "—" : fmtInt(otsTotal)}</div></div>
-            <div class="ps-metric"><div class="k">Выходов / час на экран</div><div class="v">\${(playsPerHour != null && totalScreens > 0) ? (playsPerHour / totalScreens).toFixed(1) : "—"}</div></div>
-            <div class="ps-metric"><div class="k">CPM (стоимость 1\u202f000 OTS)</div><div class="v">\${(totalBudget > 0 && otsTotal > 0) ? Math.round(totalBudget / otsTotal * 1000).toLocaleString("ru-RU") + "\u202f₽" : "—"}</div></div>
+            <div class="ps-metric"><div class="k">Стоимость выхода</div><div class="v">\${(totalBudget > 0 && totalPlays > 0) ? Math.round(totalBudget / totalPlays).toLocaleString("ru-RU") + "\u202f\u20BD" : "\u2014"}</div></div>
+            <div class="ps-metric"><div class="k">Выходов в день</div><div class="v">\${playsPerDay == null ? "\u2014" : fmtInt(playsPerDay)}</div></div>
+            <div class="ps-metric"><div class="k">OTS всего</div><div class="v">\${otsTotal == null ? "\u2014" : fmtInt(otsTotal)}</div></div>
+            <div class="ps-metric"><div class="k">Выходов / час на экран</div><div class="v">\${(playsPerHour != null && totalScreens > 0) ? (playsPerHour / totalScreens).toFixed(1) : "\u2014"}</div></div>
+            <div class="ps-metric"><div class="k">CPM (стоимость 1\u202f000 OTS)</div><div class="v">\${(totalBudget > 0 && otsTotal > 0) ? Math.round(totalBudget / otsTotal * 1000).toLocaleString("ru-RU") + "\u202f\u20BD" : "\u2014"}</div></div>
           </div>
 
           \${warnsHtml}
@@ -4418,10 +4418,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
                 <div class="ps-title" style="display:inline;">По регионам</div>
                 <span style="font-size:12px; color:#667085; margin-left:8px;">\${perRegion.length} \${perRegion.length===1?"регион":perRegion.length<5?"региона":"регионов"}</span>
               </div>
-              <span class="ps-toggle-icon" style="font-size:18px; color:#5B3EF5; line-height:1;">⌄</span>
+              <span class="ps-toggle-icon" style="font-size:18px; color:#5B3EF5; line-height:1;">\u2304</span>
             </summary>
             <div class="ps-sub" style="margin-bottom:8px;">Бюджет / выходы / OTS по каждому выбранному региону</div>
-            <div class="ps-regions">\${regionCards || \`<div class="ps-warn">Нет данных по регионам — нажмите «Рассчитать».</div>\`}</div>
+            <div class="ps-regions">\${regionCards || \`<div class="ps-warn">Нет данных по регионам \u2014 нажмите \u00ABРассчитать\u00BB.</div>\`}</div>
           </details>
 
           <details class="ps-details" style="margin-top:10px;">
@@ -4438,7 +4438,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   function init(){
     const root = el("pretty-summary");
-    if(root) root.innerHTML = \`<div class="ps-warn">Нажмите «Рассчитать», чтобы увидеть карточки по регионам.</div>\`;
+    if(root) root.innerHTML = \`<div class="ps-warn">Нажмите \u00ABРассчитать\u00BB, чтобы увидеть карточки по регионам.</div>\`;
 
     window.addEventListener("planner:calc-done", (e) => {
       render(e?.detail || {});
@@ -4513,25 +4513,25 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if(hasGrpFilter && countAfterGrp !== null){
       const drop = countBase - countAfterGrp;
       const pct = countBase > 0 ? Math.round(countAfterGrp / countBase * 100) : 0;
-      html += \`<span class="pool-preview-arrow">→</span>\`;
-      html += \`<span class="pool-preview-filter">GRP: <b>\${fmtN(countAfterGrp)}</b><span class="pool-preview-pct"> −\${fmtN(drop)} (\${pct}%)</span></span>\`;
+      html += \`<span class="pool-preview-arrow">\u2192</span>\`;
+      html += \`<span class="pool-preview-filter">GRP: <b>\${fmtN(countAfterGrp)}</b><span class="pool-preview-pct"> \u2212\${fmtN(drop)} (\${pct}%)</span></span>\`;
     }
 
     if(hasOwnerFilter && countAfterOwners !== null){
       const base2 = hasGrpFilter && countAfterGrp !== null ? countAfterGrp : countBase;
       const drop = base2 - countAfterOwners;
       const pct = base2 > 0 ? Math.round(countAfterOwners / base2 * 100) : 0;
-      html += \`<span class="pool-preview-arrow">→</span>\`;
-      html += \`<span class="pool-preview-filter">Операторы: <b>\${fmtN(countAfterOwners)}</b><span class="pool-preview-pct"> −\${fmtN(drop)} (\${pct}%)</span></span>\`;
+      html += \`<span class="pool-preview-arrow">\u2192</span>\`;
+      html += \`<span class="pool-preview-filter">Операторы: <b>\${fmtN(countAfterOwners)}</b><span class="pool-preview-pct"> \u2212\${fmtN(drop)} (\${pct}%)</span></span>\`;
     }
 
     if(hasAffinityFilter && countAfterAffinity !== null){
-      html += \`<span class="pool-preview-arrow">→</span>\`;
+      html += \`<span class="pool-preview-arrow">\u2192</span>\`;
       html += \`<span class="pool-preview-filter">Аудитория (VK): <b>\${fmtN(countAfterAffinity)}</b></span>\`;
     }
 
     if(hasGrpFilter || hasOwnerFilter || hasAffinityFilter){
-      html += \`<span class="pool-preview-arrow">→</span>\`;
+      html += \`<span class="pool-preview-arrow">\u2192</span>\`;
       html += \`<span class="pool-preview-base">Итого: \${fmtN(countFinal)} экр.</span>\`;
     }
 
@@ -4542,7 +4542,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const constrCount = parseInt(document.getElementById("constructions-count")?.value || "0", 10);
     if(constrEnabled && constrCount > 0 && countFinal < constrCount){
       html += \`<div style="margin-top:8px;padding:7px 10px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;font-size:12px;color:#856404;">
-        ⚠️ Доступно только <b>\${fmtN(countFinal)}</b> экранов с текущими фильтрами — лимит <b>\${fmtN(constrCount)}</b> будет снижен автоматически.
+        \u26A0\uFE0F Доступно только <b>\${fmtN(countFinal)}</b> экранов с текущими фильтрами \u2014 лимит <b>\${fmtN(constrCount)}</b> будет снижен автоматически.
       </div>\`;
     }
 
@@ -4667,7 +4667,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   }
   function fmtMoney(n){
     const x = Number(n||0);
-    return x.toLocaleString("ru-RU") + " ₽";
+    return x.toLocaleString("ru-RU") + " \u20BD";
   }
 
   function renderBars({ title, rows, valueKey, formatFn }){
@@ -4719,7 +4719,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if(byDate.length){
       html += renderBars({
         title: "По датам (выходы)",
-        rows: byDate.map(d => ({ label: d.label || d.date || "—", ...d })),
+        rows: byDate.map(d => ({ label: d.label || d.date || "\u2014", ...d })),
         valueKey: "plays",
         formatFn: fmtInt
       });
@@ -4800,7 +4800,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if(!enabled) return "выключено";
     const n = intervals.length;
     if(!n) return "нет интервалов";
-    if(n === 1) return \`\${intervals[0].from}–\${intervals[0].to}\`;
+    if(n === 1) return \`\${intervals[0].from}\u2013\${intervals[0].to}\`;
     return \`\${n} интервала\`;
   }
 
@@ -4808,7 +4808,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     container.innerHTML = "";
     const hint = document.createElement("div");
     hint.className = "wd-barhint";
-    hint.textContent = enabled ? \`Визуализация (шкала \${BAR_FROM}–\${BAR_TO})\` : "—";
+    hint.textContent = enabled ? \`Визуализация (шкала \${BAR_FROM}\u2013\${BAR_TO})\` : "\u2014";
     container.appendChild(hint);
 
     if(!enabled) return;
@@ -4870,9 +4870,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:6px;";
     row.innerHTML = \`
       <input type="time" class="ux-input wd-from" value="\${t.from}" style="width:105px;">
-      <span style="color:#aaa;">—</span>
+      <span style="color:#aaa;">\u2014</span>
       <input type="time" class="ux-input wd-to"   value="\${t.to}"   style="width:105px;">
-      <button type="button" class="wd-remove" style="margin-left:auto;font-size:18px;line-height:1;padding:0 6px;" title="Удалить время">×</button>
+      <button type="button" class="wd-remove" style="margin-left:auto;font-size:18px;line-height:1;padding:0 6px;" title="Удалить время">\u00D7</button>
     \`;
     row.querySelector(".wd-from").addEventListener("change", e => {
       grp.times[tIdx].from = e.target.value;
@@ -5095,7 +5095,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   function el(id){ return document.getElementById(id); }
 
   function fmtMoney(v){
-    return Math.round(v).toLocaleString("ru-RU") + "\u202f₽";
+    return Math.round(v).toLocaleString("ru-RU") + "\u202f\u20BD";
   }
 
   function getActiveBudget(){
@@ -5185,7 +5185,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (!calc) return;
 
     btn.disabled = true;
-    btn.textContent = "Отправляю…";
+    btn.textContent = "Отправляю\u2026";
 
     const brief   = calc.brief || {};
     const meta    = calc.meta  || {};
@@ -5226,7 +5226,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       alert("Не удалось отправить план: " + err.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = "🚀 Передать менеджеру";
+      btn.textContent = "\uD83D\uDE80 Передать менеджеру";
     }
   });
 })();
@@ -5255,7 +5255,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       return \`<div class="cns-per-region-row">
         <span class="cns-per-region-label">\${r}</span>
         <input type="number" class="ux-input \${inputClass}" data-region="\${r}"
-          min="\${min}" max="\${max}" step="\${step}" placeholder="—" value="\${v}">
+          min="\${min}" max="\${max}" step="\${step}" placeholder="\u2014" value="\${v}">
         <span class="cns-per-region-unit">\${unit}</span>
       </div>\`;
     }).join("");
@@ -5290,7 +5290,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const rows  = document.getElementById(rowsId);
       const arrow = document.getElementById(arrowId);
       if (rows) rows.style.display = _opens[openKey] ? "flex" : "none";
-      if (arrow) arrow.textContent = _opens[openKey] ? "▼" : "▶";
+      if (arrow) arrow.textContent = _opens[openKey] ? "\u25BC" : "\u25B6";
       if (_opens[openKey]) renderRows(rowsId, inputClass, unit, 1, max, 1, getRegions());
     });
   }
@@ -5343,16 +5343,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (!history || !history.length) { list.innerHTML = ""; return; }
     list.innerHTML = history.map((entry, i) => {
       const s = entry.summary || {};
-      const regions = (s.regions || entry.brief?.geo?.regions || []).join(", ") || "—";
-      const budget  = s.totalBudget ? Math.floor(s.totalBudget).toLocaleString("ru-RU") + " ₽" : "—";
-      const screens = s.screens != null ? s.screens + " экр." : "";
-      const plays   = s.totalPlays ? Math.floor(s.totalPlays).toLocaleString("ru-RU") + " выходов" : "";
-      const meta    = [screens, plays].filter(Boolean).join(" · ");
-      const dates   = [s.dateStart, s.dateEnd].filter(Boolean).join(" → ");
+      const regions = (s.regions || entry.brief?.geo?.regions || []).join(", ") || "\u2014";
+      const budget  = s.totalBudget ? Math.floor(s.totalBudget).toLocaleString("ru-RU") + "\u202F\u20BD" : "\u2014";
+      const screens = s.screens != null ? s.screens + "\u202Fэкр." : "";
+      const plays   = s.totalPlays ? Math.floor(s.totalPlays).toLocaleString("ru-RU") + "\u202Fвыходов" : "";
+      const meta    = [screens, plays].filter(Boolean).join(" \u00B7 ");
+      const dates   = [s.dateStart, s.dateEnd].filter(Boolean).join(" \u2192 ");
       return \`<div class="calc-history-item" data-idx="\${i}">
         <div class="calc-history-date">\${fmtDate(entry.ts)}</div>
-        <div class="calc-history-title">\${regions}\${dates ? " · " + dates : ""}</div>
-        <div class="calc-history-meta">\${budget}\${meta ? " · " + meta : ""}</div>
+        <div class="calc-history-title">\${regions}\${dates ? " \u00B7 " + dates : ""}</div>
+        <div class="calc-history-meta">\${budget}\${meta ? " \u00B7 " + meta : ""}</div>
       </div>\`;
     }).join("");
     list.querySelectorAll(".calc-history-item").forEach(item => {
@@ -5376,7 +5376,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   toggle.addEventListener("click", () => {
     expanded = !expanded;
     list.style.display = expanded ? "flex" : "none";
-    if (arrow) arrow.textContent = expanded ? "▼" : "▶";
+    if (arrow) arrow.textContent = expanded ? "\u25BC" : "\u25B6";
     if (expanded) renderList();
   });
 
