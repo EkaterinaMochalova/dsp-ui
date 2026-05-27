@@ -114,13 +114,18 @@
     return out.join('').replace(/_+/g, '_').replace(/^_|_$/g, '')
   }
 
-  // Convert display name → backend slug. Sub-items get parent_slug prefix.
-  function pcInterestSlug(name) {
-    if (PC_INTEREST_TREE.hasOwnProperty(name)) return _pcTranslit(name)
+  // Convert display name → [parentSlug, childSlug] array for segmentation.
+  // Prod confirmed: server needs both parent + child e.g. ["avtomobili","avtomobili_priemium_klass"]
+  function pcInterestSlugs(name) {
+    if (!name) return []
+    if (PC_INTEREST_TREE.hasOwnProperty(name)) return [_pcTranslit(name)]
     for (const [parent, children] of Object.entries(PC_INTEREST_TREE)) {
-      if (children.includes(name)) return _pcTranslit(parent) + '_' + _pcTranslit(name)
+      if (children.includes(name)) {
+        const ps = _pcTranslit(parent)
+        return [ps, ps + '_' + _pcTranslit(name)]
+      }
     }
-    return _pcTranslit(name)
+    return [_pcTranslit(name)]
   }
 
   async function loadPcDmpConnections() {
@@ -435,8 +440,8 @@
     preCampaignLoading = true
     preCampaignError   = ''
     try {
-      // Build payload matching the prod app structure
-      const slugs = pcSelectedSub ? [pcInterestSlug(pcSelectedSub)] : []
+      // Build payload — send both parent+child slugs as prod app does
+      const slugs = pcInterestSlugs(pcSelectedSub)
       // Generate client-side UUID as required by PreCampaignApiRequest schema
       const clientRequestId = crypto.randomUUID()
       const payload = {
@@ -449,8 +454,19 @@
       if (pcDmpId != null) payload.dmpId = pcDmpId
       console.log('[PC] payload:', JSON.stringify({ ...payload, inventories: `[${payload.inventories.length} ids]` }))
 
-      // pre-campaign-data returns scored inventories
-      const res1 = await api.campaigns.preCampaignData(payload)
+      // pre-campaign-data returns scored inventories; retry with empty segmentation on 400
+      let res1
+      try {
+        res1 = await api.campaigns.preCampaignData(payload)
+      } catch (e1) {
+        if (e1?.status === 400 && slugs.length > 0) {
+          console.warn('[PC] 400 with segmentation, retrying without interest filter')
+          const fallback = { ...payload, requestId: crypto.randomUUID(), segmentation: [] }
+          res1 = await api.campaigns.preCampaignData(fallback)
+        } else {
+          throw e1
+        }
+      }
       console.log('[PC] res1 isArray:', Array.isArray(res1), 'type:', typeof res1,
         'keys:', (!Array.isArray(res1) && res1) ? Object.keys(res1) : '-',
         'length:', Array.isArray(res1) ? res1.length : '-')
