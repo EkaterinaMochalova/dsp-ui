@@ -169,7 +169,8 @@
 
       // Otherwise, fetch the agency profile explicitly
       if (!agencyDmpIds?.size) {
-        const agencyId = me?.agency?.id ?? me?.agencyId ?? null
+        const agencyId = me?.agency?.id ?? me?.agencyId
+          ?? me?.accountDetails?.agencyId ?? null
         if (agencyId != null) {
           try {
             const agencyRes = await api.agencies.get(agencyId)
