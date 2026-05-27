@@ -988,6 +988,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
                  background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s;">
           📋 По GID-списку
         </button>
+        <button type="button" id="geo-tab-poi"
+          style="flex:1; padding:9px 14px; border-radius:10px; border:1.5px solid #e0d9fd;
+                 background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s;">
+          🏪 По POI
+        </button>
       </div>
 
       <!-- CITIES block -->
@@ -1112,6 +1117,90 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             font-size:12px; color:#856404; cursor:pointer; font-weight:600;">
             ↓ Скачать не найденные GID-ы
           </button>
+        </div>
+      </div>
+
+      <!-- POI block (initially hidden) -->
+      <div id="geo-poi-block" style="display:none;">
+        <div class="planner-block">
+          <div class="planner-label">Категория бизнеса рядом с экраном</div>
+          <select id="poi-category" style="width:100%; padding:9px 12px; border:1.5px solid #c4b5fd;
+              border-radius:10px; font-size:13px; color:#0b1220; background:#fff; outline:none; cursor:pointer;">
+            <option value="orgs.gas_station">АЗС</option>
+            <option value="orgs.food">Рестораны и кафе</option>
+            <option value="orgs.groceries">Продуктовые магазины</option>
+            <option value="orgs.mall">Торговые центры</option>
+            <option value="orgs.pharmacy">Аптеки</option>
+            <option value="orgs.beauty">Красота и уход</option>
+            <option value="orgs.banks_atms">Банки и банкоматы</option>
+            <option value="orgs.auto">Автосервисы</option>
+            <option value="orgs.health">Медицина</option>
+            <option value="orgs.sport">Спорт</option>
+            <option value="orgs.hotels">Гостиницы</option>
+            <option value="orgs.tech_stores">Техника и электроника</option>
+            <option value="orgs.clothes_and_accessories">Одежда и аксессуары</option>
+            <option value="orgs.furniture">Мебель</option>
+            <option value="orgs.alcohol">Алкоголь</option>
+            <option value="orgs.kindergarten">Детские сады</option>
+            <option value="orgs.apartment_complex">Жилые комплексы</option>
+            <option value="orgs.pets">Зоотовары</option>
+            <option value="orgs.flowers">Цветы</option>
+            <option value="orgs.jewelry">Ювелирные</option>
+            <option value="orgs.childrens_stores">Детские товары</option>
+            <option value="orgs.home">Товары для дома</option>
+            <option value="orgs.books_stationery">Книги и канцелярия</option>
+            <option value="orgs.optics">Оптика</option>
+            <option value="orgs.celebration">Праздники и услуги</option>
+            <option value="orgs.legal_services">Юридические услуги</option>
+            <option value="orgs.tabacco_and_vapes">Табак и вейпы</option>
+            <option value="orgs.hardware_stores_and_renovation">Строительство и ремонт</option>
+            <option value="orgs.orders_pickups_lockers">Пункты выдачи</option>
+            <option value="orgs.clothes_shoes_repair">Ремонт одежды и обуви</option>
+            <option value="orgs.tech_repairs">Ремонт техники</option>
+            <option value="orgs.photo_and_printing">Фото и печать</option>
+          </select>
+
+          <div class="planner-label" style="margin-top:14px;">Минимальная плотность POI</div>
+          <div id="poi-density-chips" style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+            <button type="button" class="poi-density-chip" data-val="1"
+              style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">1</button>
+            <button type="button" class="poi-density-chip" data-val="2"
+              style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">2</button>
+            <button type="button" class="poi-density-chip" data-val="3"
+              style="padding:6px 14px; border-radius:8px; border:1.5px solid #5B3EF5;
+                     background:#5B3EF5; color:#fff; font-size:13px; cursor:pointer; font-weight:600;">3</button>
+            <button type="button" class="poi-density-chip" data-val="4"
+              style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">4</button>
+            <button type="button" class="poi-density-chip" data-val="5"
+              style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">5</button>
+            <button type="button" class="poi-density-chip" data-val="6"
+              style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">6</button>
+          </div>
+          <div id="poi-density-note" style="font-size:12px; color:#667085; margin-top:5px;">
+            По шкале Яндекс ГеоАналитики: 1 — низкая, 6 — максимальная плотность
+          </div>
+
+          <input type="hidden" id="poi-selected-density" value="3">
+
+          <button id="poi-find-btn" type="button"
+            style="margin-top:16px; padding:11px 24px; background:#5B3EF5; color:#fff; border:none;
+                   border-radius:12px; font-size:14px; font-weight:700; cursor:pointer; width:100%;">
+            🔍 Найти экраны
+          </button>
+
+          <div id="poi-status" style="font-size:13px; color:#667085; margin-top:10px; min-height:20px;"></div>
+
+          <div id="poi-progress-wrap" style="display:none; margin-top:8px;">
+            <div style="height:6px; background:rgba(91,62,245,0.12); border-radius:3px; overflow:hidden;">
+              <div id="poi-progress-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:3px; transition:width 0.2s;"></div>
+            </div>
+            <div id="poi-progress-text" style="font-size:11px; color:#9b8aff; margin-top:4px;"></div>
+          </div>
         </div>
       </div>
 
@@ -1764,10 +1853,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (step === 4) window._plannerStep4Visited = true;
     _origSetStep(step);
     if (step === 4) {
-      // В GID-режиме скрываем всё лишнее — только кнопка «Рассчитать» + «Назад»
+      // В GID- и POI-режиме скрываем всё лишнее — только кнопка «Рассчитать» + «Назад»
       const gidsBlock = el("geo-gids-block");
+      const poiBlock2 = el("geo-poi-block");
       const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
-      const d = isGidMode ? "none" : "";
+      const isPoiMode = poiBlock2 && poiBlock2.style.display !== "none";
+      const d = (isGidMode || isPoiMode) ? "none" : "";
       [
         "step4-formats-block", "step4-strategy-block",
         "audience-block", "step4-map-zone-block", "step4-selection-block",
@@ -1808,9 +1899,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   el("wiz-next-1")?.addEventListener("click", () => {
     const gidsBlockEl = el("geo-gids-block");
-    const isGidMode = gidsBlockEl && gidsBlockEl.style.display !== "none";
+    const poiBlockEl  = el("geo-poi-block");
+    const isGidMode   = gidsBlockEl && gidsBlockEl.style.display !== "none";
+    const isPoiMode   = poiBlockEl  && poiBlockEl.style.display  !== "none";
     if (isGidMode) {
       if (!el("manual-gids")?.value?.trim()) return alert("Введите хотя бы один GID экрана.");
+    } else if (isPoiMode) {
+      if (!el("manual-gids")?.value?.trim()) return alert("Сначала нажмите «Найти экраны».");
     } else {
       const regions = window.PLANNER_UI.getSelectedRegionsArr();
       if(!regions.length) return alert("Выберите регион, чтобы продолжить.");
@@ -2081,9 +2176,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       (budgetMode === "goal_plays" && goalPlaysVal > 0);
 
     const gidsBlock = el("geo-gids-block");
+    const poiBlock  = el("geo-poi-block");
     const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
-    const gidsEntered = isGidMode && !!(el("manual-gids")?.value?.trim());
-    const step1 = isGidMode ? gidsEntered : !!regionsLabel;
+    const isPoiMode = poiBlock  && poiBlock.style.display  !== "none";
+    const gidsEntered = (isGidMode || isPoiMode) && !!(el("manual-gids")?.value?.trim());
+    const step1 = (isGidMode || isPoiMode) ? gidsEntered : !!regionsLabel;
     const step2 = !!(dates.start && dates.end);
     const step3 = !!budgetOk;
     const step4 = true; // форматы опциональны: нет выбора = все форматы
@@ -2200,33 +2297,35 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       });
     });
 
-    // ── Geo mode tabs (step 1): По городам / По GID ──────────────────────────
+    // ── Geo mode tabs (step 1): По городам / По GID / По POI ────────────────
     function setGeoMode(mode) {
       const citiesBlock = el("geo-cities-block");
       const gidsBlock   = el("geo-gids-block");
+      const poiBlock    = el("geo-poi-block");
       const tabCities   = el("geo-tab-cities");
       const tabGids     = el("geo-tab-gids");
+      const tabPoi      = el("geo-tab-poi");
       const selEl       = el("selection-mode");
 
-      const isGid = mode === "gids";
-      if (citiesBlock) citiesBlock.style.display = isGid ? "none" : "";
-      if (gidsBlock)   gidsBlock.style.display   = isGid ? ""     : "none";
+      const isGid     = mode === "gids";
+      const isPoi     = mode === "poi";
+      const isCities  = !isGid && !isPoi;
+
+      if (citiesBlock) citiesBlock.style.display = isCities ? "" : "none";
+      if (gidsBlock)   gidsBlock.style.display   = isGid    ? "" : "none";
+      if (poiBlock)    poiBlock.style.display     = isPoi    ? "" : "none";
 
       // Active tab style
-      if (tabCities) {
-        tabCities.style.background    = isGid ? "#faf8ff"  : "#5B3EF5";
-        tabCities.style.color         = isGid ? "#5B3EF5"  : "#fff";
-        tabCities.style.borderColor   = isGid ? "#e0d9fd"  : "#5B3EF5";
-      }
-      if (tabGids) {
-        tabGids.style.background    = isGid ? "#5B3EF5"  : "#faf8ff";
-        tabGids.style.color         = isGid ? "#fff"      : "#5B3EF5";
-        tabGids.style.borderColor   = isGid ? "#5B3EF5"  : "#e0d9fd";
-      }
+      const _activeTab   = { background: "#5B3EF5", color: "#fff",    borderColor: "#5B3EF5" };
+      const _inactiveTab = { background: "#faf8ff", color: "#5B3EF5", borderColor: "#e0d9fd" };
+      [[tabCities, isCities], [tabGids, isGid], [tabPoi, isPoi]].forEach(([tab, active]) => {
+        if (!tab) return;
+        Object.assign(tab.style, active ? _activeTab : _inactiveTab);
+      });
 
       // Sync selection-mode select
       if (selEl) {
-        selEl.value = isGid ? "manual_screens" : (selEl.value === "manual_screens" ? "city_even" : selEl.value);
+        selEl.value = (isGid || isPoi) ? "manual_screens" : (selEl.value === "manual_screens" ? "city_even" : selEl.value);
         selEl.dispatchEvent(new Event("change", { bubbles: true }));
       }
 
@@ -2301,6 +2400,138 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     el("geo-tab-cities")?.addEventListener("click", () => setGeoMode("cities"));
     el("geo-tab-gids")?.addEventListener("click",   () => setGeoMode("gids"));
+    el("geo-tab-poi")?.addEventListener("click",    () => setGeoMode("poi"));
+
+    // ── POI density chips ────────────────────────────────────────────────────
+    document.querySelectorAll(".poi-density-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".poi-density-chip").forEach(c => {
+          c.style.background = "#faf8ff"; c.style.color = "#5B3EF5"; c.style.borderColor = "#e0d9fd";
+        });
+        chip.style.background = "#5B3EF5"; chip.style.color = "#fff"; chip.style.borderColor = "#5B3EF5";
+        const hidden = el("poi-selected-density");
+        if (hidden) hidden.value = chip.dataset.val;
+      });
+    });
+
+    // ── POI screen finder ────────────────────────────────────────────────────
+    el("poi-find-btn")?.addEventListener("click", async () => {
+      const btn      = el("poi-find-btn");
+      const statusEl = el("poi-status");
+      const progWrap = el("poi-progress-wrap");
+      const progBar  = el("poi-progress-bar");
+      const progText = el("poi-progress-text");
+
+      const category = el("poi-category")?.value || "orgs.gas_station";
+      const minColor = Number(el("poi-selected-density")?.value || 3);
+
+      const screensAll = window.PLANNER?.state?.screensAll || [];
+      if (!screensAll.length) {
+        return (statusEl.textContent = "Инвентарь ещё загружается, подождите.");
+      }
+
+      btn.disabled = true;
+      btn.textContent = "Ищу экраны…";
+      statusEl.textContent = "";
+      if (progWrap) progWrap.style.display = "block";
+      if (progBar)  progBar.style.width = "0%";
+
+      try {
+        // Load h3-js once
+        if (!window.h3) {
+          statusEl.textContent = "Загружаю H3-библиотеку…";
+          await new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = "https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js";
+            s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+          });
+        }
+        const h3Lib = window.h3;
+
+        // Build unique tile list from screen coordinates (z=8)
+        const TILE_Z = 8;
+        const tileSet = new Set();
+        screensAll.forEach(s => {
+          const lat = Number(s.lat ?? s.latitude);
+          const lon = Number(s.lon ?? s.lng ?? s.longitude);
+          if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
+          const tx = Math.floor((lon + 180) / 360 * 256);
+          const ty = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * 256);
+          tileSet.add(tx + "," + ty);
+        });
+
+        const tiles = [...tileSet].map(k => { const [x,y] = k.split(",").map(Number); return {x,y}; });
+        statusEl.textContent = "Загружаю тайлы: 0 / " + tiles.length;
+
+        // Fetch tiles in batches, collect hot H3 cells
+        const hotCells = new Set();
+        const BATCH = 25;
+        let done = 0;
+
+        // Try to discover current version from page (fallback to known)
+        const GEO_VERSION = "2025-02-10T14%3A43%3A42Z";
+
+        for (let i = 0; i < tiles.length; i += BATCH) {
+          const batch = tiles.slice(i, i + BATCH);
+          const results = await Promise.all(batch.map(({x, y}) =>
+            fetch("/geoanalytics/platform/api/geoanalytics/layer/tile?version=" + GEO_VERSION +
+                  "&resolution=7&x=" + x + "&y=" + y + "&z=" + TILE_Z + "&layer=" + category)
+              .then(r => r.ok ? r.json() : null)
+              .catch(() => null)
+          ));
+          results.forEach(data => {
+            if (!data?.data?.items) return;
+            data.data.items.forEach(item => {
+              if (item.color >= minColor) hotCells.add(item.hex);
+            });
+          });
+          done += batch.length;
+          const pct = Math.round(done / tiles.length * 100);
+          if (progBar)  progBar.style.width = pct + "%";
+          if (progText) progText.textContent = done + " / " + tiles.length + " тайлов";
+          statusEl.textContent = "Загружаю тайлы: " + done + " / " + tiles.length;
+        }
+
+        // Match screens: compute H3 cell for each screen, check against hotCells
+        // API returns decimal strings, h3-js returns hex → convert hex→decimal via BigInt
+        const matchingGids = [];
+        const seenIds = new Set();
+        screensAll.forEach(s => {
+          const lat = Number(s.lat ?? s.latitude);
+          const lon = Number(s.lon ?? s.lng ?? s.longitude);
+          if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
+          try {
+            const hexCell = h3Lib.latLngToCell(lat, lon, 7);
+            const decCell = BigInt("0x" + hexCell).toString(10);
+            if (!hotCells.has(decCell)) return;
+          } catch(e) { return; }
+          const gid = (s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").toString().trim();
+          if (gid && !seenIds.has(gid)) { seenIds.add(gid); matchingGids.push(gid); }
+        });
+
+        if (progWrap) progWrap.style.display = "none";
+
+        if (!matchingGids.length) {
+          statusEl.textContent = "Не найдено экранов рядом с выбранной категорией. Попробуйте снизить плотность.";
+          statusEl.style.color = "#dc2626";
+        } else {
+          // Populate manual-gids textarea (reuse GID mode flow)
+          const ta = el("manual-gids");
+          if (ta) { ta.value = matchingGids.join("\n"); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+          statusEl.textContent = "Найдено экранов: " + matchingGids.length;
+          statusEl.style.color = "#5b3ef5";
+          renderProgress();
+        }
+      } catch(err) {
+        if (progWrap) progWrap.style.display = "none";
+        statusEl.textContent = "Ошибка: " + err.message;
+        statusEl.style.color = "#dc2626";
+      }
+
+      btn.disabled = false;
+      btn.textContent = "🔍 Найти экраны";
+    });
 
     // Schedule chips
     document.querySelectorAll('#schedule-chips .sch-chip').forEach(chip => {
