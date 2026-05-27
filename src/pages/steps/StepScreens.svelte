@@ -107,8 +107,16 @@
       const prev = i > 0 ? chars[i - 1] : null
       const next = i + 1 < chars.length ? chars[i + 1] : null
       if (c === 'е') {
-        // Simple е→e everywhere; ь/ъ before е already contributed 'y'
-        out.push('e')
+        // After ь/ъ: soft-sign already contributed 'y', just 'e'
+        // After consonant: 'ie' (confirmed: Премиум→priemium)
+        // After vowel / word start: 'e'
+        if (prev === 'ь' || prev === 'ъ') {
+          out.push('e')
+        } else if (!prev || prev === ' ' || prev === ',' || VOWELS.has(prev)) {
+          out.push('e')
+        } else {
+          out.push('ie')
+        }
       } else if (c === 'ь' || c === 'ъ') {
         // Soft/hard sign before е/ё/ю/я → contribute 'y'; otherwise silent
         if (next && SOFT_NEXT.has(next)) out.push('y')
