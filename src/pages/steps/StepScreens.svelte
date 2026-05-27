@@ -201,13 +201,22 @@
     try {
       const res = await api.dmp.list()
       const all = Array.isArray(res) ? res : (res?.content ?? [])
-      let list
+      console.log('[PC] /clients/dmp entries:', JSON.stringify(all.map(d => ({id:d.id,name:d.name,active:d.active,connected:d.connected,status:d.status}))).substring(0, 600))
+      let list = []
       if (agencyDmpNames?.size > 0) {
-        // Match by name (case-insensitive) — connection ids ≠ DMP system ids
+        // 1st pass: exact name match (case-insensitive)
         list = all.filter(d => agencyDmpNames.has((d.name ?? '').toLowerCase().trim()))
+        // 2nd pass: substring match — handles "VK" vs "VK Рекламная сеть" or vice versa
+        if (list.length === 0) {
+          list = all.filter(d => {
+            const dName = (d.name ?? '').toLowerCase()
+            return [...agencyDmpNames].some(n => dName.includes(n) || n.includes(dName))
+          })
+        }
         console.log('[PC] DMPs filtered by agency name:', JSON.stringify(list).substring(0, 300))
-      } else {
-        // Fallback: show explicitly active/connected DMPs
+      }
+      // Final fallback: any active/connected DMP
+      if (list.length === 0) {
         list = all.filter(d => d.active === true || d.connected === true || d.status === 'CONNECTED')
         console.log('[PC] DMPs (active/connected fallback):', JSON.stringify(list).substring(0, 300))
       }
@@ -222,7 +231,10 @@
     // 4. Fallback: possibleDmpSegments — inspect first segment for a connection/dmp id
     if (pcDmpId == null) {
       try {
-        const payload = draft.id ? { campaignId: draft.id } : {}
+        const payload = {
+          inventories: screens.map(s => s.id),
+          ...(draft.id ? { campaignId: draft.id } : {}),
+        }
         const res = await api.campaigns.possibleDmpSegments(payload)
         const segs = Array.isArray(res) ? res : (res?.content ?? res?.data ?? [])
         console.log('[PC] possibleDmpSegments first seg keys:', segs.length > 0 ? Object.keys(segs[0]) : 'empty', JSON.stringify(segs[0] ?? {}).substring(0, 300))
