@@ -86,10 +86,14 @@
   let pcDmpConnections = []
   let pcDmpLoaded = false
 
-  // Transliterate Russian display name → interest slug (GOST 7.79-2000 system B).
-  // е after a consonant → "ie" (confirmed from prod capture: "Премиум" → "priemium")
+  // Transliterate Russian display name → interest slug.
+  // Rules confirmed from prod:
+  //   е after consonant → "ie"  (Премиум → priemium)
+  //   ь/ъ before е/ё/ю/я → "y" (soft-sign contributes y: здоровье → zdorovye)
+  //   е after ь/ъ → "e" (the y already came from the soft sign)
   function _pcTranslit(str) {
-    const VOWELS = new Set('аеёиоуыэюя')
+    const VOWELS    = new Set('аеёиоуыэюя')
+    const SOFT_NEXT = new Set('еёюя')       // soft/hard sign contributes 'y' before these
     const MAP = {
       'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z',
       'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
@@ -99,10 +103,23 @@
     const chars = str.toLowerCase().split('')
     const out = []
     for (let i = 0; i < chars.length; i++) {
-      const c = chars[i]
+      const c    = chars[i]
+      const prev = i > 0 ? chars[i - 1] : null
+      const next = i + 1 < chars.length ? chars[i + 1] : null
       if (c === 'е') {
-        const prev = i > 0 ? chars[i - 1] : null
-        out.push(!prev || prev === ' ' || prev === ',' || VOWELS.has(prev) ? 'e' : 'ie')
+        // After ь/ъ: the soft sign already contributed 'y', just add 'e'
+        if (prev === 'ь' || prev === 'ъ') {
+          out.push('e')
+        // After consonant: ie
+        } else if (!prev || prev === ' ' || prev === ',' || VOWELS.has(prev)) {
+          out.push('e')
+        } else {
+          out.push('ie')
+        }
+      } else if (c === 'ь' || c === 'ъ') {
+        // Soft/hard sign before е/ё/ю/я → contribute 'y'; otherwise silent
+        if (next && SOFT_NEXT.has(next)) out.push('y')
+        // else: strip (empty)
       } else if (c === ' ' || c === ',') {
         out.push('_')
       } else if (MAP[c] !== undefined) {
@@ -445,46 +462,35 @@
       // Generate client-side UUID as required by PreCampaignApiRequest schema
       const clientRequestId = crypto.randomUUID()
       const payload = {
-        requestId:     clientRequestId,
-        cities:        (draft.cityIds ?? []).map(id => ({ id, zipCodes: [] })),
-        inventories:   screens.map(s => s.id),
-        segmentation:  slugs,
-        unionSegments: false,
+        requestId:    clientRequestId,
+        cities:       (draft.cityIds ?? []).map(id => ({ id, zipCodes: [] })),
+        inventories:  screens.map(s => s.id),
+        segmentation: slugs,
       }
       if (pcDmpId != null) payload.dmpId = pcDmpId
       console.log('[PC] payload:', JSON.stringify({ ...payload, inventories: `[${payload.inventories.length} ids]` }))
 
-      // pre-campaign-data returns scored inventories; retry with empty segmentation on 400
-      let res1
-      try {
-        res1 = await api.campaigns.preCampaignData(payload)
-      } catch (e1) {
-        if (e1?.status === 400 && slugs.length > 0) {
-          console.warn('[PC] 400 with segmentation, retrying without interest filter')
-          const fallback = { ...payload, requestId: crypto.randomUUID(), segmentation: [] }
-          res1 = await api.campaigns.preCampaignData(fallback)
-        } else {
-          throw e1
-        }
-      }
+      const res1 = await api.campaigns.preCampaignData(payload)
       console.log('[PC] res1 isArray:', Array.isArray(res1), 'type:', typeof res1,
         'keys:', (!Array.isArray(res1) && res1) ? Object.keys(res1) : '-',
         'length:', Array.isArray(res1) ? res1.length : '-')
       console.log('[PC] res1 first item:', JSON.stringify(Array.isArray(res1) ? res1[0] : res1))
 
-      // Normalise to flat list of scored items — handle all known wrapper shapes:
-      // flat array / { data:[...] } / { content:[...] } / { inventories:[...] }
-      // or city-grouped: [ { inventories:[...] }, ... ]
-      let items = Array.isArray(res1) ? res1
+      // Normalise to flat list of scored items.
+      // Known shapes:
+      //   flat array:                          [{inventory:{id},score},...]
+      //   PreCampaignGroupedByCity wrapper:    {"data":[{city:{},inventories:[...]},...],"status":"READY"}
+      //   other wrappers:                      {content:[...]} / {inventories:[...]}
+      let raw = Array.isArray(res1) ? res1
         : Array.isArray(res1?.data)        ? res1.data
         : Array.isArray(res1?.content)     ? res1.content
         : Array.isArray(res1?.inventories) ? res1.inventories
         : []
 
-      // If items look like city groups ({inventories:[...]}) flatten them
-      if (items.length > 0 && Array.isArray(items[0]?.inventories)) {
-        items = items.flatMap(g => g.inventories ?? [])
-      }
+      // Flatten city groups: [{city:{},inventories:[...]},...] → flat items
+      let items = (raw.length > 0 && Array.isArray(raw[0]?.inventories))
+        ? raw.flatMap(g => g.inventories ?? [])
+        : raw
 
       console.log('[PC] items count:', items.length, 'first:', JSON.stringify(items[0]))
 
