@@ -22,9 +22,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   }
 
   function runScript(code) {
-    const s = document.createElement("script");
-    s.textContent = code;
-    document.body.appendChild(s);
+    // Use new Function() instead of script element:
+    // DOM appendChild re-parses via HTML script loader which rejects some
+    // Unicode chars in comments/strings that V8 eval accepts fine.
+    (new Function(code))();
   }
 
   // 1. Inject external CSS
@@ -941,8 +942,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js");
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
-  await loadScript("/planner/geo.js");
-  await loadScript("/planner/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a2ebdc1/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -976,101 +977,145 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
     <!-- STEP 1 -->
     <div class="wiz-step active" id="wiz-step-1">
-      <div class="planner-block">
-        <div class="planner-label">Регион</div>
-        <div class="region-field" id="region-field">
-          <input id="city-search" type="text" placeholder="Загружаю список регионов…" class="ux-input" disabled autocomplete="off" />
-          <span class="region-spinner" id="region-spinner" aria-hidden="true"></span>
-          <div class="region-overlay" id="region-overlay">
-            <div class="region-overlay-inner">
-              <span class="region-overlay-spinner" aria-hidden="true"></span>
-              <span>Загружаю регионы…</span>
-            </div>
-          </div>
-        </div>
-        <div id="city-suggestions" class="city-suggestions"></div>
-        <div id="city-selected" class="city-selected"></div>
-        <!-- City import + select all -->
-        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <label style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
-                 border:1.5px dashed #c4b5fd; border-radius:10px; background:#faf8ff;
-                 color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:500;">
-            ↓ Импорт городов из файла
-            <input type="file" id="region-file-input" accept=".xlsx,.csv,.txt" style="display:none;">
-          </label>
-          <button type="button" id="regions-paste-btn"
-            style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
-                   background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
-            📋 Вставить список
-          </button>
-          <button type="button" id="regions-select-all"
-            style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
-                   background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
-            Выбрать все
-          </button>
-        </div>
-        <!-- Paste area (скрыт до клика на кнопку) -->
-        <div id="regions-paste-wrap" style="display:none; margin-top:8px;">
-          <textarea id="regions-paste-area"
-            placeholder="Москва&#10;Санкт-Петербург&#10;Екатеринбург&#10;или через запятую: Москва, Казань, Уфа"
-            style="width:100%; height:90px; padding:8px 10px; border:1.5px solid #c4b5fd;
-                   border-radius:10px; font-size:13px; color:#0b1220; resize:vertical;
-                   font-family:inherit; box-sizing:border-box; outline:none;"></textarea>
-          <div style="display:flex; gap:8px; margin-top:6px;">
-            <button type="button" id="regions-paste-go"
-              style="padding:7px 18px; background:#5B3EF5; color:#fff; border:none;
-                     border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;">
-              Добавить
-            </button>
-            <button type="button" id="regions-paste-cancel"
-              style="padding:7px 14px; background:#f3f4f6; color:#374151; border:none;
-                     border-radius:10px; font-size:13px; cursor:pointer;">
-              Отмена
-            </button>
-          </div>
-        </div>
-        <div id="region-import-status" style="margin-top:6px; font-size:12px; color:#667085; display:none;"></div>
-        <div class="planner-note">
-          Под "регион" у нас попадают: крупные города (как отдельные), МО/ЛО (областью) и т.д.
-        </div>
-      </div>
-      <div id="region-selected" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
-      <!-- Only-active-bids toggle -->
-      <div style="margin-top:12px; display:flex; align-items:center; gap:8px;">
-        <label class="ux-toggle-label" for="only-active-bids" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151;font-weight:500;">
-          <span class="ux-toggle-track">
-            <input type="checkbox" id="only-active-bids" class="ux-toggle-input">
-            <span class="ux-toggle-thumb"></span>
-          </span>
-          Только активные
-        </label>
-        <span style="font-size:12px;color:#9ca3af;">экраны с известной ставкой</span>
+      <!-- Geo mode tabs -->
+      <div id="geo-mode-tabs" style="display:flex; gap:8px; margin-bottom:14px;">
+        <button type="button" id="geo-tab-cities"
+          style="flex:1; padding:9px 14px; border-radius:10px; border:1.5px solid #5B3EF5;
+                 background:#5B3EF5; color:#fff; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s;">
+          🗺 Выбрать города
+        </button>
+        <button type="button" id="geo-tab-gids"
+          style="flex:1; padding:9px 14px; border-radius:10px; border:1.5px solid #e0d9fd;
+                 background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s;">
+          📋 По GID-списку
+        </button>
       </div>
 
-      <!-- Pool mini badge (step 1) -->
-      <div id="pool-mini-badge" style="display:none; margin-top:10px; padding:10px 14px;
-           background:#f4f1ff; border-radius:10px; font-size:13px; color:#5b3ef5;
-           align-items:center; gap:8px; flex-wrap:wrap;">
-        <span style="font-size:16px;">📺</span>
-        <span>Доступно экранов: <strong id="pool-mini-count" style="font-size:16px; font-weight:700;"></strong></span>
-        <span id="pool-mini-filters" style="font-size:12px; color:#9b8aff; margin-left:2px;"></span>
-      </div>
-      <button id="regions-clear" type="button"
-        style="margin-top:10px; display:none; padding:8px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;">
-        Очистить регионы
-      </button>
-      <!-- DSP loading progress (shown only while inventory loads) -->
-      <div id="dsp-load-progress" style="display:none; margin-top:12px;
-           padding:10px 14px; background:#F4F1FF; border-radius:10px; font-size:13px; color:#5B3EF5;">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div style="width:16px; height:16px; border:2px solid #5B3EF5; border-top-color:transparent;
-               border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
-          <span id="dsp-load-status-text">Загружаю инвентарь…</span>
+      <!-- CITIES block -->
+      <div id="geo-cities-block">
+        <div class="planner-block">
+          <div class="planner-label">Регион</div>
+          <div class="region-field" id="region-field">
+            <input id="city-search" type="text" placeholder="Загружаю список регионов…" class="ux-input" disabled autocomplete="off" />
+            <span class="region-spinner" id="region-spinner" aria-hidden="true"></span>
+            <div class="region-overlay" id="region-overlay">
+              <div class="region-overlay-inner">
+                <span class="region-overlay-spinner" aria-hidden="true"></span>
+                <span>Загружаю регионы…</span>
+              </div>
+            </div>
+          </div>
+          <div id="city-suggestions" class="city-suggestions"></div>
+          <div id="city-selected" class="city-selected"></div>
+          <!-- City import + select all -->
+          <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <label style="display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
+                   border:1.5px dashed #c4b5fd; border-radius:10px; background:#faf8ff;
+                   color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:500;">
+              ↓ Импорт городов из файла
+              <input type="file" id="region-file-input" accept=".xlsx,.csv,.txt" style="display:none;">
+            </label>
+            <button type="button" id="regions-paste-btn"
+              style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
+              📋 Вставить список
+            </button>
+            <button type="button" id="regions-select-all"
+              style="padding:7px 14px; border:1.5px dashed #c4b5fd; border-radius:10px;
+                     background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:500; cursor:pointer;">
+              Выбрать все
+            </button>
+          </div>
+          <!-- Paste area (скрыт до клика на кнопку) -->
+          <div id="regions-paste-wrap" style="display:none; margin-top:8px;">
+            <textarea id="regions-paste-area"
+              placeholder="Москва&#10;Санкт-Петербург&#10;Екатеринбург&#10;или через запятую: Москва, Казань, Уфа"
+              style="width:100%; height:90px; padding:8px 10px; border:1.5px solid #c4b5fd;
+                     border-radius:10px; font-size:13px; color:#0b1220; resize:vertical;
+                     font-family:inherit; box-sizing:border-box; outline:none;"></textarea>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+              <button type="button" id="regions-paste-go"
+                style="padding:7px 18px; background:#5B3EF5; color:#fff; border:none;
+                       border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;">
+                Добавить
+              </button>
+              <button type="button" id="regions-paste-cancel"
+                style="padding:7px 14px; background:#f3f4f6; color:#374151; border:none;
+                       border-radius:10px; font-size:13px; cursor:pointer;">
+                Отмена
+              </button>
+            </div>
+          </div>
+          <div id="region-import-status" style="margin-top:6px; font-size:12px; color:#667085; display:none;"></div>
+          <div class="planner-note">
+            Под "регион" у нас попадают: крупные города (как отдельные), МО/ЛО (областью) и т.д.
+          </div>
         </div>
-        <div style="margin-top:8px; height:4px; background:rgba(91,62,245,0.15); border-radius:2px; overflow:hidden;">
-          <div id="dsp-load-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:2px; transition:width 0.3s;"></div>
+        <div id="region-selected" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
+        <!-- Only-active-bids toggle -->
+        <div style="margin-top:12px; display:flex; align-items:center; gap:8px;">
+          <label class="ux-toggle-label" for="only-active-bids" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#374151;font-weight:500;">
+            <span class="ux-toggle-track">
+              <input type="checkbox" id="only-active-bids" class="ux-toggle-input">
+              <span class="ux-toggle-thumb"></span>
+            </span>
+            Только активные
+          </label>
+          <span style="font-size:12px;color:#9ca3af;">экраны с известной ставкой</span>
+        </div>
+        <!-- Pool mini badge (step 1) -->
+        <div id="pool-mini-badge" style="display:none; margin-top:10px; padding:10px 14px;
+             background:#f4f1ff; border-radius:10px; font-size:13px; color:#5b3ef5;
+             align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:16px;">📺</span>
+          <span>Доступно экранов: <strong id="pool-mini-count" style="font-size:16px; font-weight:700;"></strong></span>
+          <span id="pool-mini-filters" style="font-size:12px; color:#9b8aff; margin-left:2px;"></span>
+        </div>
+        <button id="regions-clear" type="button"
+          style="margin-top:10px; display:none; padding:8px 12px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer;">
+          Очистить регионы
+        </button>
+        <!-- DSP loading progress (shown only while inventory loads) -->
+        <div id="dsp-load-progress" style="display:none; margin-top:12px;
+             padding:10px 14px; background:#F4F1FF; border-radius:10px; font-size:13px; color:#5B3EF5;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="width:16px; height:16px; border:2px solid #5B3EF5; border-top-color:transparent;
+                 border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
+            <span id="dsp-load-status-text">Загружаю инвентарь…</span>
+          </div>
+          <div style="margin-top:8px; height:4px; background:rgba(91,62,245,0.15); border-radius:2px; overflow:hidden;">
+            <div id="dsp-load-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:2px; transition:width 0.3s;"></div>
+          </div>
         </div>
       </div>
+
+      <!-- GID block (initially hidden) -->
+      <div id="geo-gids-block" style="display:none;">
+        <div class="planner-block">
+          <div class="planner-label">Список GID-ов экранов</div>
+          <textarea id="manual-gids"
+            placeholder="Вставьте GID-ы экранов — по одному на строку или через запятую/пробел/таб.&#10;&#10;Пример:&#10;GID-12345&#10;GID-67890, GID-11111"
+            style="width:100%; height:160px; padding:10px; border:1.5px solid #c4b5fd; border-radius:10px;
+                   font-size:13px; resize:vertical; box-sizing:border-box; font-family:monospace; outline:none;"></textarea>
+          <div id="manual-gids-status" style="font-size:12px; color:#667085; margin-top:6px;">
+            Введите GID-ы — после расчёта будут использованы только эти экраны.
+          </div>
+          <!-- Прогресс загрузки инвентаря в GID-режиме -->
+          <div id="gid-inventory-progress" style="display:none; margin-top:8px; padding:8px 12px;
+               background:#f4f1ff; border-radius:8px; font-size:12px; color:#5b3ef5;
+               display:flex; align-items:center; gap:8px;">
+            <div style="width:12px; height:12px; border:2px solid #5B3EF5; border-top-color:transparent;
+                 border-radius:50%; animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
+            <span id="gid-inventory-progress-text">Загружаю инвентарь…</span>
+          </div>
+          <button id="manual-gids-download-unmatched" type="button" style="display:none; margin-top:8px;
+            padding:6px 14px; background:#fff3cd; border:1px solid #ffc107; border-radius:8px;
+            font-size:12px; color:#856404; cursor:pointer; font-weight:600;">
+            ↓ Скачать не найденные GID-ы
+          </button>
+        </div>
+      </div>
+
       <div class="wiz-nav">
         <button type="button" class="wiz-btn" id="wiz-next-1">Дальше</button>
       </div>
@@ -1265,7 +1310,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <!-- STEP 4 -->
 <div class="wiz-step" id="wiz-step-4">
   <!-- Форматы -->
-  <div class="planner-block">
+  <div class="planner-block" id="step4-formats-block">
     <div class="planner-label">Форматы</div>
     <div class="fmt-toolbar" id="formats-presets">
       <button type="button" class="fmt-pill" data-preset="all">Все</button>
@@ -1282,7 +1327,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <!-- Стратегия подбора -->
-  <div class="planner-block reach-mode-block">
+  <div class="planner-block reach-mode-block" id="step4-strategy-block">
     <div class="planner-label">Стратегия подбора</div>
     <div class="strategy-chips">
       <label class="str-chip">
@@ -1355,7 +1400,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <!-- Режим ставки -->
-  <div class="planner-block">
+  <div class="planner-block" id="step4-bid-mode-block">
     <div class="planner-label">Режим ставки</div>
     <div class="strategy-chips">
       <label class="str-chip">
@@ -1410,7 +1455,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       </div>
     </div>
   <!-- Зона на карте (перед "Как собираем") -->
-  <div class="planner-block">
+  <div class="planner-block" id="step4-map-zone-block">
     <div class="planner-label">Зона на карте</div>
     <div id="poly-badge" style="display:none; align-items:center; gap:8px; margin-bottom:8px;
          padding:8px 12px; background:#EDE9FD; border-radius:8px; font-size:13px; color:#3a2bb5;">
@@ -1427,7 +1472,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <!-- Как собираем программу -->
-  <div class="planner-block">
+  <div class="planner-block" id="step4-selection-block">
     <div class="planner-label">Как собираем программу</div>
     <div class="sel-chips" id="selection-mode-chips">
       <button type="button" class="sel-chip active" data-mode="city_even">
@@ -1445,8 +1490,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <button type="button" class="sel-chip" data-mode="route">
         <span class="sel-chip-ico">🚗</span><span>Маршрут</span>
       </button>
-      <button type="button" class="sel-chip" data-mode="manual_screens">
-        <span class="sel-chip-ico">📋</span><span>По GID</span>
+      <button type="button" class="sel-chip" data-mode="yandex_geo">
+        <span class="sel-chip-ico">🗺</span><span>Яндекс Геоаналитика</span>
       </button>
     </div>
     <select id="selection-mode" style="display:none;">
@@ -1455,10 +1500,93 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <option value="near_address">Рядом с адресом</option>
       <option value="highway">Вдоль магистрали / шоссе</option>
       <option value="route">Вдоль маршрута</option>
-      <option value="manual_screens">Конкретные экраны (по GID)</option>
+      <option value="manual_screens">По GID-списку</option>
+      <option value="yandex_geo">Яндекс Геоаналитика</option>
     </select>
     <div id="selection-extra" style="margin-top:10px;"></div>
   </div>
+  <!-- Яндекс Геоаналитика block (initially hidden) -->
+  <div id="geo-poi-block" class="planner-block" style="display:none;">
+    <div class="planner-label">Категория бизнеса рядом с экраном</div>
+    <select id="poi-category" style="width:100%; padding:9px 12px; border:1.5px solid #c4b5fd;
+        border-radius:10px; font-size:13px; color:#0b1220; background:#fff; outline:none; cursor:pointer;">
+      <option value="orgs.gas_station">АЗС</option>
+      <option value="orgs.food">Рестораны и кафе</option>
+      <option value="orgs.groceries">Продуктовые магазины</option>
+      <option value="orgs.mall">Торговые центры</option>
+      <option value="orgs.pharmacy">Аптеки</option>
+      <option value="orgs.beauty">Красота и уход</option>
+      <option value="orgs.banks_atms">Банки и банкоматы</option>
+      <option value="orgs.auto">Автосервисы</option>
+      <option value="orgs.health">Медицина</option>
+      <option value="orgs.sport">Спорт</option>
+      <option value="orgs.hotels">Гостиницы</option>
+      <option value="orgs.tech_stores">Техника и электроника</option>
+      <option value="orgs.clothes_and_accessories">Одежда и аксессуары</option>
+      <option value="orgs.furniture">Мебель</option>
+      <option value="orgs.alcohol">Алкоголь</option>
+      <option value="orgs.kindergarten">Детские сады</option>
+      <option value="orgs.apartment_complex">Жилые комплексы</option>
+      <option value="orgs.pets">Зоотовары</option>
+      <option value="orgs.flowers">Цветы</option>
+      <option value="orgs.jewelry">Ювелирные</option>
+      <option value="orgs.childrens_stores">Детские товары</option>
+      <option value="orgs.home">Товары для дома</option>
+      <option value="orgs.books_stationery">Книги и канцелярия</option>
+      <option value="orgs.optics">Оптика</option>
+      <option value="orgs.celebration">Праздники и услуги</option>
+      <option value="orgs.legal_services">Юридические услуги</option>
+      <option value="orgs.tabacco_and_vapes">Табак и вейпы</option>
+      <option value="orgs.hardware_stores_and_renovation">Строительство и ремонт</option>
+      <option value="orgs.orders_pickups_lockers">Пункты выдачи</option>
+      <option value="orgs.clothes_shoes_repair">Ремонт одежды и обуви</option>
+      <option value="orgs.tech_repairs">Ремонт техники</option>
+      <option value="orgs.photo_and_printing">Фото и печать</option>
+    </select>
+
+    <div class="planner-label" style="margin-top:14px;">Минимальная плотность POI</div>
+    <div id="poi-density-chips" style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+      <button type="button" class="poi-density-chip" data-val="1"
+        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">1</button>
+      <button type="button" class="poi-density-chip" data-val="2"
+        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">2</button>
+      <button type="button" class="poi-density-chip" data-val="3"
+        style="padding:6px 14px; border-radius:8px; border:1.5px solid #5B3EF5;
+               background:#5B3EF5; color:#fff; font-size:13px; cursor:pointer; font-weight:600;">3</button>
+      <button type="button" class="poi-density-chip" data-val="4"
+        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">4</button>
+      <button type="button" class="poi-density-chip" data-val="5"
+        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">5</button>
+      <button type="button" class="poi-density-chip" data-val="6"
+        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
+               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">6</button>
+    </div>
+    <div id="poi-density-note" style="font-size:12px; color:#667085; margin-top:5px;">
+      По шкале Яндекс ГеоАналитики: 1 — низкая, 6 — максимальная плотность
+    </div>
+
+    <input type="hidden" id="poi-selected-density" value="3">
+
+    <button id="poi-find-btn" type="button"
+      style="margin-top:16px; padding:11px 24px; background:#5B3EF5; color:#fff; border:none;
+             border-radius:12px; font-size:14px; font-weight:700; cursor:pointer; width:100%;">
+      🔍 Найти экраны
+    </button>
+
+    <div id="poi-status" style="font-size:13px; color:#667085; margin-top:10px; min-height:20px;"></div>
+
+    <div id="poi-progress-wrap" style="display:none; margin-top:8px;">
+      <div style="height:6px; background:rgba(91,62,245,0.12); border-radius:3px; overflow:hidden;">
+        <div id="poi-progress-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:3px; transition:width 0.2s;"></div>
+      </div>
+      <div id="poi-progress-text" style="font-size:11px; color:#9b8aff; margin-top:4px;"></div>
+    </div>
+  </div>
+  <!-- /Яндекс Геоаналитика block -->
   <!-- ===== ПРЕВЬЮ ПУЛА ===== -->
   <div class="planner-block pool-preview-block" id="pool-preview-block">
     <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:6px;">
@@ -1692,7 +1820,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   function el(id){ return document.getElementById(id); }
 
   function setStep(step){
-    // Используем и class, и inline style — чтобы CSS Tilda не перебивал display
+    // Используем и class, и inline style -- чтобы CSS Tilda не перебивал display
     document.querySelectorAll("#planner-widget .wiz-step").forEach(s => {
       s.classList.remove("active");
       s.style.display = "none";
@@ -1717,11 +1845,28 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Делаем setStep доступным глобально
   window.setStep = setStep;
 
-  // Отмечаем посещение шага 4 — чтобы чип не был зелёным до первого визита
+  // Отмечаем посещение шага 4 -- чтобы чип не был зелёным до первого визита
   const _origSetStep = setStep;
   window.setStep = function(step) {
     if (step === 4) window._plannerStep4Visited = true;
     _origSetStep(step);
+    if (step === 4) {
+      // В GID-режиме скрываем лишнее -- только кнопка "Рассчитать" + "Назад"
+      const gidsBlock = el("geo-gids-block");
+      const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
+      const d = isGidMode ? "none" : "";
+      [
+        "step4-formats-block", "step4-strategy-block",
+        "audience-block", "step4-map-zone-block", "step4-selection-block",
+        "pool-preview-block"
+      ].forEach(id => { const n = el(id); if (n) n.style.display = d; });
+      document.querySelectorAll("#wiz-step-4 .additional-filters-divider").forEach(n => n.style.display = d);
+      // Операторы и GRP по label (у них нет ID)
+      document.querySelectorAll("#wiz-step-4 .planner-block").forEach(block => {
+        const lbl = block.querySelector(".planner-label")?.textContent?.trim() || "";
+        if (lbl === "Операторы" || lbl === "GRP") block.style.display = d;
+      });
+    }
     if (typeof window.renderProgress === "function") window.renderProgress();
   };
 
@@ -1731,7 +1876,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     return !!(s && e);
   }
 
-  // Используем делегирование событий — работает даже после перерисовки
+  // Используем делегирование событий -- работает даже после перерисовки
   document.getElementById("wiz-steps")?.addEventListener("click", e => {
     const chip = e.target.closest(".wiz-chip");
     if (chip) window.setStep(Number(chip.dataset.step || 1));
@@ -1749,8 +1894,14 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   setInterval(updateNext1Btn, 1000);
 
   el("wiz-next-1")?.addEventListener("click", () => {
-    const regions = window.PLANNER_UI.getSelectedRegionsArr();
-    if(!regions.length) return alert("Выберите регион, чтобы продолжить.");
+    const gidsBlockEl = el("geo-gids-block");
+    const isGidMode   = gidsBlockEl && gidsBlockEl.style.display !== "none";
+    if (isGidMode) {
+      if (!el("manual-gids")?.value?.trim()) return alert("Введите хотя бы один GID экрана.");
+    } else {
+      const regions = window.PLANNER_UI.getSelectedRegionsArr();
+      if(!regions.length) return alert("Выберите регион, чтобы продолжить.");
+    }
     if(window.DSP_AUTH_ENABLED && !window.PLANNER?.state?.dspInventoryWarmupDone){
       return alert("Инвентарь ещё загружается, подождите немного.");
     }
@@ -1784,7 +1935,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     return document.querySelector('input[name="budget_mode"]:checked')?.value || "fixed";
   }
   function getScheduleType(){
-  // если включен рваный график — считаем это главным режимом расписания
+  // если включен рваный график -- считаем это главным режимом расписания
   const weeklyOn = !!document.getElementById("weekdays-enabled")?.checked;
   if(weeklyOn) return "weekly";
   return document.querySelector('input[name="schedule"]:checked')?.value || "all_day";
@@ -1844,7 +1995,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (statusEl) statusEl.style.display = "none";
     if (uiEl) uiEl.style.display = "block";
 
-    // Все чипы нейтральные — без цветового кодирования
+    // Все чипы нейтральные -- без цветового кодирования
     function chipColor() {
       return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#374151' };
     }
@@ -1876,7 +2027,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       </div>
     \`).join('');
 
-    // Интересы — collapsible accordion with search
+    // Интересы -- collapsible accordion with search
     const interestsHtml = interestCols.length ? \`
       <div style="margin-bottom:10px;">
         <button type="button" id="interests-toggle"
@@ -2016,7 +2167,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       (budgetMode === "goal_ots" && goalVal > 0) ||
       (budgetMode === "goal_plays" && goalPlaysVal > 0);
 
-    const step1 = !!regionsLabel;
+    const gidsBlock = el("geo-gids-block");
+    const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
+    const gidsEntered = isGidMode && !!(el("manual-gids")?.value?.trim());
+    const step1 = isGidMode ? gidsEntered : !!regionsLabel;
     const step2 = !!(dates.start && dates.end);
     const step3 = !!budgetOk;
     const step4 = true; // форматы опциональны: нет выбора = все форматы
@@ -2092,7 +2246,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           const reasons = [];
           const st = window.PLANNER?.state;
           const regions = Array.isArray(st?.selectedRegions) ? st.selectedRegions : [];
-          if(!regions.length) reasons.push("не выбран регион");
+          const _gidsBlockEl = el("geo-gids-block");
+          const _isGidModeNow = _gidsBlockEl && _gidsBlockEl.style.display !== "none";
+          if(!regions.length && !_isGidModeNow) reasons.push("не выбран регион");
+          if(_isGidModeNow && !el("manual-gids")?.value?.trim()) reasons.push("не введены GID-ы");
           if(!p.dates.start || !p.dates.end) reasons.push("не указаны даты");
           const mode = getBudgetMode();
           const bval = mode === "goal_ots" ? el("goal-ots")?.value : el("budget-input")?.value;
@@ -2125,9 +2282,251 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         document.querySelectorAll('#selection-mode-chips .sel-chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         const sel = el('selection-mode');
-        if (sel) { sel.value = chip.dataset.mode; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+        const mode = chip.dataset.mode;
+        // Show/hide Яндекс Геоаналитика block
+        const poiBlock = el('geo-poi-block');
+        if (poiBlock) poiBlock.style.display = (mode === 'yandex_geo') ? '' : 'none';
+        // For yandex_geo keep selection-mode as yandex_geo (planner will treat it as manual after POI finds screens)
+        if (sel) { sel.value = mode; sel.dispatchEvent(new Event('change', { bubbles: true })); }
         renderProgress();
       });
+    });
+
+    // -- Geo mode tabs (step 1): По городам / По GID --------------------------
+    function setGeoMode(mode) {
+      const citiesBlock = el("geo-cities-block");
+      const gidsBlock   = el("geo-gids-block");
+      const tabCities   = el("geo-tab-cities");
+      const tabGids     = el("geo-tab-gids");
+      const selEl       = el("selection-mode");
+
+      const isGid    = mode === "gids";
+      const isCities = !isGid;
+
+      if (citiesBlock) citiesBlock.style.display = isCities ? "" : "none";
+      if (gidsBlock)   gidsBlock.style.display   = isGid    ? "" : "none";
+
+      // Active tab style
+      const _activeTab   = { background: "#5B3EF5", color: "#fff",    borderColor: "#5B3EF5" };
+      const _inactiveTab = { background: "#faf8ff", color: "#5B3EF5", borderColor: "#e0d9fd" };
+      [[tabCities, isCities], [tabGids, isGid]].forEach(([tab, active]) => {
+        if (!tab) return;
+        Object.assign(tab.style, active ? _activeTab : _inactiveTab);
+      });
+
+      // Sync selection-mode select
+      if (selEl) {
+        selEl.value = isGid ? "manual_screens" : (selEl.value === "manual_screens" ? "city_even" : selEl.value);
+        selEl.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      // При переходе в GID-режим: показать прогресс загрузки инвентаря, если ещё не загружен
+      if (isGid && window.DSP_AUTH_ENABLED) {
+        const progressEl = el("gid-inventory-progress");
+        const progressText = el("gid-inventory-progress-text");
+        const planner = window.PLANNER;
+        const screensLoaded = (planner?.state?.screensAll?.length || planner?.state?.screens?.length || 0) > 0;
+        if (!screensLoaded && progressEl) {
+          progressEl.style.display = "flex";
+          if (progressText) progressText.textContent = "Загружаю инвентарь — подождите…";
+        } else if (progressEl) {
+          progressEl.style.display = "none";
+        }
+        // Hide progress when inventory finishes
+        window.addEventListener("planner:screens-ready", function _hideGidProgress() {
+          const p = el("gid-inventory-progress");
+          if (p) p.style.display = "none";
+          window.removeEventListener("planner:screens-ready", _hideGidProgress);
+        });
+      }
+
+      // Attach GID counter once
+      if (isGid) {
+        const ta = el("manual-gids");
+        const statusEl = el("manual-gids-status");
+        if (ta && statusEl && !ta.dataset.counterBound) {
+          ta.dataset.counterBound = "1";
+          function _runGidCounter() {
+            if (!window.PLANNER?._parseManualGids) return;
+            const ids = window.PLANNER._parseManualGids(ta.value);
+            if (!ids.size) {
+              statusEl.textContent = "Введите GID-ы — после расчёта будут использованы только эти экраны.";
+              statusEl.style.color = "#667085";
+            } else {
+              // Prefer screensAll (full inventory), fallback to filtered screens
+              const allScreens = window.PLANNER?.state?.screensAll?.length
+                ? window.PLANNER.state.screensAll
+                : (window.PLANNER?.state?.screens || []);
+              if (!allScreens.length) {
+                statusEl.textContent = ids.size + " GID-ов введено — инвентарь ещё загружается…";
+                statusEl.style.color = "#9ca3af";
+              } else {
+                // Deduplicate: one GID -> at most one match
+                const seenSids = new Set();
+                allScreens.forEach(s => {
+                  const sid = (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
+                  if (ids.has(sid)) seenSids.add(sid);
+                });
+                const matchedCount = seenSids.size;
+                statusEl.textContent = "Найдено в инвентаре: " + matchedCount + " из " + ids.size + " указанных GID-ов";
+                statusEl.style.color = matchedCount > 0 ? "#5b3ef5" : "#dc2626";
+              }
+            }
+            renderProgress();
+          }
+          ta.addEventListener("input", _runGidCounter);
+          // Re-run counter when inventory finishes loading
+          window.addEventListener("planner:screens-ready", () => {
+            const gidsBlockEl = el("geo-gids-block");
+            if (gidsBlockEl && gidsBlockEl.style.display !== "none" && ta.value.trim()) {
+              _runGidCounter();
+            }
+          });
+        }
+      }
+
+      renderProgress();
+    }
+    window.setGeoMode = setGeoMode;
+
+    el("geo-tab-cities")?.addEventListener("click", () => setGeoMode("cities"));
+    el("geo-tab-gids")?.addEventListener("click",   () => setGeoMode("gids"));
+
+    // -- POI density chips ----------------------------------------------------
+    document.querySelectorAll(".poi-density-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".poi-density-chip").forEach(c => {
+          c.style.background = "#faf8ff"; c.style.color = "#5B3EF5"; c.style.borderColor = "#e0d9fd";
+        });
+        chip.style.background = "#5B3EF5"; chip.style.color = "#fff"; chip.style.borderColor = "#5B3EF5";
+        const hidden = el("poi-selected-density");
+        if (hidden) hidden.value = chip.dataset.val;
+      });
+    });
+
+    // -- POI screen finder ----------------------------------------------------
+    el("poi-find-btn")?.addEventListener("click", async () => {
+      const btn      = el("poi-find-btn");
+      const statusEl = el("poi-status");
+      const progWrap = el("poi-progress-wrap");
+      const progBar  = el("poi-progress-bar");
+      const progText = el("poi-progress-text");
+
+      const category = el("poi-category")?.value || "orgs.gas_station";
+      const minColor = Number(el("poi-selected-density")?.value || 3);
+
+      const screensAll = window.PLANNER?.state?.screensAll || [];
+      if (!screensAll.length) {
+        return (statusEl.textContent = "Инвентарь ещё загружается, подождите.");
+      }
+
+      btn.disabled = true;
+      btn.textContent = "Ищу экраны…";
+      statusEl.textContent = "";
+      if (progWrap) progWrap.style.display = "block";
+      if (progBar)  progBar.style.width = "0%";
+
+      try {
+        // Load h3-js once
+        if (!window.h3) {
+          statusEl.textContent = "Загружаю H3-библиотеку…";
+          await new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = "https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js";
+            s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+          });
+        }
+        const h3Lib = window.h3;
+
+        // Build unique tile list from screen coordinates (z=8)
+        const TILE_Z = 8;
+        const tileSet = new Set();
+        screensAll.forEach(s => {
+          const lat = Number(s.lat ?? s.latitude);
+          const lon = Number(s.lon ?? s.lng ?? s.longitude);
+          if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
+          const tx = Math.floor((lon + 180) / 360 * 256);
+          const ty = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * 256);
+          tileSet.add(tx + "," + ty);
+        });
+
+        const tiles = [...tileSet].map(k => { const [x,y] = k.split(",").map(Number); return {x,y}; });
+        statusEl.textContent = "Загружаю тайлы: 0 / " + tiles.length;
+
+        // Fetch tiles in batches, collect hot H3 cells
+        const hotCells = new Set();
+        const BATCH = 25;
+        let done = 0;
+
+        // Try to discover current version from page (fallback to known)
+        const GEO_VERSION = "2025-02-10T14%3A43%3A42Z";
+
+        for (let i = 0; i < tiles.length; i += BATCH) {
+          const batch = tiles.slice(i, i + BATCH);
+          const results = await Promise.all(batch.map(({x, y}) =>
+            fetch("/geoanalytics/platform/api/geoanalytics/layer/tile?version=" + GEO_VERSION +
+                  "&resolution=7&x=" + x + "&y=" + y + "&z=" + TILE_Z + "&layer=" + category)
+              .then(r => r.ok ? r.json() : null)
+              .catch(() => null)
+          ));
+          results.forEach(data => {
+            if (!data?.data?.items) return;
+            data.data.items.forEach(item => {
+              if (item.color >= minColor) hotCells.add(item.hex);
+            });
+          });
+          done += batch.length;
+          const pct = Math.round(done / tiles.length * 100);
+          if (progBar)  progBar.style.width = pct + "%";
+          if (progText) progText.textContent = done + " / " + tiles.length + " тайлов";
+          statusEl.textContent = "Загружаю тайлы: " + done + " / " + tiles.length;
+        }
+
+        // Match screens: compute H3 cell for each screen, check against hotCells
+        // API returns decimal strings, h3-js returns hex -> convert hex->decimal via BigInt
+        const matchingGids = [];
+        const seenIds = new Set();
+        screensAll.forEach(s => {
+          const lat = Number(s.lat ?? s.latitude);
+          const lon = Number(s.lon ?? s.lng ?? s.longitude);
+          if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
+          try {
+            const hexCell = h3Lib.latLngToCell(lat, lon, 7);
+            const decCell = BigInt("0x" + hexCell).toString(10);
+            if (!hotCells.has(decCell)) return;
+          } catch(e) { return; }
+          const gid = (s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").toString().trim();
+          if (gid && !seenIds.has(gid)) { seenIds.add(gid); matchingGids.push(gid); }
+        });
+
+        if (progWrap) progWrap.style.display = "none";
+
+        if (!matchingGids.length) {
+          statusEl.textContent = "Не найдено экранов рядом с выбранной категорией. Попробуйте снизить плотность.";
+          statusEl.style.color = "#dc2626";
+        } else {
+          // Populate manual-gids textarea (reuse GID mode flow)
+          const ta = el("manual-gids");
+          if (ta) { ta.value = matchingGids.join("\n"); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+          // Switch selection-mode to manual_screens so planner picks these GIDs
+          const selEl = el("selection-mode");
+          if (selEl && selEl.value === "yandex_geo") {
+            selEl.value = "manual_screens";
+            selEl.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          statusEl.textContent = "Найдено экранов: " + matchingGids.length + " — нажмите «Рассчитать»";
+          statusEl.style.color = "#5b3ef5";
+          renderProgress();
+        }
+      } catch(err) {
+        if (progWrap) progWrap.style.display = "none";
+        statusEl.textContent = "Ошибка: " + err.message;
+        statusEl.style.color = "#dc2626";
+      }
+
+      btn.disabled = false;
+      btn.textContent = "🔍 Найти экраны";
     });
 
     // Schedule chips
@@ -2229,10 +2628,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if (!enabled?.checked) { el("per-city-budget-wrap").style.display = "none"; return; }
       el("per-city-budget-wrap").style.display = "block";
       el("budget-distrib-note").style.display = "none";
-      // In % mode keep budget-input visible — it holds the total ₽ the percentages apply to.
-      // In ₽ absolute mode hide it — the sum of per-city fields is the total.
+      // In % mode keep budget-input visible -- it holds the total RUB the percentages apply to.
+      // In RUB absolute mode hide it -- the sum of per-city fields is the total.
       el("budget-input").style.display = _perCityMode === "pct" ? "block" : "none";
-      // Only rebuild rows if regions changed — avoids focus loss on interval tick
+      // Only rebuild rows if regions changed -- avoids focus loss on interval tick
       const sig = regions.slice().sort().join("||");
       if (sig === _lastPerCityRegionsSig) return;
       _lastPerCityRegionsSig = sig;
@@ -2240,7 +2639,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       rowsEl.querySelectorAll(".per-city-row").forEach(r => {
         existing[r.dataset.region] = r.querySelector("input")?.value || "";
       });
-      // Check if all existing values are empty (first open) — pre-populate from budget-input
+      // Check if all existing values are empty (first open) -- pre-populate from budget-input
       const allEmpty = regions.every(r => !existing[r]);
       const currentBudget = Number(el("budget-input")?.value || 0);
       rowsEl.innerHTML = "";
@@ -2252,7 +2651,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             const share = Math.floor(100 / regions.length);
             defaultVal = String(idx === regions.length - 1 ? 100 - share * (regions.length - 1) : share);
           } else {
-            // Distribute evenly in ₽
+            // Distribute evenly in RUB
             const share = Math.floor(currentBudget / regions.length);
             defaultVal = String(idx === regions.length - 1 ? currentBudget - share * (regions.length - 1) : share);
           }
@@ -2506,7 +2905,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         rset.has(String(s.region || "").trim()) ||
         rset.has(String(s.city   || "").trim())
       );
-      // Если и так пусто — ищем через карту регион→города
+      // Если и так пусто -- ищем через карту регион->города
       if(!pool.length && st.dspRegionToCities){
         const citySet = new Set(
           regions.flatMap(r => st.dspRegionToCities[r] || [])
@@ -3103,8 +3502,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   let layer = null;
   let markersByGid = {};
 
-  // История замен: gid текущего экрана → Set gid-ов, которые уже были показаны
-  // (чтобы каждый клик «Заменить» давал новый экран, не возвращаясь к старым)
+  // История замен: gid текущего экрана -> Set gid-ов, которые уже были показаны
+  // (чтобы каждый клик "Заменить" давал новый экран, не возвращаясь к старым)
   const _replaceTried = new Map();
 
   // Сбрасываем историю при новом расчёте
@@ -3178,7 +3577,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (!planner?.state) return;
     planner.state.lastChosen = (planner.state.lastChosen || []).filter(s => getGid(s) !== gid);
     renderChosenOnMap(planner.state.lastChosen);
-    // показываем кнопку «Пересчитать» чтобы обновить статистику
+    // показываем кнопку "Пересчитать" чтобы обновить статистику
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
@@ -3198,7 +3597,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const lon0 = Number(screenToReplace.lon);
     const fmt  = screenToReplace.format;
 
-    // GID-ы, которые уже предлагались для этого «слота»
+    // GID-ы, которые уже предлагались для этого "слота"
     const triedGids = _replaceTried.get(gid) || new Set();
 
     // Кандидаты: тот же формат, не выбранные, с координатами, ещё не пробованные
@@ -3211,7 +3610,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       Number.isFinite(Number(s.lon))
     );
 
-    // Если все варианты исчерпаны — сбрасываем историю и начинаем заново
+    // Если все варианты исчерпаны -- сбрасываем историю и начинаем заново
     if (!candidates.length) {
       _replaceTried.delete(gid);
       candidates = allScreens.filter(s =>
@@ -3373,7 +3772,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   let currentPolys = [];    // L.Polygon[] — все завершённые полигоны
   let drawControl = null;
 
-  // ── helpers ─────────────────────────────────────────────────────────
+  // -- helpers ---------------------------------------------------------
   function getPoly()  { return window.PLANNER?.state?.polygonFilter || null; }
   function setPoly(p) {
     window.PLANNER = window.PLANNER || {};
@@ -3392,7 +3791,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }).length;
   }
 
-  // ── badge in step 4 ─────────────────────────────────────────────────
+  // -- badge in step 4 -------------------------------------------------
   function updateBadge() {
     const poly = getPoly();
     const badge = el("poly-badge");
@@ -3419,7 +3818,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
   }
 
-  // ── open modal ───────────────────────────────────────────────────────
+  // -- open modal -------------------------------------------------------
   function openModal() {
     const modal = el("poly-modal");
     if (!modal) return;
@@ -3436,7 +3835,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
   }
 
-  // ── init drawing map ─────────────────────────────────────────────────
+  // -- init drawing map -------------------------------------------------
   function initPolyMap() {
     if (!window.L) { alert("Leaflet не загружен"); return; }
     const box = el("poly-map");
@@ -3496,7 +3895,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     updateModalState();
   }
 
-  // ── setup click-to-draw polygon ──────────────────────────────────────
+  // -- setup click-to-draw polygon --------------------------------------
   let vertices = [];
   let tempPolyline = null;
   let tempMarkers  = [];
@@ -3577,7 +3976,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     updateModalState();
   }
 
-  // ── update modal UI state ────────────────────────────────────────────
+  // -- update modal UI state --------------------------------------------
   function updateModalState() {
     const confirmBtn = el("poly-modal-confirm");
     const resetBtn   = el("poly-modal-reset");
@@ -3610,7 +4009,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
   }
 
-  // ── confirm: save all polygons to state ─────────────────────────────
+  // -- confirm: save all polygons to state -----------------------------
   function confirmPolygon() {
     if (!currentPolys.length) return;
     // Save as array of polygon coordinate arrays
@@ -3620,7 +4019,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
-  // ── clear all polygons ───────────────────────────────────────────────
+  // -- clear all polygons -----------------------------------------------
   function clearPolygon() {
     setPoly(null);
     currentPolys = [];
@@ -3629,7 +4028,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
-  // ── init event listeners ─────────────────────────────────────────────
+  // -- init event listeners ---------------------------------------------
   function init() {
     el("poly-draw-btn")?.addEventListener("click", openModal);
     el("poly-modal-cancel")?.addEventListener("click", closeModal);
@@ -3647,7 +4046,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.addEventListener("planner:screens-ready", updateBadge);
     window.addEventListener("planner:filters-changed", updateBadge);
 
-    // only-active-bids toggle → refresh pool preview counts
+    // only-active-bids toggle -> refresh pool preview counts
     document.getElementById("only-active-bids")?.addEventListener("change", () => {
       window.dispatchEvent(new CustomEvent("planner:filters-changed"));
     });
@@ -3908,7 +4307,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const targetBudget  = Number(detail?.brief?.budget?.amount) || spentBudget;
     const totalBudget   = targetBudget; // badge shows target; unspent is shown via warning
     const totalPlays   = perRegion.reduce((a,r)=> a + (Number(r.plays)||0), 0);
-    const totalScreens = perRegion.reduce((a,r)=> a + (Number(r.screens)||0), 0);
+    const totalScreens = Array.isArray(detail?.chosen) ? detail.chosen.length
+      : perRegion.reduce((a,r)=> a + (Number(r.screens)||0), 0);
 
     const days = daysFromRaw();
     const hpd  = hoursPerDayFromRaw();
@@ -3920,7 +4320,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       .filter(v => Number.isFinite(v) && v > 0);
     const otsTotal = otsValid.length ? otsValid.reduce((a,b)=>a+b,0) : null;
 
-    // raw — читаем summary text (теперь он уже записан ДО dispatchEvent)
+    // raw -- читаем summary text (теперь он уже записан ДО dispatchEvent)
     const raw = el("summary")?.textContent || "";
     // Warnings: prefer direct array from event detail, fallback to parsing raw text
     const warnArr = Array.isArray(detail?.warnings) && detail.warnings.length
@@ -3941,7 +4341,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <div class="ps-card">
             <div class="ps-region-top">
               <div>
-                <div class="ps-region-name">\${String(r.region || "—")}</div>
+                <div class="ps-region-name">\${r.region === "__gid_mode__" ? "По GID-списку" : String(r.region || "—")}</div>
                 <div class="ps-sub">\${note || "Разбивка по региону"}</div>
               </div>
               <div class="ps-chip">\${fmtInt(r.screens)} экранов</div>
@@ -5028,13 +5428,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Форматы и операторы меняются через кастомный ивент (не input/change)
   window.addEventListener("planner:filters-changed", () => showFloat(null));
 
-  // Клик по плавающей кнопке — запускаем расчёт
+  // Клик по плавающей кнопке -- запускаем расчёт
   floatBtn.addEventListener("click", () => {
     hideFloat();
     calcBtn.click();
   });
 
-  // После завершения расчёта — скрываем кнопку
+  // После завершения расчёта -- скрываем кнопку
   window.addEventListener("planner:calc-done", hideFloat);
 })();
 `);
