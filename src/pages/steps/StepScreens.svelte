@@ -47,103 +47,99 @@
 
   // Interests for pre-campaign — two-level tree scraped from prod app
   // filters/interests endpoint returns 404; tree is hardcoded as fallback
-  const PC_INTEREST_TREE = {
-    'Автомобили':              ['Премиум класс','Средний класс','Эконом класс','Автобарахолка','Автосервисы','Запчасти и сервис','Покупка нового автомобиля','Автовладельцы','Мотоциклы'],
-    'Досуг':                   ['Досуг и развлечения','Знакомства','Фильмы и сериалы','Книги','Культурный отдых, афиша','Рестораны, Кафе','Бары','Онлайн кинотеатры','Футбол','Юмор','Цветы'],
-    'Новости':                 ['Культура','Наука и техника','Общество','Политика','События','Спорт','Экономика'],
-    'Здоровье':                ['Аптеки','Здоровое питание','Клиники','Лекарственные препараты и БАДы'],
-    'Техника':                 [],
-    'Электроника':             [],
-    'Мобильная связь':         [],
-    'Красота и уход за собой': ['Средства по уходу','Косметика и парфюмерия','Техника для красоты и здоровья','Лазерная эпиляция','Салоны красоты','Маникюр'],
-    'Кулинария':               [],
-    'Недвижимость':            [],
-    'Обустройство и ремонт':   [],
-    'Зоотовары':               [],
-    'Образование':             [],
-    'Одежда, обувь и аксессуары': [],
-    'Семья':                   [],
-    'Путешествия':             [],
-    'Страхование':             [],
-    'Финансы':                 [],
-    'Детские товары':          [],
-    'Доход':                   ['Премиум класс','Средний класс','Эконом класс'],
+  // Hardcoded slug map — avoids transliteration guesswork.
+  // Format: 'Display name': [parentSlug, childSlug] (or [slug] for top-level)
+  const PC_SLUG_MAP = {
+    // ── Автомобили ──────────────────────────────────────────────────────────
+    'Автомобили':                    ['avtomobili'],
+    'Премиум класс':                 ['avtomobili','avtomobili_priemium_klass'],
+    'Средний класс':                 ['avtomobili','avtomobili_sriedniy_klass'],
+    'Эконом класс':                  ['avtomobili','avtomobili_ekonom_klass'],
+    'Автобарахолка':                 ['avtomobili','avtomobili_avtobarakholka'],
+    'Автосервисы':                   ['avtomobili','avtomobili_avtosiervisy'],
+    'Запчасти и сервис':             ['avtomobili','avtomobili_zapchasti_i_siervis'],
+    'Покупка нового автомобиля':     ['avtomobili','avtomobili_pokupka_novogo_avtomobilya'],
+    'Автовладельцы':                 ['avtomobili','avtomobili_avtovladieltsy'],
+    'Мотоциклы':                     ['avtomobili','avtomobili_mototsikly'],
+    // ── Досуг ────────────────────────────────────────────────────────────────
+    'Досуг':                         ['dosug'],
+    'Досуг и развлечения':           ['dosug','dosug_dosug_i_razvliechieniya'],
+    'Знакомства':                    ['dosug','dosug_znakomstva'],
+    'Фильмы и сериалы':              ['dosug','dosug_filmy_i_sierialy'],
+    'Книги':                         ['dosug','dosug_knigi'],
+    'Культурный отдых, афиша':       ['dosug','dosug_kulturnyy_otdykh_afisha'],
+    'Рестораны, Кафе':               ['dosug','dosug_riestorany_kafie'],
+    'Бары':                          ['dosug','dosug_bary'],
+    'Онлайн кинотеатры':             ['dosug','dosug_onlayn_kinotieatry'],
+    'Футбол':                        ['dosug','dosug_futbol'],
+    'Юмор':                          ['dosug','dosug_yumor'],
+    'Цветы':                         ['dosug','dosug_tsviety'],
+    // ── Новости ──────────────────────────────────────────────────────────────
+    'Новости':                       ['novosti'],
+    'Культура':                      ['novosti','novosti_kultura'],
+    'Наука и техника':               ['novosti','novosti_nauka_i_tiekhnika'],
+    'Общество':                      ['novosti','novosti_obshchiestvo'],
+    'Политика':                      ['novosti','novosti_politika'],
+    'События':                       ['novosti','novosti_sobytiya'],
+    'Спорт':                         ['novosti','novosti_sport'],
+    'Экономика':                     ['novosti','novosti_ekonomika'],
+    // ── Здоровье ─────────────────────────────────────────────────────────────
+    'Здоровье':                      ['zdorovye'],
+    'Аптеки':                        ['zdorovye','zdorovye_aptieki'],
+    'Здоровое питание':              ['zdorovye','zdorovye_zdorovoye_pitaniye'],
+    'Клиники':                       ['zdorovye','zdorovye_kliniki'],
+    'Лекарственные препараты и БАДы':['zdorovye','zdorovye_liekarstviennyye_prepartay_i_bady'],
+    // ── Техника / Электроника / etc ───────────────────────────────────────────
+    'Техника':                       ['tiekhnika'],
+    'Электроника':                   ['eliektronika'],
+    'Мобильная связь':               ['mobilnaya_svyaz'],
+    'Кулинария':                     ['kulinariya'],
+    'Недвижимость':                  ['niedvizhimost'],
+    'Обустройство и ремонт':         ['obustroystvo_i_riemont'],
+    'Зоотовары':                     ['zootovary'],
+    'Образование':                   ['obrazovanie'],
+    'Одежда, обувь и аксессуары':    ['odiezhda_obuv_i_aksiessuary'],
+    'Семья':                         ['siemya'],
+    'Путешествия':                   ['putieshiestviya'],
+    'Страхование':                   ['strakhovanie'],
+    'Финансы':                       ['finansy'],
+    'Детские товары':                ['dietskiye_tovary'],
+    // ── Красота и уход за собой ───────────────────────────────────────────────
+    'Красота и уход за собой':       ['krasota_i_ukhod_za_soboy'],
+    'Средства по уходу':             ['krasota_i_ukhod_za_soboy','krasota_i_ukhod_za_soboy_sriedstva_po_ukhodu'],
+    'Косметика и парфюмерия':        ['krasota_i_ukhod_za_soboy','krasota_i_ukhod_za_soboy_kosmietika_i_parfyumieriya'],
+    'Техника для красоты и здоровья':['krasota_i_ukhod_za_soboy','krasota_i_ukhod_za_soboy_tiekhnika_dlya_krasoty_i_zdorovya'],
+    'Лазерная эпиляция':             ['krasota_i_ukhod_za_soboy','krasota_i_ukhod_za_soboy_laziernaya_epilyatsiya'],
+    'Салоны красоты':                ['krasota_i_ukhod_za_soboy','krasota_i_ukhod_za_soboy_salony_krasoty'],
+    'Маникюр':                       ['krasota_i_ukhod_za_soboy','krasota_i_ukhod_za_soboy_manikyur'],
+    // ── Доход ────────────────────────────────────────────────────────────────
+    'Доход':                         ['dokhod'],
   }
+
+  // Build the interest tree from slug map for the dropdown grouping
+  const PC_INTEREST_TREE = (() => {
+    const parents = Object.entries(PC_SLUG_MAP)
+      .filter(([, s]) => s.length === 1)
+      .map(([name]) => name)
+    const tree = {}
+    for (const p of parents) tree[p] = []
+    for (const [name, slugs] of Object.entries(PC_SLUG_MAP)) {
+      if (slugs.length === 2) {
+        const parent = parents.find(p => slugs[0] === PC_SLUG_MAP[p]?.[0])
+        if (parent && tree[parent]) tree[parent].push(name)
+      }
+    }
+    return tree
+  })()
   const PC_TOP_INTERESTS = Object.keys(PC_INTEREST_TREE)
 
-  // Flat list for subcategory dropdown: subcategories first, then parent-only categories
-  const PC_ALL_SUBCATEGORIES = [
-    ...Object.entries(PC_INTEREST_TREE).flatMap(([p, subs]) => subs.length ? subs : [p]),
-    ...PC_TOP_INTERESTS.filter(t => PC_INTEREST_TREE[t].length > 0),
-  ].filter((v, i, a) => a.indexOf(v) === i)
+  let pcSelectedSub = ''   // selected interest display name
+  let pcAffinityMin = 0    // 0-100 minimum affinity threshold
 
-  let pcSelectedInterests = []  // legacy (kept for pcInterestSlug compatibility)
-  let pcSelectedSub = ''        // single subcategory selection (new UI)
-  let pcAffinityMin = 0         // 0-100 minimum affinity threshold
-
-  // DMP connection for pre-campaign scoring
-  let pcDmpId = null
-  let pcDmpConnections = []
-  let pcDmpLoaded = false
-
-  // Transliterate Russian display name → interest slug.
-  // Rules confirmed from prod:
-  //   е after consonant → "ie"  (Премиум → priemium)
-  //   ь/ъ before е/ё/ю/я → "y" (soft-sign contributes y: здоровье → zdorovye)
-  //   е after ь/ъ → "e" (the y already came from the soft sign)
-  function _pcTranslit(str) {
-    const VOWELS    = new Set('аеёиоуыэюя')
-    const SOFT_NEXT = new Set('еёюя')       // soft/hard sign contributes 'y' before these
-    const MAP = {
-      'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z',
-      'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
-      'с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh',
-      'щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
-    }
-    const chars = str.toLowerCase().split('')
-    const out = []
-    for (let i = 0; i < chars.length; i++) {
-      const c    = chars[i]
-      const prev = i > 0 ? chars[i - 1] : null
-      const next = i + 1 < chars.length ? chars[i + 1] : null
-      if (c === 'е') {
-        // After ь/ъ: soft-sign already contributed 'y', just 'e'
-        // After consonant: 'ie' (confirmed: Премиум→priemium)
-        // After vowel / word start: 'e'
-        if (prev === 'ь' || prev === 'ъ') {
-          out.push('e')
-        } else if (!prev || prev === ' ' || prev === ',' || VOWELS.has(prev)) {
-          out.push('e')
-        } else {
-          out.push('ie')
-        }
-      } else if (c === 'ь' || c === 'ъ') {
-        // Soft/hard sign before е/ё/ю/я → contribute 'y'; otherwise silent
-        if (next && SOFT_NEXT.has(next)) out.push('y')
-        // else: strip (empty)
-      } else if (c === ' ' || c === ',') {
-        out.push('_')
-      } else if (MAP[c] !== undefined) {
-        out.push(MAP[c])
-      } else if (/[a-z0-9]/.test(c)) {
-        out.push(c)
-      }
-    }
-    return out.join('').replace(/_+/g, '_').replace(/^_|_$/g, '')
-  }
-
-  // Convert display name → [parentSlug, childSlug] array for segmentation.
-  // Prod confirmed: server needs both parent + child e.g. ["avtomobili","avtomobili_priemium_klass"]
+  // Look up slugs directly from hardcoded map — no transliteration guesswork
   function pcInterestSlugs(name) {
     if (!name) return []
-    if (PC_INTEREST_TREE.hasOwnProperty(name)) return [_pcTranslit(name)]
-    for (const [parent, children] of Object.entries(PC_INTEREST_TREE)) {
-      if (children.includes(name)) {
-        const ps = _pcTranslit(parent)
-        return [ps, ps + '_' + _pcTranslit(name)]
-      }
-    }
-    return [_pcTranslit(name)]
+    return PC_SLUG_MAP[name] ?? []
   }
 
   async function loadPcDmpConnections() {
@@ -195,17 +191,6 @@
 
   $: if (preCampaignOpen) loadPcDmpConnections()
 
-  // When a top-level interest is toggled OFF, also remove its sub-interests
-  function togglePcInterest(name) {
-    const isTop = PC_TOP_INTERESTS.includes(name)
-    if (pcSelectedInterests.includes(name)) {
-      let next = pcSelectedInterests.filter(x => x !== name)
-      if (isTop) next = next.filter(x => !PC_INTEREST_TREE[name]?.includes(x))
-      pcSelectedInterests = next
-    } else {
-      pcSelectedInterests = [...pcSelectedInterests, name]
-    }
-  }
 
   // Freehand draw tool
   let drawMode = false       // lasso active
@@ -519,11 +504,14 @@
         }
       }
     } catch (e) {
-      // API throws { status, data } — extract a readable message
-      const apiMsg = e?.data?.message ?? e?.data?.error
-        ?? (typeof e?.data === 'string' ? e.data : null)
-        ?? e?.message
-      preCampaignError = 'Ошибка ' + (e?.status ? e.status + ': ' : '') + (apiMsg ?? 'неизвестная ошибка')
+      if (e?.status === 400) {
+        preCampaignError = 'Данная категория недоступна для выбранного DMP. Попробуйте другую.'
+      } else {
+        const apiMsg = e?.data?.message ?? e?.data?.error
+          ?? (typeof e?.data === 'string' ? e.data : null)
+          ?? e?.message
+        preCampaignError = 'Ошибка ' + (e?.status ? e.status + ': ' : '') + (apiMsg ?? 'неизвестная ошибка')
+      }
     } finally {
       preCampaignLoading = false
     }
