@@ -135,6 +135,10 @@
   })()
   const PC_TOP_INTERESTS = Object.keys(PC_INTEREST_TREE)
 
+  let pcDmpId = null           // selected DMP connection id
+  let pcDmpConnections = []    // [{id, name}] — filtered to agency-configured DMPs
+  let pcDmpLoaded = false      // guard: only fetch once per panel open cycle
+
   let pcSelectedSub = ''   // selected interest display name
   let pcAffinityMin = 0    // 0-100 minimum affinity threshold
 
@@ -419,10 +423,12 @@
     if (!inRange(s.requestHourlyAvg, colFilters.requestHourlyAvg)) return false
     if (!inRange(s.lat, colFilters.lat)) return false
     if (!inRange(s.lon, colFilters.lon)) return false
-    // Live affinity threshold filter — hide screens below slider value
+    // Live affinity threshold filter — filter using normalised t (same scale as scoreColor)
     if (scoreSortActive) {
       const sc = scoreMap[s.id]
-      if (sc == null || sc < pcAffinityMin / 100) return false
+      if (sc == null) return false
+      const t = Math.max(0, Math.min(1, (sc - scoreMin) / scoreRange))
+      if (t < pcAffinityMin / 100) return false
     }
     if (!tableSearch) return true
     const q = tableSearch.toLowerCase()
@@ -455,6 +461,12 @@
   $: tabRows = activeTab === 'selected'
     ? sortedFiltered.filter(s => draft.screenIds.includes(s.id))
     : sortedFiltered
+
+  // Reactive score range — used in both filtered and renderMarkers
+  $: scoreValues = Object.values(scoreMap)
+  $: scoreMin    = scoreValues.length ? Math.min(...scoreValues) : 0
+  $: scoreMax    = scoreValues.length ? Math.max(...scoreValues) : 1
+  $: scoreRange  = (scoreMax - scoreMin) || 1
 
   $: if (map && markersLayer) { scoreMap; pcAffinityMin; renderMarkers(filtered) }
 
@@ -778,12 +790,7 @@
       ? [...selected, ...unselected]
       : [...selected, ...unselected.slice(0, maxUnsel)]
 
-    // Pre-compute score range for normalised coloring
-    const scoreValues = Object.values(scoreMap)
-    const scoreMin = scoreValues.length ? Math.min(...scoreValues) : 0
-    const scoreMax = scoreValues.length ? Math.max(...scoreValues) : 1
-    const scoreRange = scoreMax - scoreMin || 1
-
+    // scoreMin/Max/Range are reactive at module scope — use them directly here
     // Interpolate red→yellow→green given a 0..1 normalised t
     function scoreColor(sc) {
       const t = Math.max(0, Math.min(1, (sc - scoreMin) / scoreRange))
