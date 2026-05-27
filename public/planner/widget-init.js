@@ -2412,6 +2412,25 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         return (statusEl.textContent = "Инвентарь ещё загружается, подождите.");
       }
 
+      // Filter screens by selected regions/cities (same logic as rest of planner)
+      const selectedRegions = window.PLANNER?.state?.selectedRegions || [];
+      let screensPool = screensAll;
+      if (selectedRegions.length) {
+        const rset = new Set(selectedRegions);
+        screensPool = screensAll.filter(s =>
+          rset.has(String(s.region || "").trim()) ||
+          rset.has(String(s.city   || "").trim())
+        );
+        const pst = window.PLANNER?.state;
+        if (!screensPool.length && pst?.dspRegionToCities) {
+          const citySet = new Set(selectedRegions.flatMap(r => pst.dspRegionToCities[r] || []));
+          if (citySet.size) {
+            screensPool = screensAll.filter(s => citySet.has(String(s.city || "").trim()));
+          }
+        }
+        if (!screensPool.length) screensPool = screensAll;
+      }
+
       btn.disabled = true;
       btn.textContent = "Ищу экраны\\u2026";
       statusEl.textContent = "";
@@ -2434,7 +2453,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         // Build unique tile list from screen coordinates (z=8)
         const TILE_Z = 8;
         const tileSet = new Set();
-        screensAll.forEach(s => {
+        screensPool.forEach(s => {
           const lat = Number(s.lat ?? s.latitude);
           const lon = Number(s.lon ?? s.lng ?? s.longitude);
           if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
@@ -2481,7 +2500,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         // API returns decimal strings, h3-js returns hex -> convert hex->decimal via BigInt
         const matchingGids = [];
         const seenIds = new Set();
-        screensAll.forEach(s => {
+        screensPool.forEach(s => {
           const lat = Number(s.lat ?? s.latitude);
           const lon = Number(s.lon ?? s.lng ?? s.longitude);
           if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
