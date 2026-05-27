@@ -991,7 +991,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <button type="button" id="geo-tab-poi"
           style="flex:1; padding:9px 14px; border-radius:10px; border:1.5px solid #e0d9fd;
                  background:#faf8ff; color:#5B3EF5; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s;">
-          🏪 По POI
+          🗺 Yandex Геоаналитика
         </button>
       </div>
 
