@@ -1,8 +1,10 @@
 <script>
   import { onMount, onDestroy, createEventDispatcher } from 'svelte'
+  import { get } from 'svelte/store'
   import L from 'leaflet'
   import 'leaflet/dist/leaflet.css'
   import { api } from '../../lib/api.js'
+  import { currentUser } from '../../lib/stores.js'
   import { formatMoney, mapInventory } from '../../lib/utils.js'
   import ScheduleModal from '../../components/ScheduleModal.svelte'
 
@@ -151,13 +153,56 @@
       pcDmpId = draft.dmpData[0].dmpId ?? null
     }
 
-    // 2. GET /clients/dmp — correct endpoint (prod bundle: getDMPSystems)
+    // 2. Try to get agency-specific DMP IDs from the current user's agency profile
+    let agencyDmpIds = null
+    try {
+      const me = get(currentUser)
+      console.log('[PC] currentUser snippet:', JSON.stringify(me).substring(0, 400))
+
+      // Check if DMP connections are embedded directly in the user/agency object
+      const directDmps = me?.agency?.dmpConnections ?? me?.agency?.dmps
+        ?? me?.agency?.dmpData ?? me?.dmpConnections ?? null
+      if (Array.isArray(directDmps) && directDmps.length > 0) {
+        agencyDmpIds = new Set(directDmps.map(d => d.id ?? d.dmpId).filter(Boolean))
+        console.log('[PC] agency DMP IDs from user profile:', [...agencyDmpIds])
+      }
+
+      // Otherwise, fetch the agency profile explicitly
+      if (!agencyDmpIds?.size) {
+        const agencyId = me?.agency?.id ?? me?.agencyId ?? null
+        if (agencyId != null) {
+          try {
+            const agencyRes = await api.agencies.get(agencyId)
+            console.log('[PC] agency profile snippet:', JSON.stringify(agencyRes).substring(0, 400))
+            const dmps = agencyRes?.dmpConnections ?? agencyRes?.dmps
+              ?? agencyRes?.dmpData ?? []
+            if (dmps.length > 0) {
+              agencyDmpIds = new Set(dmps.map(d => d.id ?? d.dmpId).filter(Boolean))
+              console.log('[PC] agency DMP IDs from agency profile:', [...agencyDmpIds])
+            }
+          } catch (e) {
+            console.warn('[PC] agency profile fetch failed:', e?.status)
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[PC] failed to read currentUser:', e?.message)
+    }
+
+    // 3. GET /clients/dmp — list DMPs, filtered by agency config when available
     try {
       const res = await api.dmp.list()
       const all = Array.isArray(res) ? res : (res?.content ?? [])
-      // Only show DMPs that are explicitly active/connected for this account
-      const list = all.filter(d => d.active === true || d.connected === true || d.status === 'CONNECTED')
-      console.log('[PC] /clients/dmp active DMPs:', JSON.stringify(list).substring(0, 300))
+      let list
+      if (agencyDmpIds?.size > 0) {
+        // Show only DMPs the agency has configured
+        list = all.filter(d => agencyDmpIds.has(d.id))
+        console.log('[PC] DMPs filtered by agency config:', JSON.stringify(list).substring(0, 300))
+      } else {
+        // Fallback: show explicitly active/connected DMPs
+        list = all.filter(d => d.active === true || d.connected === true || d.status === 'CONNECTED')
+        console.log('[PC] DMPs (active/connected fallback):', JSON.stringify(list).substring(0, 300))
+      }
       if (list.length > 0) {
         pcDmpConnections = list
         if (pcDmpId == null) pcDmpId = list[0].id
@@ -166,7 +211,7 @@
       console.warn('[PC] /clients/dmp failed:', e?.status, JSON.stringify(e?.data ?? e?.message ?? '').substring(0, 200))
     }
 
-    // 3. Fallback: possibleDmpSegments — inspect first segment for a connection/dmp id
+    // 4. Fallback: possibleDmpSegments — inspect first segment for a connection/dmp id
     if (pcDmpId == null) {
       try {
         const payload = draft.id ? { campaignId: draft.id } : {}
@@ -174,7 +219,6 @@
         const segs = Array.isArray(res) ? res : (res?.content ?? res?.data ?? [])
         console.log('[PC] possibleDmpSegments first seg keys:', segs.length > 0 ? Object.keys(segs[0]) : 'empty', JSON.stringify(segs[0] ?? {}).substring(0, 300))
         if (segs.length > 0) {
-          // Look for a field that represents the DMP connection ID
           const connectionId = segs[0].connectionId ?? segs[0].dmpConnectionId ?? segs[0].dmpId ?? segs[0].id
           if (connectionId != null) {
             pcDmpId = connectionId
@@ -186,7 +230,7 @@
       }
     }
 
-    console.log('[PC] final pcDmpId:', pcDmpId)
+    console.log('[PC] final pcDmpId:', pcDmpId, 'connections:', pcDmpConnections.length)
   }
 
   $: if (preCampaignOpen) loadPcDmpConnections()
