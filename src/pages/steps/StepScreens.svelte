@@ -1261,13 +1261,6 @@
               class="pc-affinity-slider"
               min="0" max="100" step="1"
               bind:value={pcAffinityMin}
-              style="background: linear-gradient(to right,
-                #d1d5db 0%,
-                #d1d5db {pcAffinityMin}%,
-                #ef4444 {pcAffinityMin}%,
-                #f59e0b {pcAffinityMin + (100 - pcAffinityMin) * 0.35}%,
-                #84cc16 {pcAffinityMin + (100 - pcAffinityMin) * 0.65}%,
-                #22c55e 100%)"
             >
 
             {#if preCampaignError}
@@ -2953,7 +2946,13 @@
     width: 100%;
     height: 6px;
     border-radius: 3px;
-    /* background driven by inline style — grey left of thumb, gradient right */
+    /* Fixed red→amber→lime→green gradient — percentages match scoreColor thresholds */
+    background: linear-gradient(to right,
+      #ef4444 0%,    /* red    (t < 0.20) */
+      #f59e0b 20%,   /* amber  (t 0.20-0.40) */
+      #84cc16 40%,   /* lime   (t 0.40-0.67) */
+      #22c55e 67%    /* green  (t ≥ 0.67)  */
+    );
     outline: none;
     cursor: pointer;
     margin: 4px 0 2px;
