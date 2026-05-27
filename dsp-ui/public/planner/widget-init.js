@@ -2451,8 +2451,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const BATCH = 25;
         let done = 0;
 
-        // Yandex GeoAnalytics tile API via server-side proxy (avoids CORS)
-        const GEO_BASE = "/api/geo-proxy";
+        // Yandex GeoAnalytics tile API via Cloudflare Worker proxy (avoids CORS)
+        const GEO_BASE = "https://silent-surf-cd5e.mochalova-kathrine-v.workers.dev";
         const GEO_VERSION = "2025-02-10T14%3A43%3A35Z";
 
         for (let i = 0; i < tiles.length; i += BATCH) {
