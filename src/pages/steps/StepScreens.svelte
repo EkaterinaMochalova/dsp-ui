@@ -107,15 +107,8 @@
       const prev = i > 0 ? chars[i - 1] : null
       const next = i + 1 < chars.length ? chars[i + 1] : null
       if (c === 'е') {
-        // After ь/ъ: the soft sign already contributed 'y', just add 'e'
-        if (prev === 'ь' || prev === 'ъ') {
-          out.push('e')
-        // After consonant: ie
-        } else if (!prev || prev === ' ' || prev === ',' || VOWELS.has(prev)) {
-          out.push('e')
-        } else {
-          out.push('ie')
-        }
+        // Simple е→e everywhere; ь/ъ before е already contributed 'y'
+        out.push('e')
       } else if (c === 'ь' || c === 'ъ') {
         // Soft/hard sign before е/ё/ю/я → contribute 'y'; otherwise silent
         if (next && SOFT_NEXT.has(next)) out.push('y')
@@ -1220,6 +1213,13 @@
               class="pc-affinity-slider"
               min="0" max="100" step="1"
               bind:value={pcAffinityMin}
+              style="background: linear-gradient(to right,
+                #d1d5db 0%,
+                #d1d5db {pcAffinityMin}%,
+                #ef4444 {pcAffinityMin}%,
+                #f59e0b {pcAffinityMin + (100 - pcAffinityMin) * 0.35}%,
+                #84cc16 {pcAffinityMin + (100 - pcAffinityMin) * 0.65}%,
+                #22c55e 100%)"
             >
 
             {#if preCampaignError}
@@ -2905,7 +2905,7 @@
     width: 100%;
     height: 6px;
     border-radius: 3px;
-    background: linear-gradient(to right, #ef4444 0%, #f59e0b 35%, #84cc16 65%, #22c55e 100%);
+    /* background driven by inline style — grey left of thumb, gradient right */
     outline: none;
     cursor: pointer;
     margin: 4px 0 2px;
