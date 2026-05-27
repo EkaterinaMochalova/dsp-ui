@@ -2,8 +2,7 @@
   "buildCommand": "npm install && npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/geo-proxy", "destination": "/api/geo-proxy" },
-    { "source": "/api/:path*",    "destination": "/api/proxy" },
+    { "source": "/api/:path*", "destination": "/api/proxy" },
     { "source": "/((?!planner/).*)", "destination": "/index.html" }
   ]
 }
