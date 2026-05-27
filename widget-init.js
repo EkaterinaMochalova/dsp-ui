@@ -1819,7 +1819,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   function el(id){ return document.getElementById(id); }
 
   function setStep(step){
-    // Используем и class, и inline style — чтобы CSS Tilda не перебивал display
+    // Используем и class, и inline style -- чтобы CSS Tilda не перебивал display
     document.querySelectorAll("#planner-widget .wiz-step").forEach(s => {
       s.classList.remove("active");
       s.style.display = "none";
@@ -1844,13 +1844,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Делаем setStep доступным глобально
   window.setStep = setStep;
 
-  // Отмечаем посещение шага 4 — чтобы чип не был зелёным до первого визита
+  // Отмечаем посещение шага 4 -- чтобы чип не был зелёным до первого визита
   const _origSetStep = setStep;
   window.setStep = function(step) {
     if (step === 4) window._plannerStep4Visited = true;
     _origSetStep(step);
     if (step === 4) {
-      // В GID-режиме скрываем лишнее — только кнопка «Рассчитать» + «Назад»
+      // В GID-режиме скрываем лишнее -- только кнопка "Рассчитать" + "Назад"
       const gidsBlock = el("geo-gids-block");
       const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
       const d = isGidMode ? "none" : "";
@@ -1875,7 +1875,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     return !!(s && e);
   }
 
-  // Используем делегирование событий — работает даже после перерисовки
+  // Используем делегирование событий -- работает даже после перерисовки
   document.getElementById("wiz-steps")?.addEventListener("click", e => {
     const chip = e.target.closest(".wiz-chip");
     if (chip) window.setStep(Number(chip.dataset.step || 1));
@@ -1934,7 +1934,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     return document.querySelector('input[name="budget_mode"]:checked')?.value || "fixed";
   }
   function getScheduleType(){
-  // если включен рваный график — считаем это главным режимом расписания
+  // если включен рваный график -- считаем это главным режимом расписания
   const weeklyOn = !!document.getElementById("weekdays-enabled")?.checked;
   if(weeklyOn) return "weekly";
   return document.querySelector('input[name="schedule"]:checked')?.value || "all_day";
@@ -1994,7 +1994,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (statusEl) statusEl.style.display = "none";
     if (uiEl) uiEl.style.display = "block";
 
-    // Все чипы нейтральные — без цветового кодирования
+    // Все чипы нейтральные -- без цветового кодирования
     function chipColor() {
       return { bg: '#f8f9fb', border: 'rgba(15,23,42,.14)', text: '#374151' };
     }
@@ -2026,7 +2026,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       </div>
     \`).join('');
 
-    // Интересы — collapsible accordion with search
+    // Интересы -- collapsible accordion with search
     const interestsHtml = interestCols.length ? \`
       <div style="margin-bottom:10px;">
         <button type="button" id="interests-toggle"
@@ -2291,7 +2291,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       });
     });
 
-    // ── Geo mode tabs (step 1): По городам / По GID ──────────────────────────
+    // -- Geo mode tabs (step 1): По городам / По GID --------------------------
     function setGeoMode(mode) {
       const citiesBlock = el("geo-cities-block");
       const gidsBlock   = el("geo-gids-block");
@@ -2391,7 +2391,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     el("geo-tab-cities")?.addEventListener("click", () => setGeoMode("cities"));
     el("geo-tab-gids")?.addEventListener("click",   () => setGeoMode("gids"));
 
-    // ── POI density chips ────────────────────────────────────────────────────
+    // -- POI density chips ----------------------------------------------------
     document.querySelectorAll(".poi-density-chip").forEach(chip => {
       chip.addEventListener("click", () => {
         document.querySelectorAll(".poi-density-chip").forEach(c => {
@@ -2403,7 +2403,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       });
     });
 
-    // ── POI screen finder ────────────────────────────────────────────────────
+    // -- POI screen finder ----------------------------------------------------
     el("poi-find-btn")?.addEventListener("click", async () => {
       const btn      = el("poi-find-btn");
       const statusEl = el("poi-status");
@@ -2627,10 +2627,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if (!enabled?.checked) { el("per-city-budget-wrap").style.display = "none"; return; }
       el("per-city-budget-wrap").style.display = "block";
       el("budget-distrib-note").style.display = "none";
-      // In % mode keep budget-input visible — it holds the total ₽ the percentages apply to.
-      // In ₽ absolute mode hide it — the sum of per-city fields is the total.
+      // In % mode keep budget-input visible -- it holds the total RUB the percentages apply to.
+      // In RUB absolute mode hide it -- the sum of per-city fields is the total.
       el("budget-input").style.display = _perCityMode === "pct" ? "block" : "none";
-      // Only rebuild rows if regions changed — avoids focus loss on interval tick
+      // Only rebuild rows if regions changed -- avoids focus loss on interval tick
       const sig = regions.slice().sort().join("||");
       if (sig === _lastPerCityRegionsSig) return;
       _lastPerCityRegionsSig = sig;
@@ -2638,7 +2638,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       rowsEl.querySelectorAll(".per-city-row").forEach(r => {
         existing[r.dataset.region] = r.querySelector("input")?.value || "";
       });
-      // Check if all existing values are empty (first open) — pre-populate from budget-input
+      // Check if all existing values are empty (first open) -- pre-populate from budget-input
       const allEmpty = regions.every(r => !existing[r]);
       const currentBudget = Number(el("budget-input")?.value || 0);
       rowsEl.innerHTML = "";
@@ -2650,7 +2650,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             const share = Math.floor(100 / regions.length);
             defaultVal = String(idx === regions.length - 1 ? 100 - share * (regions.length - 1) : share);
           } else {
-            // Distribute evenly in ₽
+            // Distribute evenly in RUB
             const share = Math.floor(currentBudget / regions.length);
             defaultVal = String(idx === regions.length - 1 ? currentBudget - share * (regions.length - 1) : share);
           }
@@ -2904,7 +2904,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         rset.has(String(s.region || "").trim()) ||
         rset.has(String(s.city   || "").trim())
       );
-      // Если и так пусто — ищем через карту регион->города
+      // Если и так пусто -- ищем через карту регион->города
       if(!pool.length && st.dspRegionToCities){
         const citySet = new Set(
           regions.flatMap(r => st.dspRegionToCities[r] || [])
@@ -3502,7 +3502,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   let markersByGid = {};
 
   // История замен: gid текущего экрана -> Set gid-ов, которые уже были показаны
-  // (чтобы каждый клик «Заменить» давал новый экран, не возвращаясь к старым)
+  // (чтобы каждый клик "Заменить" давал новый экран, не возвращаясь к старым)
   const _replaceTried = new Map();
 
   // Сбрасываем историю при новом расчёте
@@ -3576,7 +3576,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (!planner?.state) return;
     planner.state.lastChosen = (planner.state.lastChosen || []).filter(s => getGid(s) !== gid);
     renderChosenOnMap(planner.state.lastChosen);
-    // показываем кнопку «Пересчитать» чтобы обновить статистику
+    // показываем кнопку "Пересчитать" чтобы обновить статистику
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
@@ -3596,7 +3596,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const lon0 = Number(screenToReplace.lon);
     const fmt  = screenToReplace.format;
 
-    // GID-ы, которые уже предлагались для этого «слота»
+    // GID-ы, которые уже предлагались для этого "слота"
     const triedGids = _replaceTried.get(gid) || new Set();
 
     // Кандидаты: тот же формат, не выбранные, с координатами, ещё не пробованные
@@ -3609,7 +3609,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       Number.isFinite(Number(s.lon))
     );
 
-    // Если все варианты исчерпаны — сбрасываем историю и начинаем заново
+    // Если все варианты исчерпаны -- сбрасываем историю и начинаем заново
     if (!candidates.length) {
       _replaceTried.delete(gid);
       candidates = allScreens.filter(s =>
@@ -3771,7 +3771,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   let currentPolys = [];    // L.Polygon[] — все завершённые полигоны
   let drawControl = null;
 
-  // ── helpers ─────────────────────────────────────────────────────────
+  // -- helpers ---------------------------------------------------------
   function getPoly()  { return window.PLANNER?.state?.polygonFilter || null; }
   function setPoly(p) {
     window.PLANNER = window.PLANNER || {};
@@ -3790,7 +3790,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }).length;
   }
 
-  // ── badge in step 4 ─────────────────────────────────────────────────
+  // -- badge in step 4 -------------------------------------------------
   function updateBadge() {
     const poly = getPoly();
     const badge = el("poly-badge");
@@ -3817,7 +3817,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
   }
 
-  // ── open modal ───────────────────────────────────────────────────────
+  // -- open modal -------------------------------------------------------
   function openModal() {
     const modal = el("poly-modal");
     if (!modal) return;
@@ -3834,7 +3834,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
   }
 
-  // ── init drawing map ─────────────────────────────────────────────────
+  // -- init drawing map -------------------------------------------------
   function initPolyMap() {
     if (!window.L) { alert("Leaflet не загружен"); return; }
     const box = el("poly-map");
@@ -3894,7 +3894,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     updateModalState();
   }
 
-  // ── setup click-to-draw polygon ──────────────────────────────────────
+  // -- setup click-to-draw polygon --------------------------------------
   let vertices = [];
   let tempPolyline = null;
   let tempMarkers  = [];
@@ -3975,7 +3975,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     updateModalState();
   }
 
-  // ── update modal UI state ────────────────────────────────────────────
+  // -- update modal UI state --------------------------------------------
   function updateModalState() {
     const confirmBtn = el("poly-modal-confirm");
     const resetBtn   = el("poly-modal-reset");
@@ -4008,7 +4008,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
   }
 
-  // ── confirm: save all polygons to state ─────────────────────────────
+  // -- confirm: save all polygons to state -----------------------------
   function confirmPolygon() {
     if (!currentPolys.length) return;
     // Save as array of polygon coordinate arrays
@@ -4018,7 +4018,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
-  // ── clear all polygons ───────────────────────────────────────────────
+  // -- clear all polygons -----------------------------------------------
   function clearPolygon() {
     setPoly(null);
     currentPolys = [];
@@ -4027,7 +4027,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
-  // ── init event listeners ─────────────────────────────────────────────
+  // -- init event listeners ---------------------------------------------
   function init() {
     el("poly-draw-btn")?.addEventListener("click", openModal);
     el("poly-modal-cancel")?.addEventListener("click", closeModal);
@@ -4319,7 +4319,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       .filter(v => Number.isFinite(v) && v > 0);
     const otsTotal = otsValid.length ? otsValid.reduce((a,b)=>a+b,0) : null;
 
-    // raw — читаем summary text (теперь он уже записан ДО dispatchEvent)
+    // raw -- читаем summary text (теперь он уже записан ДО dispatchEvent)
     const raw = el("summary")?.textContent || "";
     // Warnings: prefer direct array from event detail, fallback to parsing raw text
     const warnArr = Array.isArray(detail?.warnings) && detail.warnings.length
@@ -5427,13 +5427,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Форматы и операторы меняются через кастомный ивент (не input/change)
   window.addEventListener("planner:filters-changed", () => showFloat(null));
 
-  // Клик по плавающей кнопке — запускаем расчёт
+  // Клик по плавающей кнопке -- запускаем расчёт
   floatBtn.addEventListener("click", () => {
     hideFloat();
     calcBtn.click();
   });
 
-  // После завершения расчёта — скрываем кнопку
+  // После завершения расчёта -- скрываем кнопку
   window.addEventListener("planner:calc-done", hideFloat);
 })();
 `);
