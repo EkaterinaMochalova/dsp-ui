@@ -22,9 +22,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   }
 
   function runScript(code) {
-    const s = document.createElement("script");
-    s.textContent = code;
-    document.body.appendChild(s);
+    // Use new Function() instead of script element:
+    // DOM appendChild re-parses via HTML script loader which rejects some
+    // Unicode chars in comments/strings that V8 eval accepts fine.
+    (new Function(code))();
   }
 
   // 1. Inject external CSS
