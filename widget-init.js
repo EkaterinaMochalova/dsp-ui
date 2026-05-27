@@ -2451,8 +2451,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const BATCH = 25;
         let done = 0;
 
-        // Yandex GeoAnalytics tile API — requires active Yandex session (cookies)
-        const GEO_BASE = "https://yandex.ru/geoanalytics/platform/api/geoanalytics/layer/tile";
+        // Yandex GeoAnalytics tile API via server-side proxy (avoids CORS)
+        const GEO_BASE = "/api/geo-proxy";
         const GEO_VERSION = "2025-02-10T14%3A43%3A35Z";
 
         for (let i = 0; i < tiles.length; i += BATCH) {
@@ -2460,8 +2460,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           const results = await Promise.all(batch.map(({x, y}) =>
             fetch(GEO_BASE + "?version=" + GEO_VERSION +
                   "&resolution=7&x=" + x + "&y=" + y + "&z=" + TILE_Z +
-                  "&layer=" + category + "&mocks=undefined",
-                  { credentials: "include" })
+                  "&layer=" + category)
               .then(r => r.ok ? r.json() : null)
               .catch(() => null)
           ));
