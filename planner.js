@@ -4032,6 +4032,7 @@ async function onCalcClick() {
 
   for (const pr of prepared) {
     const region = pr.region;
+    const regionDisplay = region === "__gid_mode__" ? "По GID-списку" : region;
     const tier = pr.tier;
     const pool = pr.pool;
     const effectiveBid = brief.bidMode === "min" ? pr.avgBid : pr.bidPlus20;

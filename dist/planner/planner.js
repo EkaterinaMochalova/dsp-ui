@@ -924,6 +924,9 @@ function renderSelectionExtra() {
   }
 
   if (mode === "manual_screens") {
+    // GID textarea lives in step 1 (geo-gids-block) — don't re-render
+    if (el("manual-gids")) { extra.innerHTML = ""; return; }
+    // Fallback: render inline (legacy / direct embed)
     extra.innerHTML = `
       <textarea id="manual-gids"
         placeholder="Вставьте GID-ы экранов — по одному на строку или через запятую/пробел/таб.&#10;&#10;Пример:&#10;GID-12345&#10;GID-67890, GID-11111"
@@ -945,7 +948,7 @@ function renderSelectionExtra() {
     if (ta && statusEl) {
       ta.addEventListener("input", () => {
         const ids = _parseManualGids(ta.value);
-        if (!ids.length) {
+        if (!ids.size) {
           statusEl.textContent = "Введите GID-ы — после расчёта будут использованы только эти экраны.";
           statusEl.style.color = "#666";
           return;
@@ -2083,9 +2086,28 @@ async function buildMediaPlanBlob() {
   }
 
   // ── Group screens by region → format ───────────────────────────
+  // Use the same fuzzy matching as pool-building so screen keys align
+  // with perReg region names (e.g. DSP returns "Краснодарский край"
+  // but user selected "городской округ Геленджик").
+  const _perRegKeys = perReg.map(r => r.region);
+  function _matchScreenRegion(s) {
+    const sReg  = String(s.region || "").trim();
+    const sCity = String(s.city   || "").trim();
+    for (const r of _perRegKeys) {
+      if (sReg === r || sCity === r) return r;
+      const rn = normalizeGeoName(r);
+      if (!rn) continue;
+      const srn = normalizeGeoName(sReg);
+      const scn = normalizeGeoName(sCity);
+      if (srn === rn || scn === rn) return r;
+      if ((srn && (srn.includes(rn) || rn.includes(srn))) ||
+          (scn && (scn.includes(rn) || rn.includes(scn)))) return r;
+    }
+    return sReg || sCity || "—";
+  }
   const rfMap = {};
   for (const s of screens) {
-    const reg  = String(s.region || s.city || "—").trim();
+    const reg  = _matchScreenRegion(s);
     const fmt_ = String(s.format || "—").trim();
     if (!rfMap[reg]) rfMap[reg] = {};
     if (!rfMap[reg][fmt_]) rfMap[reg][fmt_] = [];
@@ -3249,13 +3271,19 @@ async function onCalcClick() {
     return;
   }
 
-  const regions = Array.isArray(brief?.geo?.regions) && brief.geo.regions.length
+  const _selModeForRegions = brief?.selection?.mode;
+  let regions = Array.isArray(brief?.geo?.regions) && brief.geo.regions.length
     ? brief.geo.regions.map(x => String(x || "").trim()).filter(Boolean)
     : (brief?.geo?.region ? [String(brief.geo.region).trim()] : []);
 
   if (!regions.length) {
-    alert("Выберите регион(ы).");
-    return;
+    if (_selModeForRegions === "manual_screens") {
+      // GID mode without regions: treat all screens as one pool
+      regions = ["__gid_mode__"];
+    } else {
+      alert("Выберите регион(ы).");
+      return;
+    }
   }
 
   // ✅ formats variables (fixes ReferenceError formatsMode is not defined)
@@ -3394,22 +3422,27 @@ async function onCalcClick() {
     : (Array.isArray(state.screensAll) ? state.screensAll : []);
 
   for (const region of regions) {
+    const regionDisplay = region === "__gid_mode__" ? "По GID-списку" : region;
     const tier = getTierForGeo(region);
     const selectedNorm = normalizeGeoName(region);
-    let pool = sourceScreens.filter(s => {
-      const r = String(s.region || "").trim();
-      const c = String(s.city || "").trim();
-      if (r === region || c === region) return true;
-      if (!selectedNorm) return false;
-      const rn = normalizeGeoName(r);
-      const cn = normalizeGeoName(c);
-      if (rn === selectedNorm || cn === selectedNorm) return true;
-      // Fuzzy fallback for suffix/prefix variants in API city labels.
-      return (
-        (rn && (rn.includes(selectedNorm) || selectedNorm.includes(rn))) ||
-        (cn && (cn.includes(selectedNorm) || selectedNorm.includes(cn)))
-      );
-    });
+    // __gid_mode__: no region filter — GIDs act as the sole selector.
+    // Always use screensAll (full inventory) to avoid stale state.screens from a prior session.
+    let pool = region === "__gid_mode__"
+      ? [...(Array.isArray(state.screensAll) && state.screensAll.length ? state.screensAll : sourceScreens)]
+      : sourceScreens.filter(s => {
+          const r = String(s.region || "").trim();
+          const c = String(s.city || "").trim();
+          if (r === region || c === region) return true;
+          if (!selectedNorm) return false;
+          const rn = normalizeGeoName(r);
+          const cn = normalizeGeoName(c);
+          if (rn === selectedNorm || cn === selectedNorm) return true;
+          // Fuzzy fallback for suffix/prefix variants in API city labels.
+          return (
+            (rn && (rn.includes(selectedNorm) || selectedNorm.includes(rn))) ||
+            (cn && (cn.includes(selectedNorm) || selectedNorm.includes(cn)))
+          );
+        });
 
     if (!pool.length) {
       console.warn("[DSP] empty pool at region step", {
@@ -3446,7 +3479,7 @@ async function onCalcClick() {
     }
 
     if (pool.length === 0) {
-      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов" });
+      perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов" });
       continue;
     }
 
@@ -3476,7 +3509,7 @@ async function onCalcClick() {
       pool = pickScreensNearPOIs(pool, pois, screenRadius);
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у POI" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у POI" });
         continue;
       }
 
@@ -3511,7 +3544,7 @@ async function onCalcClick() {
       pool = [...screenSet];
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у адресов" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у адресов" });
         continue;
       }
 
@@ -3525,7 +3558,7 @@ async function onCalcClick() {
       const screenRadius = Number(brief.selection.radius_m || 300);
 
       if (!fromTxt || !toTxt) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задан маршрут" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задан маршрут" });
         continue;
       }
 
@@ -3540,8 +3573,8 @@ async function onCalcClick() {
       }
 
       if (!A || !B || !Number.isFinite(A.lat) || !Number.isFinite(A.lon) || !Number.isFinite(B.lat) || !Number.isFinite(B.lon)) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "точки маршрута не найдены" });
-        warnings.push(`⚠️ Регион «${region}»: не удалось геокодировать маршрут (${fromTxt} → ${toTxt}).`);
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "точки маршрута не найдены" });
+        warnings.push(`⚠️ Регион «${regionDisplay}»: не удалось геокодировать маршрут (${fromTxt} → ${toTxt}).`);
         continue;
       }
 
@@ -3553,14 +3586,14 @@ async function onCalcClick() {
 
       if (!Array.isArray(routeLine) || routeLine.length < 2) {
         routeLine = [[A.lon, A.lat], [B.lon, B.lat]];
-        warnings.push(`⚠️ Регион «${region}»: OSRM недоступен, использую прямую линию A–B.`);
+        warnings.push(`⚠️ Регион «${regionDisplay}»: OSRM недоступен, использую прямую линию A–B.`);
       }
 
       const before = pool.length;
       pool = pickScreensNearPolyline(pool, routeLine, screenRadius);
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у маршрута" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у маршрута" });
         continue;
       }
 
@@ -3573,7 +3606,7 @@ async function onCalcClick() {
       const screenRadius = Number(brief.selection.radius_m || 500);
 
       if (!hwName) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задана магистраль" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "не задана магистраль" });
         continue;
       }
 
@@ -3587,8 +3620,8 @@ async function onCalcClick() {
       }
 
       if (!Array.isArray(hwLine) || hwLine.length < 2) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "дорога не найдена" });
-        warnings.push(`⚠️ Регион «${region}»: не удалось найти дорогу «${hwName}» через OpenStreetMap.`);
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "дорога не найдена" });
+        warnings.push(`⚠️ Регион «${regionDisplay}»: не удалось найти дорогу «${hwName}» через OpenStreetMap.`);
         continue;
       }
 
@@ -3596,7 +3629,7 @@ async function onCalcClick() {
       pool = pickScreensNearPolyline(pool, hwLine, screenRadius);
 
       if (!pool.length) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у магистрали" });
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет экранов у магистрали" });
         continue;
       }
 
@@ -3608,13 +3641,18 @@ async function onCalcClick() {
       const gidSet = brief.selection.manual_gids;
       if (gidSet && gidSet.size > 0) {
         const before = pool.length;
+        const seenGids = new Set();
         pool = pool.filter(s => {
           const sid = _screenIdOf(s);
-          if (gidSet.has(sid)) { _foundGids.add(sid); return true; }
+          if (gidSet.has(sid) && !seenGids.has(sid)) {
+            seenGids.add(sid);
+            _foundGids.add(sid);
+            return true;
+          }
           return false;
         });
         if (!pool.length) {
-          perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null,
+          perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null,
             note: `ни один из ${gidSet.size} GID-ов не найден в регионе` });
           continue;
         }
@@ -3644,7 +3682,7 @@ async function onCalcClick() {
         pool = withScore.slice(0, keepN).map(x => x.s);
         setStatus(`Аудитория: топ ${Math.round(topPct * 100)}% → ${pool.length} из ${before}`);
         if (!pool.length) {
-          perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null,
+          perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null,
             note: `аффинити-фильтр: нет экранов в топ ${Math.round(topPct * 100)}% по [${segs.join(", ")}]` });
           continue;
         }
@@ -3687,17 +3725,17 @@ async function onCalcClick() {
       );
 
       if (pool.length === 0) {
-        perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "GRP выкинул всё" });
-        warnings.push(`⚠️ Регион «${region}»: GRP-фильтр исключил все экраны (без GRP было: ${grpDroppedNoValue}).`);
+        perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "GRP выкинул всё" });
+        warnings.push(`⚠️ Регион «${regionDisplay}»: GRP-фильтр исключил все экраны (без GRP было: ${grpDroppedNoValue}).`);
         continue;
       }
 
-      warnings.push(`⚠️ Регион «${region}»: GRP-фильтр включён, без GRP исключены (без GRP: ${grpDroppedNoValue}).`);
+      warnings.push(`⚠️ Регион «${regionDisplay}»: GRP-фильтр включён, без GRP исключены (без GRP: ${grpDroppedNoValue}).`);
     }
 
     const avgBid = avgNumber(pool.map(s => s.minBid));
     if (avgBid == null) {
-      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет minBid" });
+      perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "нет minBid" });
       continue;
     }
     const bidPlus20 = avgBid * BID_MULTIPLIER;
@@ -3712,7 +3750,7 @@ async function onCalcClick() {
     const capOtsAbs = (avgOts == null) ? null : (capPlaysAbs * avgOts);
 
     prepared.push({
-      region, tier, pool,
+      region: regionDisplay, tier, pool,
       avgBid, bidPlus20,
       avgOts,
       capPlaysAbs, capBudgetAbs, capBudgetAbsMin, capOtsAbs
@@ -3994,6 +4032,7 @@ async function onCalcClick() {
 
   for (const pr of prepared) {
     const region = pr.region;
+    const regionDisplay = region === "__gid_mode__" ? "По GID-списку" : region;
     const tier = pr.tier;
     const pool = pr.pool;
     const effectiveBid = brief.bidMode === "min" ? pr.avgBid : pr.bidPlus20;
@@ -4002,7 +4041,7 @@ async function onCalcClick() {
     let budget = Number(budgets[region] || 0);
 
     if (!Number.isFinite(budget) || budget <= 0) {
-      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "budget=0" });
+      perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "budget=0" });
       continue;
     }
 
@@ -4018,7 +4057,7 @@ async function onCalcClick() {
     }
 
     if (!Number.isFinite(totalPlaysTheory) || totalPlaysTheory <= 0) {
-      perRegionRows.push({ region, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "цель=0" });
+      perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null, note: "цель=0" });
       continue;
     }
 
@@ -4031,9 +4070,12 @@ async function onCalcClick() {
     );
 
     // Если пользователь задал кол-во конструкций — распределяем пропорционально по регионам.
-    const constructionsTarget = (brief.constructions?.enabled && brief.constructions.count > 0)
-      ? (_perRegionConstructionsTarget[region] ?? brief.constructions.count)
-      : null;
+    // In GID mode all screens are pre-selected by the user — use the entire pool.
+    const constructionsTarget = (region === "__gid_mode__")
+      ? pool.length
+      : (brief.constructions?.enabled && brief.constructions.count > 0)
+        ? (_perRegionConstructionsTarget[region] ?? brief.constructions.count)
+        : null;
     let screensChosenCount = constructionsTarget !== null
       ? Math.min(pool.length, constructionsTarget)
       : Math.min(pool.length, screensNeeded);
@@ -4042,7 +4084,14 @@ async function onCalcClick() {
     let avgChosenBid = pr.avgBid;
     let effectiveChosenBid = effectiveBid;
 
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // В GID-режиме берём весь пул как есть — без grid-фильтрации (она выбрасывает экраны без координат).
+    if (region === "__gid_mode__") {
+      chosen = [...pool];
+      avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
+      effectiveChosenBid = avgEffectiveBid(chosen, brief.bidMode, avgChosenBid * BID_MULTIPLIER);
+    }
+
+    for (let attempt = 0; attempt < (region === "__gid_mode__" ? 0 : 2); attempt++) {
       const stepKm = gridStepKmForCount(screensChosenCount);
       const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
 
@@ -4183,7 +4232,7 @@ async function onCalcClick() {
     if (brief.budget.mode !== "goal_ots" && brief.budget.mode !== "goal_plays") {
       const playsPerHourPerScreen = (totalPlaysEffective / days / hpd) / Math.max(1, chosen.length);
       if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
-        warnings.push(`⚠️ Регион «${region}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
+        warnings.push(`⚠️ Регион «${regionDisplay}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
       }
     }
 
@@ -4207,6 +4256,18 @@ async function onCalcClick() {
       avgCpm: avgChosenCpm,
       russOts: russOtsBased,
       note: ""
+    });
+  }
+
+  // Global deduplication: same screen_id/GID may appear in multiple region pools
+  // (e.g. when a screen's city matches several selected regions via fuzzy logic).
+  {
+    const seenIds = new Set();
+    chosenAll = chosenAll.filter(s => {
+      const sid = _screenIdOf(s);
+      if (!sid || seenIds.has(sid)) return false;
+      seenIds.add(sid);
+      return true;
     });
   }
 
@@ -5234,11 +5295,7 @@ function avgEffectiveBid(screens, bidMode, fallback) {
 // ===== DSP API AUTH + INVENTORY =====
 // Включается через: window.DSP_AUTH_ENABLED = true; в HTML Tilda перед виджетом
 
-// When embedded in the DSP UI, DSP_API_OVERRIDE="" makes all API calls
-// relative (e.g. /api/v1.0/…) so they route through the same proxy/origin.
-const DSP_API = (window.DSP_API_OVERRIDE !== undefined)
-  ? window.DSP_API_OVERRIDE
-  : "https://proddsp.omniboard360.io";
+const DSP_API = "https://proddsp.omniboard360.io";
 const DSP_PAGE_SIZE = 200; // reduced from 500 to avoid ERR_INCOMPLETE_CHUNKED_ENCODING
 const DSP_PAGE_BATCH = 2; // параллельных запросов за раз (меньше = меньше 500-ок от сервера)
 const DSP_BATCH_DELAY_MS = 300; // пауза между батчами
@@ -5368,7 +5425,13 @@ function restoreBriefToUI(brief) {
     const radEl = el("planner-radius") || el("radius"); if (radEl) radEl.value = brief.selection?.radius_m ?? 500;
   }
   if (selMode === "manual_screens") {
-    const mgEl = el("manual-gids"); if (mgEl) mgEl.value = (brief.selection?.manual_gids || []).join("\n");
+    // Switch step 1 to GID tab
+    if (typeof window.setGeoMode === "function") window.setGeoMode("gids");
+    const mgEl = el("manual-gids");
+    if (mgEl) {
+      mgEl.value = (brief.selection?.manual_gids || []).join("\n");
+      mgEl.dispatchEvent(new Event("input", { bubbles: true }));
+    }
   }
 
   // 7. GRP
@@ -5459,6 +5522,7 @@ window.PLANNER.saveCalcToHistory = saveCalcToHistory;
 window.PLANNER.restoreBriefToUI = restoreBriefToUI;
 window.PLANNER.buildMediaPlanBlob = buildMediaPlanBlob;
 window.PLANNER.computeRecoBudgetTiers = computeRecoBudgetTiers;
+window.PLANNER._parseManualGids = _parseManualGids;
 function getDspAgencyId() { return sessionStorage.getItem("dsp_agency_id") || ""; }
 function setDspAgencyId(id) { id ? sessionStorage.setItem("dsp_agency_id", String(id)) : sessionStorage.removeItem("dsp_agency_id"); }
 // additionalCharge — множитель надбавки агентства (напр. 0.15 = +15%), platformFee — фиксированная надбавка платформы (в той же валюте что и ставка)
