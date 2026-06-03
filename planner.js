@@ -2435,8 +2435,7 @@ async function buildMediaPlanBlob() {
   // ── Sheet 2: АП ─────────────────────────────────────────────────
   const ws2 = wb.addWorksheet("АП");
   const AP_COLS = [
-    { h: "ИД",                 w: 12, fn: s => s.screen_id ?? "" },
-    { h: "GID",                w: 25, fn: s => s.gid        ?? "" },
+    { h: "GID",                w: 25, fn: s => s.gid ?? s.screen_id ?? "" },
     { h: "Город",              w: 22, fn: s => s.city       ?? "" },
     { h: "Оператор",           w: 22, fn: s => s.owner      ?? "" },
     { h: "Адрес",              w: 50, fn: s => s.address    ?? "" },
