@@ -943,7 +943,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@55f4e4e/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@bc686c9/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -951,6 +951,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <button id="planner-recalc-float" style="display:none;" title="Пересчитать">
   <span class="rf-icon">↻</span> Пересчитать
 </button>
+<div id="planner-exclusions-bar" style="display:none; position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:9999; background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:7px 14px; font-size:13px; color:#7a5800; box-shadow:0 2px 8px rgba(0,0,0,.15); white-space:nowrap;">
+  \\u274C Исключено вручную: <b id="planner-exclusions-count">0</b> экр. &nbsp;
+  <button id="planner-exclusions-reset" style="background:#ffc107; border:none; border-radius:5px; padding:2px 10px; cursor:pointer; font-size:12px; font-weight:600; color:#3a2800;">Сбросить</button>
+</div>
 <br><br><br><br>  <h2 class="planner-title">Расчёт размещения</h2>
   <div id="dsp-user-bar" style="display:none; font-size:12px; color:#888; margin:-8px 0 10px;"></div>
   <div id="calc-history-panel" style="display:none; margin-bottom:12px;">
@@ -5449,6 +5453,38 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   // После завершения расчёта -- скрываем кнопку
   window.addEventListener("planner:calc-done", hideFloat);
+})();
+`);
+
+  // Script block 22b — Manual exclusions bar
+  runScript(`
+(function(){
+  const bar       = el("planner-exclusions-bar");
+  const countEl   = el("planner-exclusions-count");
+  const resetBtn  = el("planner-exclusions-reset");
+  if (!bar || !countEl || !resetBtn) return;
+
+  function updateBar() {
+    const n = window.PLANNER?.state?.manuallyExcluded?.size || 0;
+    if (n > 0) {
+      countEl.textContent = n;
+      bar.style.display = "block";
+    } else {
+      bar.style.display = "none";
+    }
+  }
+
+  window.addEventListener("planner:screen-removed",   updateBar);
+  window.addEventListener("planner:exclusions-cleared", updateBar);
+  window.addEventListener("planner:calc-done",          updateBar);
+
+  resetBtn.addEventListener("click", () => {
+    if (window.PLANNER?.clearManualExclusions) window.PLANNER.clearManualExclusions();
+    updateBar();
+    // Trigger recalc so results reflect cleared exclusions
+    const calcBtn = el("calc-btn");
+    if (calcBtn && window.PLANNER?.lastCalc) calcBtn.click();
+  });
 })();
 `);
 
