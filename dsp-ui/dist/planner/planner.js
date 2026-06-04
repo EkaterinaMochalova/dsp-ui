@@ -2099,7 +2099,10 @@ async function buildMediaPlanBlob() {
   // with perReg region names (e.g. DSP returns "Краснодарский край"
   // but user selected "городской округ Геленджик").
   const _perRegKeys = perReg.map(r => r.region);
+  // In GID mode the single perReg key is "По GID-списку" — assign all screens to it
+  const _isGidMode = _perRegKeys.length === 1 && _perRegKeys[0] === "По GID-списку";
   function _matchScreenRegion(s) {
+    if (_isGidMode) return "По GID-списку";
     const sReg  = String(s.region || "").trim();
     const sCity = String(s.city   || "").trim();
     for (const r of _perRegKeys) {
