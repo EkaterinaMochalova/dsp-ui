@@ -3348,7 +3348,7 @@ async function onCalcClick() {
     return;
   }
 
-  const hpd = (brief.budget.mode !== "fixed") ? RECO_HOURS_PER_DAY : hpdFixed;
+  const hpd = hpdFixed; // always use actual schedule hours; RECO_HOURS_PER_DAY was causing 12h vs real hours mismatch
 
   // aggregates
   let chosenAll = [];
