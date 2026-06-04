@@ -1469,6 +1469,72 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         </div>
       </div>
     </div>
+  <!-- ===== 2ГИС РЯДОМ С ОБЪЕКТАМИ ===== -->
+  <div class="planner-block" id="geo2gis-block">
+    <div class="vk-card" id="geo2gis-card">
+      <div class="vk-card-icon" style="background:#1DB244; font-size:11px; font-weight:800; letter-spacing:-0.5px;">2ГИС</div>
+      <div class="vk-card-body">
+        <div class="vk-card-title">Рядом с объектами</div>
+        <div class="vk-card-desc" id="geo2gis-card-desc">Найти экраны рядом с категорией бизнеса</div>
+      </div>
+      <div class="vk-toggle"></div>
+    </div>
+    <div id="geo2gis-wrap" style="display:none; margin-top:14px;">
+      <div style="margin-bottom:10px;">
+        <div class="planner-label" style="margin-bottom:6px;">Категория объектов</div>
+        <select id="poi-category" style="width:100%; padding:9px 12px; border:1.5px solid #c4b5fd;
+            border-radius:10px; font-size:13px; color:#0b1220; background:#fff; outline:none; cursor:pointer;">
+          <option value="pharmacy">Аптеки</option>
+          <option value="food">Рестораны и кафе</option>
+          <option value="grocery">Продуктовые магазины</option>
+          <option value="mall">Торговые центры</option>
+          <option value="gas_station">АЗС</option>
+          <option value="beauty">Красота и уход</option>
+          <option value="bank">Банки и банкоматы</option>
+          <option value="auto_service">Автосервисы</option>
+          <option value="clinic">Медицина</option>
+          <option value="sport">Спорт и фитнес</option>
+          <option value="hotel">Гостиницы</option>
+          <option value="electronics">Техника и электроника</option>
+          <option value="clothes">Одежда и аксессуары</option>
+          <option value="furniture">Мебель и товары для дома</option>
+          <option value="alcohol">Алкоголь</option>
+          <option value="kindergarten">Детские сады</option>
+          <option value="pets">Зоотовары</option>
+          <option value="flowers">Цветы</option>
+          <option value="jewelry">Ювелирные украшения</option>
+          <option value="children">Детские товары</option>
+          <option value="books">Книги и канцелярия</option>
+          <option value="optics">Оптика</option>
+          <option value="hardware">Строительство и ремонт</option>
+          <option value="pickup_point">Пункты выдачи</option>
+        </select>
+      </div>
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <div class="planner-label" style="margin:0;">Радиус поиска</div>
+          <span style="font-weight:700; color:#5b3ef5; font-size:13px;"><span id="poi-radius-val">500</span> м</span>
+        </div>
+        <input type="range" id="poi-radius" min="100" max="2000" step="50" value="500"
+               style="width:100%; accent-color:#5b3ef5;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
+          <span>100 м</span><span>500 м</span><span>1 км</span><span>2 км</span>
+        </div>
+      </div>
+      <button id="poi-find-btn" type="button"
+        style="padding:11px 24px; background:#5B3EF5; color:#fff; border:none;
+               border-radius:12px; font-size:14px; font-weight:700; cursor:pointer; width:100%;">
+        🔍 Найти экраны
+      </button>
+      <div id="poi-status" style="font-size:13px; color:#667085; margin-top:10px; min-height:20px;"></div>
+      <div id="poi-progress-wrap" style="display:none; margin-top:8px;">
+        <div style="height:6px; background:rgba(91,62,245,0.12); border-radius:3px; overflow:hidden;">
+          <div id="poi-progress-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:3px; transition:width 0.2s;"></div>
+        </div>
+        <div id="poi-progress-text" style="font-size:11px; color:#9b8aff; margin-top:4px;"></div>
+      </div>
+    </div>
+  </div>
   <!-- Зона на карте (перед "Как собираем") -->
   <div class="planner-block" id="step4-map-zone-block">
     <div class="planner-label">Зона на карте</div>
@@ -1505,9 +1571,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <button type="button" class="sel-chip" data-mode="route">
         <span class="sel-chip-ico">🚗</span><span>Маршрут</span>
       </button>
-      <button type="button" class="sel-chip" data-mode="yandex_geo">
-        <span class="sel-chip-ico">🗺</span><span>Яндекс Геоаналитика</span>
-      </button>
     </div>
     <select id="selection-mode" style="display:none;">
       <option value="city_even">Равномерно по региону</option>
@@ -1516,84 +1579,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <option value="highway">Вдоль магистрали / шоссе</option>
       <option value="route">Вдоль маршрута</option>
       <option value="manual_screens">По GID-списку</option>
-      <option value="yandex_geo">Яндекс Геоаналитика</option>
     </select>
     <div id="selection-extra" style="margin-top:10px;"></div>
   </div>
-  <!-- Яндекс Геоаналитика block (initially hidden) -->
-  <div id="geo-poi-block" class="planner-block" style="display:none;">
-    <div class="planner-label">Категория бизнеса рядом с экраном</div>
-    <select id="poi-category" style="width:100%; padding:9px 12px; border:1.5px solid #c4b5fd;
-        border-radius:10px; font-size:13px; color:#0b1220; background:#fff; outline:none; cursor:pointer;">
-      <option value="searches.pharmacy">Аптеки</option>
-      <option value="searches.food">Рестораны и кафе</option>
-      <option value="searches.grocery">Продуктовые магазины</option>
-      <option value="searches.mall">Торговые центры</option>
-      <option value="searches.gas_station">АЗС</option>
-      <option value="searches.beauty">Красота и уход</option>
-      <option value="searches.bank">Банки и банкоматы</option>
-      <option value="searches.auto_service">Автосервисы</option>
-      <option value="searches.clinic">Медицина</option>
-      <option value="searches.sport">Спорт и фитнес</option>
-      <option value="searches.hotel">Гостиницы</option>
-      <option value="searches.electronics">Техника и электроника</option>
-      <option value="searches.clothes">Одежда и аксессуары</option>
-      <option value="searches.furniture">Мебель и товары для дома</option>
-      <option value="searches.alcohol">Алкоголь</option>
-      <option value="searches.kindergarten">Детские сады</option>
-      <option value="searches.pets">Зоотовары</option>
-      <option value="searches.flowers">Цветы</option>
-      <option value="searches.jewelry">Ювелирные украшения</option>
-      <option value="searches.children">Детские товары</option>
-      <option value="searches.books">Книги и канцелярия</option>
-      <option value="searches.optics">Оптика</option>
-      <option value="searches.hardware">Строительство и ремонт</option>
-      <option value="searches.pickup_point">Пункты выдачи</option>
-    </select>
-
-    <div class="planner-label" style="margin-top:14px;">Минимальная плотность POI</div>
-    <div id="poi-density-chips" style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
-      <button type="button" class="poi-density-chip" data-val="1"
-        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
-               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">1</button>
-      <button type="button" class="poi-density-chip" data-val="2"
-        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
-               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">2</button>
-      <button type="button" class="poi-density-chip" data-val="3"
-        style="padding:6px 14px; border-radius:8px; border:1.5px solid #5B3EF5;
-               background:#5B3EF5; color:#fff; font-size:13px; cursor:pointer; font-weight:600;">3</button>
-      <button type="button" class="poi-density-chip" data-val="4"
-        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
-               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">4</button>
-      <button type="button" class="poi-density-chip" data-val="5"
-        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
-               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">5</button>
-      <button type="button" class="poi-density-chip" data-val="6"
-        style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd;
-               background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">6</button>
-    </div>
-    <div id="poi-density-note" style="font-size:12px; color:#667085; margin-top:5px;">
-      По шкале Яндекс ГеоАналитики: 1 — низкая, 6 — максимальная плотность
-    </div>
-
-    <input type="hidden" id="poi-selected-density" value="3">
-
-    <button id="poi-find-btn" type="button"
-      style="margin-top:16px; padding:11px 24px; background:#5B3EF5; color:#fff; border:none;
-             border-radius:12px; font-size:14px; font-weight:700; cursor:pointer; width:100%;">
-      🔍 Найти экраны
-    </button>
-
-    <div id="poi-status" style="font-size:13px; color:#667085; margin-top:10px; min-height:20px;"></div>
-
-    <div id="poi-progress-wrap" style="display:none; margin-top:8px;">
-      <div style="height:6px; background:rgba(91,62,245,0.12); border-radius:3px; overflow:hidden;">
-        <div id="poi-progress-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:3px; transition:width 0.2s;"></div>
-      </div>
-      <div id="poi-progress-text" style="font-size:11px; color:#9b8aff; margin-top:4px;"></div>
-    </div>
-  </div>
-  <!-- /Яндекс Геоаналитика block -->
   <!-- ===== ПРЕВЬЮ ПУЛА ===== -->
   <div class="planner-block pool-preview-block" id="pool-preview-block">
     <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:6px;">
@@ -2293,10 +2281,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         chip.classList.add('active');
         const sel = el('selection-mode');
         const mode = chip.dataset.mode;
-        // Show/hide Яндекс Геоаналитика block
-        const poiBlock = el('geo-poi-block');
-        if (poiBlock) poiBlock.style.display = (mode === 'yandex_geo') ? '' : 'none';
-        // For yandex_geo keep selection-mode as yandex_geo (planner will treat it as manual after POI finds screens)
         if (sel) { sel.value = mode; sel.dispatchEvent(new Event('change', { bubbles: true })); }
         renderProgress();
       });
@@ -2402,19 +2386,24 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     el("geo-tab-cities")?.addEventListener("click", () => setGeoMode("cities"));
     el("geo-tab-gids")?.addEventListener("click",   () => setGeoMode("gids"));
 
-    // -- POI density chips ----------------------------------------------------
-    document.querySelectorAll(".poi-density-chip").forEach(chip => {
-      chip.addEventListener("click", () => {
-        document.querySelectorAll(".poi-density-chip").forEach(c => {
-          c.style.background = "#faf8ff"; c.style.color = "#5B3EF5"; c.style.borderColor = "#e0d9fd";
-        });
-        chip.style.background = "#5B3EF5"; chip.style.color = "#fff"; chip.style.borderColor = "#5B3EF5";
-        const hidden = el("poi-selected-density");
-        if (hidden) hidden.value = chip.dataset.val;
+    // -- 2GIS card toggle ---------------------------------------------------
+    (function(){
+      const card = el("geo2gis-card");
+      const wrap = el("geo2gis-wrap");
+      if (!card || !wrap) return;
+      card.addEventListener("click", () => {
+        const active = card.classList.toggle("active");
+        wrap.style.display = active ? "" : "none";
       });
-    });
+      // radius slider label sync
+      const slider = el("poi-radius");
+      const valEl  = el("poi-radius-val");
+      if (slider && valEl) {
+        slider.addEventListener("input", () => { valEl.textContent = slider.value; });
+      }
+    })();
 
-    // -- POI screen finder ----------------------------------------------------
+    // -- 2GIS POI screen finder -----------------------------------------------
     el("poi-find-btn")?.addEventListener("click", async () => {
       const btn      = el("poi-find-btn");
       const statusEl = el("poi-status");
@@ -2422,8 +2411,36 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const progBar  = el("poi-progress-bar");
       const progText = el("poi-progress-text");
 
-      const category = el("poi-category")?.value || "searches.pharmacy";
-      const minColor = Number(el("poi-selected-density")?.value || 3);
+      const GEO2GIS_Q = {
+        "pharmacy":    "\\u0430\\u043f\\u0442\\u0435\\u043a\\u0430",
+        "food":        "\\u0440\\u0435\\u0441\\u0442\\u043e\\u0440\\u0430\\u043d \\u043a\\u0430\\u0444\\u0435",
+        "grocery":     "\\u043f\\u0440\\u043e\\u0434\\u0443\\u043a\\u0442\\u043e\\u0432\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
+        "mall":        "\\u0442\\u043e\\u0440\\u0433\\u043e\\u0432\\u044b\\u0439 \\u0446\\u0435\\u043d\\u0442\\u0440",
+        "gas_station": "\\u0430\\u0437\\u0441 \\u0437\\u0430\\u043f\\u0440\\u0430\\u0432\\u043a\\u0430",
+        "beauty":      "\\u0441\\u0430\\u043b\\u043e\\u043d \\u043a\\u0440\\u0430\\u0441\\u043e\\u0442\\u044b",
+        "bank":        "\\u0431\\u0430\\u043d\\u043a",
+        "auto_service":"\\u0430\\u0432\\u0442\\u043e\\u0441\\u0435\\u0440\\u0432\\u0438\\u0441",
+        "clinic":      "\\u043c\\u0435\\u0434\\u0438\\u0446\\u0438\\u043d\\u0441\\u043a\\u0438\\u0439 \\u0446\\u0435\\u043d\\u0442\\u0440",
+        "sport":       "\\u0444\\u0438\\u0442\\u043d\\u0435\\u0441 \\u0437\\u0430\\u043b",
+        "hotel":       "\\u0433\\u043e\\u0441\\u0442\\u0438\\u043d\\u0438\\u0446\\u0430 \\u043e\\u0442\\u0435\\u043b\\u044c",
+        "electronics": "\\u044d\\u043b\\u0435\\u043a\\u0442\\u0440\\u043e\\u043d\\u0438\\u043a\\u0430",
+        "clothes":     "\\u043e\\u0434\\u0435\\u0436\\u0434\\u0430 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
+        "furniture":   "\\u043c\\u0435\\u0431\\u0435\\u043b\\u044c",
+        "alcohol":     "\\u0430\\u043b\\u043a\\u043e\\u0433\\u043e\\u043b\\u044c\\u043d\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
+        "kindergarten":"\\u0434\\u0435\\u0442\\u0441\\u043a\\u0438\\u0439 \\u0441\\u0430\\u0434",
+        "pets":        "\\u0437\\u043e\\u043e\\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
+        "flowers":     "\\u0446\\u0432\\u0435\\u0442\\u043e\\u0447\\u043d\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
+        "jewelry":     "\\u044e\\u0432\\u0435\\u043b\\u0438\\u0440\\u043d\\u044b\\u0439",
+        "children":    "\\u0434\\u0435\\u0442\\u0441\\u043a\\u0438\\u0435 \\u0442\\u043e\\u0432\\u0430\\u0440\\u044b",
+        "books":       "\\u043a\\u043d\\u0438\\u0436\\u043d\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
+        "optics":      "\\u043e\\u043f\\u0442\\u0438\\u043a\\u0430",
+        "hardware":    "\\u0441\\u0442\\u0440\\u043e\\u0438\\u0442\\u0435\\u043b\\u044c\\u043d\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
+        "pickup_point":"\\u043f\\u0443\\u043d\\u043a\\u0442 \\u0432\\u044b\\u0434\\u0430\\u0447\\u0438"
+      };
+
+      const categoryKey = el("poi-category")?.value || "pharmacy";
+      const searchQuery = GEO2GIS_Q[categoryKey] || categoryKey;
+      const radius      = Number(el("poi-radius")?.value || 500);
 
       const screensAll = window.PLANNER?.state?.screensAll || [];
       if (!screensAll.length) {
@@ -2456,108 +2473,76 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if (progBar)  progBar.style.width = "0%";
 
       try {
-        // Load h3-js once
-        if (!window.h3) {
-          statusEl.textContent = "Загружаю H3-библиотеку\\u2026";
-          await new Promise((resolve, reject) => {
-            const s = document.createElement("script");
-            s.src = "https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js";
-            s.onload = resolve; s.onerror = reject;
-            document.head.appendChild(s);
-          });
-        }
-        const h3Lib = window.h3;
-
-        // Build unique tile list from screen coordinates (z=8)
-        const TILE_Z = 8;
-        const tileSet = new Set();
-        screensPool.forEach(s => {
-          const lat = Number(s.lat ?? s.latitude);
-          const lon = Number(s.lon ?? s.lng ?? s.longitude);
-          if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
-          const tx = Math.floor((lon + 180) / 360 * 256);
-          const ty = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * 256);
-          tileSet.add(tx + "," + ty);
-        });
-
-        const tiles = [...tileSet].map(k => { const [x,y] = k.split(",").map(Number); return {x,y}; });
-        statusEl.textContent = "Загружаю тайлы: 0 / " + tiles.length;
-
-        // Fetch tiles in batches, collect hot H3 cells
-        const hotCells = new Set();
-        const BATCH = 25;
+        // 2GIS Places API: for each screen check if POI of selected category
+        // exists within `radius` meters. Batch 20 concurrent requests.
+        const GEO2GIS_KEY = "ba3c806e-746b-40b7-a1c8-4fc79c1a9667";
+        const BATCH = 20;
+        const total = screensPool.length;
         let done = 0;
-
-        // Yandex GeoAnalytics tile API via Cloudflare Worker proxy (avoids CORS)
-        const GEO_BASE = "https://silent-surf-cd5e.mochalova-kathrine-v.workers.dev";
-        const GEO_VERSION = "2025-02-10T14%3A43%3A35Z";
-
-        for (let i = 0; i < tiles.length; i += BATCH) {
-          const batch = tiles.slice(i, i + BATCH);
-          const results = await Promise.all(batch.map(({x, y}) =>
-            fetch(GEO_BASE + "?version=" + GEO_VERSION +
-                  "&resolution=7&x=" + x + "&y=" + y + "&z=" + TILE_Z +
-                  "&layer=" + category)
-              .then(r => r.ok ? r.json() : null)
-              .catch(() => null)
-          ));
-          results.forEach(data => {
-            if (!data?.data?.items) return;
-            data.data.items.forEach(item => {
-              if (item.color >= minColor) hotCells.add(item.hex);
-            });
-          });
-          done += batch.length;
-          const pct = Math.round(done / tiles.length * 100);
-          if (progBar)  progBar.style.width = pct + "%";
-          if (progText) progText.textContent = done + " / " + tiles.length + " тайлов";
-          statusEl.textContent = "Загружаю тайлы: " + done + " / " + tiles.length;
-        }
-
-        // Match screens: compute H3 cell for each screen, check against hotCells
-        // API returns decimal strings, h3-js returns hex -> convert hex->decimal via BigInt
         const matchingGids = [];
         const seenIds = new Set();
-        screensPool.forEach(s => {
-          const lat = Number(s.lat ?? s.latitude);
-          const lon = Number(s.lon ?? s.lng ?? s.longitude);
-          if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
-          try {
-            const hexCell = h3Lib.latLngToCell(lat, lon, 7);
-            const decCell = BigInt("0x" + hexCell).toString(10);
-            if (!hotCells.has(decCell)) return;
-          } catch(e) { return; }
-          const gid = (s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").toString().trim();
-          if (gid && !seenIds.has(gid)) { seenIds.add(gid); matchingGids.push(gid); }
-        });
+
+        statusEl.textContent = "\\u041f\\u0440\\u043e\\u0432\\u0435\\u0440\\u044f\\u044e: 0 / " + total;
+
+        for (let i = 0; i < screensPool.length; i += BATCH) {
+          const batch = screensPool.slice(i, i + BATCH);
+          const results = await Promise.all(batch.map(s => {
+            const lat = Number(s.lat ?? s.latitude);
+            const lon = Number(s.lon ?? s.lng ?? s.longitude);
+            if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return Promise.resolve(false);
+            const url = "https://catalog.api.2gis.com/3.0/items?q=" +
+              encodeURIComponent(searchQuery) +
+              "&location=" + lon + "," + lat +
+              "&radius=" + radius +
+              "&page_size=1&fields=items.point" +
+              "&key=" + GEO2GIS_KEY;
+            return fetch(url)
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                const found = data?.result?.total > 0 || (Array.isArray(data?.result?.items) && data.result.items.length > 0);
+                if (!found) return false;
+                const gid = (s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").toString().trim();
+                return gid || false;
+              })
+              .catch(() => false);
+          }));
+
+          results.forEach(gid => {
+            if (gid && !seenIds.has(gid)) { seenIds.add(gid); matchingGids.push(gid); }
+          });
+
+          done += batch.length;
+          const pct = Math.round(done / total * 100);
+          if (progBar)  progBar.style.width = pct + "%";
+          if (progText) progText.textContent = done + " / " + total;
+          statusEl.textContent = "\\u041f\\u0440\\u043e\\u0432\\u0435\\u0440\\u044f\\u044e: " + done + " / " + total;
+        }
 
         if (progWrap) progWrap.style.display = "none";
 
         if (!matchingGids.length) {
-          statusEl.textContent = "Не найдено экранов рядом с выбранной категорией. Попробуйте снизить плотность.";
+          statusEl.textContent = "\\u041d\\u0435 \\u043d\\u0430\\u0439\\u0434\\u0435\\u043d\\u043e \\u044d\\u043a\\u0440\\u0430\\u043d\\u043e\\u0432. \\u0423\\u0432\\u0435\\u043b\\u0438\\u0447\\u044c\\u0442\\u0435 \\u0440\\u0430\\u0434\\u0438\\u0443\\u0441.";
           statusEl.style.color = "#dc2626";
         } else {
-          // Populate manual-gids textarea (reuse GID mode flow)
           const ta = el("manual-gids");
           if (ta) { ta.value = matchingGids.join("\\n"); ta.dispatchEvent(new Event("input", { bubbles: true })); }
-          // Switch selection-mode to manual_screens so planner picks these GIDs
           const selEl = el("selection-mode");
-          if (selEl && selEl.value === "yandex_geo") {
+          if (selEl) {
             selEl.value = "manual_screens";
             selEl.dispatchEvent(new Event("change", { bubbles: true }));
           }
-          statusEl.textContent = "Найдено экранов: " + matchingGids.length + " \\u2014 нажмите \\u00ABРассчитать\\u00BB";
+          statusEl.textContent = "\\u041d\\u0430\\u0439\\u0434\\u0435\\u043d\\u043e \\u044d\\u043a\\u0440\\u0430\\u043d\\u043e\\u0432: " + matchingGids.length + " \\u2014 \\u043d\\u0430\\u0436\\u043c\\u0438\\u0442\\u0435 \\u00AB\\u0420\\u0430\\u0441\\u0441\\u0447\\u0438\\u0442\\u0430\\u0442\\u044c\\u00BB";
           statusEl.style.color = "#5b3ef5";
           renderProgress();
         }
       } catch(err) {
         if (progWrap) progWrap.style.display = "none";
-        statusEl.textContent = "Ошибка: " + err.message;
+        statusEl.textContent = "\\u041e\\u0448\\u0438\\u0431\\u043a\\u0430: " + err.message;
         statusEl.style.color = "#dc2626";
       }
 
       btn.disabled = false;
-      btn.textContent = "\\uD83D\\uDD0D Найти экраны";
+      btn.textContent = "\\uD83D\\uDD0D \\u041d\\u0430\\u0439\\u0442\\u0438 \\u044d\\u043a\\u0440\\u0430\\u043d\\u044b";
     });
 
     // Schedule chips
