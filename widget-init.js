@@ -943,7 +943,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@3503d7f/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@2c94c7f/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -1401,6 +1401,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <div id="cns-region-ppm-rows" class="cns-per-region-rows" style="display:none;"></div>
         </div>
       </div>
+    </div>
+  </div>
+  <!-- Выходов в час (только GID-режим) -->
+  <div class="planner-block" id="step4-gid-ppm-block" style="display:none;">
+    <div class="planner-label">Выходов в час на экран</div>
+    <div style="display:flex; align-items:center; gap:10px; margin-top:4px;">
+      <input type="range" id="gid-ppm" min="1" max="60" value="10" style="flex:1; accent-color:#5b3ef5;">
+      <span id="gid-ppm-val" style="font-weight:700; color:#5b3ef5; min-width:28px; text-align:right;">10</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
+      <span>1 / час</span><span>60 / час</span>
     </div>
   </div>
   <!-- Режим ставки -->
@@ -1862,6 +1873,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const lbl = block.querySelector(".planner-label")?.textContent?.trim() || "";
         if (lbl === "Операторы" || lbl === "GRP") block.style.display = d;
       });
+      // В GID-режиме показываем слайдер выходов в час
+      const gidPpmBlock = el("step4-gid-ppm-block");
+      if (gidPpmBlock) gidPpmBlock.style.display = isGidMode ? "" : "none";
     }
     if (typeof window.renderProgress === "function") window.renderProgress();
   };
@@ -5485,6 +5499,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const calcBtn = el("calc-btn");
     if (calcBtn && window.PLANNER?.lastCalc) calcBtn.click();
   });
+
+  // GID-mode ppm slider label sync
+  const gidPpm = el("gid-ppm");
+  const gidPpmVal = el("gid-ppm-val");
+  if (gidPpm && gidPpmVal) {
+    gidPpm.addEventListener("input", () => {
+      gidPpmVal.textContent = gidPpm.value;
+    });
+  }
 })();
 `);
 
