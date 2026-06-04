@@ -2474,7 +2474,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
       try {
         // 2GIS Places API: for each screen check if POI of selected category
-        // exists within `radius` meters. Batch 20 concurrent requests.
+        // exists within the given radius (meters). Batch 20 concurrent requests.
         const GEO2GIS_KEY = "ba3c806e-746b-40b7-a1c8-4fc79c1a9667";
         const BATCH = 20;
         const total = screensPool.length;
