@@ -2490,7 +2490,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             const lat = Number(s.lat ?? s.latitude);
             const lon = Number(s.lon ?? s.lng ?? s.longitude);
             if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return Promise.resolve(false);
-            const url = "https://catalog.api.2gis.com/3.0/items?q=" +
+            const url = "https://silent-surf-cd5e.mochalova-kathrine-v.workers.dev/2gis?q=" +
               encodeURIComponent(searchQuery) +
               "&location=" + lon + "," + lat +
               "&radius=" + radius +
