@@ -1454,7 +1454,12 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
     constructions: {
       enabled:      !!el("constructions-enabled")?.checked,
       count:        toNumber(el("constructions-count")?.value ?? 0),
-      playsPerHour: toNumber(el("constructions-ppm")?.value ?? 0) || 0,
+      // In GID/manual mode use dedicated gid-ppm slider; otherwise constructions-ppm
+      playsPerHour: (() => {
+        const selMode = el("selection-mode")?.value || "";
+        const isGidMode = selMode === "manual_screens" || selMode === "yandex_geo";
+        return toNumber(isGidMode ? (el("gid-ppm")?.value ?? 0) : (el("constructions-ppm")?.value ?? 0)) || 0;
+      })(),
       perRegionCount: (() => {
         const map = {};
         document.querySelectorAll(".cns-region-count-input").forEach(inp => {
@@ -4158,7 +4163,7 @@ async function onCalcClick() {
       ? (hasBudget
           ? (ppmRegionOverride > 0 ? ppmRegionOverride : null)           // бюджет: только per-region override
           : (ppmManual > 0 ? ppmManual : pphTarget))                     // рекомендация: слайдер или стратегия
-      : null;
+      : (_isManualMode && ppmManual > 0 ? ppmManual : null);             // GID-режим без конструкций: уважаем слайдер
     const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
 
     // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу).
