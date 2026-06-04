@@ -3871,6 +3871,24 @@ async function onCalcClick() {
         budgets[r.region] = found ? Number(found.budget) : 0;
       }
     } else {
+      // In GID mode with explicit ppm set — calculate budget directly from N × ppm × hpd × days × bid
+      const _gidPpmGlobal = Number(brief.constructions?.playsPerHour || 0);
+      const _isGidRecoWithPpm = _isManualMode && _gidPpmGlobal > 0;
+
+      if (_isGidRecoWithPpm) {
+        const allGidScreens = prepared.flatMap(r => r.pool);
+        const recoBid = avgEffectiveBid(allGidScreens, brief.bidMode, 1);
+        const totalBudget = Math.round(allGidScreens.length * _gidPpmGlobal * hpdFixed * days * recoBid);
+        const alloc = allocateBudgetAcrossRegions(
+          totalBudget,
+          prepared.map(r => ({ key: r.region, tier: getTierForGeo(r.region) })),
+          { minShare: 0.10, maxShare: 0.70 }
+        );
+        for (const r of prepared) {
+          const found = alloc?.find(x => x.region === r.region);
+          budgets[r.region] = found ? Number(found.budget) : Math.round(totalBudget / prepared.length);
+        }
+      } else {
       // Use computeRecoBudgetTiers if available to respect recoTier selection
       const recoTier = brief.recoTier || "optimal"; // "min" | "optimal" | "max"
       const BASE_MONTHLY_BY_TIER = { M: 2_000_000, SP: 1_500_000, A: 1_000_000, B: 500_000, C: 300_000, D: 100_000 };
@@ -3890,6 +3908,7 @@ async function onCalcClick() {
         budgets[r.region] = Math.floor(
           recoTier === "min" ? min : recoTier === "max" ? max : optimal
         );
+      }
       }
     }
   }
