@@ -1862,6 +1862,25 @@ function replaceScreen(screenId) {
   return replacement;
 }
 
+// ── Manual exclusions: persisted in sessionStorage for the tab lifetime ──
+const _EXCL_KEY = "planner_excluded_screens";
+
+function _loadExcluded() {
+  try {
+    const raw = sessionStorage.getItem(_EXCL_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch { return new Set(); }
+}
+
+function _saveExcluded(set) {
+  try { sessionStorage.setItem(_EXCL_KEY, JSON.stringify([...set])); } catch {}
+}
+
+// Restore on load so recalc after page refresh still respects exclusions
+if (!state.manuallyExcluded || !state.manuallyExcluded.size) {
+  state.manuallyExcluded = _loadExcluded();
+}
+
 // Remove a chosen screen (no replacement)
 function removeScreen(screenId) {
   const chosen = state.lastChosen;
@@ -1872,6 +1891,7 @@ function removeScreen(screenId) {
   // Remember this exclusion so recalc doesn't add it back
   if (!state.manuallyExcluded) state.manuallyExcluded = new Set();
   state.manuallyExcluded.add(String(screenId));
+  _saveExcluded(state.manuallyExcluded);
   window.dispatchEvent(new CustomEvent("planner:screen-removed", {
     detail: { removed }
   }));
@@ -1880,6 +1900,7 @@ function removeScreen(screenId) {
 
 function clearManualExclusions() {
   state.manuallyExcluded = new Set();
+  _saveExcluded(state.manuallyExcluded);
   window.dispatchEvent(new CustomEvent("planner:exclusions-cleared"));
 }
 
