@@ -1552,17 +1552,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <option value="searches.pickup_point">Пункты выдачи</option>
         </select>
       </div>
-      <div class="planner-label" style="margin-bottom:6px;">Минимальная плотность POI</div>
-      <div id="poi-density-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
-        <button type="button" class="poi-density-chip" data-val="1" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">1</button>
-        <button type="button" class="poi-density-chip" data-val="2" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">2</button>
-        <button type="button" class="poi-density-chip" data-val="3" style="padding:6px 14px; border-radius:8px; border:1.5px solid #5B3EF5; background:#5B3EF5; color:#fff; font-size:13px; cursor:pointer; font-weight:600;">3</button>
-        <button type="button" class="poi-density-chip" data-val="4" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">4</button>
-        <button type="button" class="poi-density-chip" data-val="5" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">5</button>
-        <button type="button" class="poi-density-chip" data-val="6" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">6</button>
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <div class="planner-label" style="margin:0;">Радиус поиска</div>
+          <span style="font-weight:700; color:#fc3f1d; font-size:13px;"><span id="yandex-radius-val">500</span> м</span>
+        </div>
+        <input type="range" id="yandex-radius" min="100" max="2000" step="50" value="500"
+               style="width:100%; accent-color:#fc3f1d;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:#aaa; margin-top:2px;">
+          <span>100 м</span><span>500 м</span><span>1 км</span><span>2 км</span>
+        </div>
       </div>
-      <div style="font-size:12px; color:#667085; margin-bottom:14px;">По шкале Яндекс ГеоАналитики: 1 — низкая, 6 — максимальная плотность</div>
-      <input type="hidden" id="poi-selected-density" value="3">
       <button id="yandex-find-btn" type="button"
         style="padding:11px 24px; background:#fc3f1d; color:#fff; border:none;
                border-radius:12px; font-size:14px; font-weight:700; cursor:pointer; width:100%;">
@@ -2455,17 +2455,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         wrap.style.display = active ? "" : "none";
       });
 
-      // density chips
-      document.querySelectorAll(".poi-density-chip").forEach(chip => {
-        chip.addEventListener("click", () => {
-          document.querySelectorAll(".poi-density-chip").forEach(c => {
-            c.style.background = "#faf8ff"; c.style.color = "#5B3EF5"; c.style.borderColor = "#e0d9fd";
-          });
-          chip.style.background = "#5B3EF5"; chip.style.color = "#fff"; chip.style.borderColor = "#5B3EF5";
-          const hidden = el("poi-selected-density");
-          if (hidden) hidden.value = chip.dataset.val;
-        });
-      });
+      // radius slider label sync
+      const ySlider = el("yandex-radius");
+      const yValEl  = el("yandex-radius-val");
+      if (ySlider && yValEl) {
+        ySlider.addEventListener("input", () => { yValEl.textContent = ySlider.value; });
+      }
 
       // Yandex GeoAnalytics finder
       el("yandex-find-btn")?.addEventListener("click", async () => {
@@ -2475,8 +2470,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const progBar  = el("yandex-poi-progress-bar");
         const progText = el("yandex-poi-progress-text");
 
-        const category = el("poi-category")?.value || "searches.pharmacy";
-        const minColor = Number(el("poi-selected-density")?.value || 3);
+        const category  = el("poi-category")?.value || "searches.pharmacy";
+        const yRadius   = Number(el("yandex-radius")?.value || 500); // meters
 
         const screensAll = window.PLANNER?.state?.screensAll || [];
         if (!screensAll.length) {
@@ -2535,24 +2530,46 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
             ));
             results.forEach(data => {
               if (!data?.data?.items) return;
-              data.data.items.forEach(item => { if (item.color >= minColor) hotCells.add(item.hex); });
+              // any density (>=1) counts — we filter by radius to screen later
+              data.data.items.forEach(item => { if (item.color >= 1) hotCells.add(item.hex); });
             });
             done += batch.length;
             if (progBar)  progBar.style.width = Math.round(done / tiles.length * 100) + "%";
             if (progText) progText.textContent = done + " / " + tiles.length;
             statusEl.textContent = "\\u0422\\u0430\\u0439\\u043b\\u044b: " + done + " / " + tiles.length;
           }
+
+          // Convert hot cells to [lat, lon] centers for distance check
+          const hotCenters = [];
+          hotCells.forEach(hexDec => {
+            // hotCells stores decimal strings from API — convert to hex for h3
+            try {
+              const hexStr = BigInt(hexDec).toString(16).padStart(15, "0");
+              const [clat, clon] = h3Lib.cellToLatLng(hexStr);
+              hotCenters.push([clat, clon]);
+            } catch(e) {}
+          });
+
+          // Haversine distance in meters
+          function haversineM(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+                      Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+                      Math.sin(dLon/2)*Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          }
+
           const matchingGids = [];
           const seenIds = new Set();
           screensPool.forEach(s => {
             const lat = Number(s.lat ?? s.latitude);
             const lon = Number(s.lon ?? s.lng ?? s.longitude);
             if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
-            try {
-              const hexCell = h3Lib.latLngToCell(lat, lon, 7);
-              const decCell = BigInt("0x" + hexCell).toString(10);
-              if (!hotCells.has(decCell)) return;
-            } catch(e) { return; }
+            // Include screen if any hot cell center is within yRadius meters
+            const nearby = hotCenters.some(([clat, clon]) => haversineM(lat, lon, clat, clon) <= yRadius);
+            if (!nearby) return;
             const gid = (s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").toString().trim();
             if (gid && !seenIds.has(gid)) { seenIds.add(gid); matchingGids.push(gid); }
           });
