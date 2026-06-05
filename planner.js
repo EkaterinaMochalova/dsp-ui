@@ -3734,10 +3734,11 @@ async function onCalcClick() {
       }
     }
 
-    // In constructions mode keep all screens — avgBid computed from those that have minBid.
-    // onlyActiveBids=true → filter out no-bid screens (default-safe).
-    // onlyActiveBids=false → estimate bid for no-bid screens from same-format avg in this region.
-    if (!(brief.constructions?.enabled && brief.constructions.count > 0)) {
+    // In constructions mode or GID mode keep all screens — estimate bid for no-bid screens.
+    // onlyActiveBids=true → filter out no-bid screens (default-safe for city mode).
+    // onlyActiveBids=false or GID mode → estimate bid for no-bid screens from same-format avg.
+    const _skipBidFilter = (brief.constructions?.enabled && brief.constructions.count > 0) || _isManualMode;
+    if (!_skipBidFilter) {
       const bidScreens = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
       if (bidScreens.length > 0) {
         if (brief.onlyActiveBids !== false) {
@@ -3755,6 +3756,22 @@ async function onCalcClick() {
             return { ...s, minBid: f ? f.sum / f.n : regionAvg, _bidEstimated: true };
           });
         }
+      }
+    } else if (_isManualMode) {
+      // GID mode: estimate bids for screens that don't have one, using format-avg from pool
+      const bidScreens = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+      if (bidScreens.length > 0 && bidScreens.length < pool.length) {
+        const fmtAvg = {};
+        for (const s of bidScreens) {
+          if (!fmtAvg[s.format]) fmtAvg[s.format] = { sum: 0, n: 0 };
+          fmtAvg[s.format].sum += s.minBid; fmtAvg[s.format].n++;
+        }
+        const regionAvg = bidScreens.reduce((a, s) => a + s.minBid, 0) / bidScreens.length;
+        pool = pool.map(s => {
+          if (Number.isFinite(s.minBid) && s.minBid > 0) return s;
+          const f = fmtAvg[s.format];
+          return { ...s, minBid: f ? f.sum / f.n : regionAvg, _bidEstimated: true };
+        });
       }
     }
 
