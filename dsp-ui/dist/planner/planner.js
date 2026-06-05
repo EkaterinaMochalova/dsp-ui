@@ -4372,6 +4372,11 @@ async function onCalcClick() {
       if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
         warnings.push(`⚠️ Регион «${regionDisplay}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
       }
+      // Warn when actual pph is below the desired pph (budget too tight for requested frequency)
+      const desiredPph = ppmManual > 0 ? ppmManual : (_isGidRegion ? null : pphTarget);
+      if (desiredPph != null && playsPerHourPerScreen < desiredPph - 0.4) {
+        warnings.push(`⚠️ Бюджет позволяет ${playsPerHourPerScreen.toFixed(1)} вых/час на экран (запрошено ${desiredPph}). Увеличьте бюджет для полной частоты.`);
+      }
     }
 
     // OTS = avg(s.ots per play) × totalPlays  — s.ots уже OTS за один выход
