@@ -3821,7 +3821,7 @@ async function onCalcClick() {
     const capOtsAbs = (avgOts == null) ? null : (capPlaysAbs * avgOts);
 
     prepared.push({
-      region: regionDisplay, tier, pool,
+      region: regionDisplay, regionKey: region, tier, pool,
       avgBid, bidPlus20,
       avgOts,
       capPlaysAbs, capBudgetAbs, capBudgetAbsMin, capOtsAbs
@@ -4121,8 +4121,10 @@ async function onCalcClick() {
   }
 
   for (const pr of prepared) {
-    const region = pr.region;
-    const regionDisplay = region === "__gid_mode__" ? "По GID-списку" : region;
+    const region = pr.region;          // display name, e.g. "По GID-списку"
+    const regionKey = pr.regionKey || region; // original key, e.g. "__gid_mode__"
+    const _isGidRegion = regionKey === "__gid_mode__";
+    const regionDisplay = _isGidRegion ? "По GID-списку" : region;
     const tier = pr.tier;
     const pool = pr.pool;
     const effectiveBid = brief.bidMode === "min" ? pr.avgBid : pr.bidPlus20;
@@ -4161,7 +4163,7 @@ async function onCalcClick() {
 
     // Если пользователь задал кол-во конструкций — распределяем пропорционально по регионам.
     // In GID mode all screens are pre-selected by the user — use the entire pool.
-    const constructionsTarget = (region === "__gid_mode__")
+    const constructionsTarget = _isGidRegion
       ? pool.length
       : (brief.constructions?.enabled && brief.constructions.count > 0)
         ? (_perRegionConstructionsTarget[region] ?? brief.constructions.count)
@@ -4175,13 +4177,13 @@ async function onCalcClick() {
     let effectiveChosenBid = effectiveBid;
 
     // В GID-режиме берём весь пул как есть — без grid-фильтрации (она выбрасывает экраны без координат).
-    if (region === "__gid_mode__") {
+    if (_isGidRegion) {
       chosen = [...pool];
       avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
       effectiveChosenBid = avgEffectiveBid(chosen, brief.bidMode, avgChosenBid * BID_MULTIPLIER);
     }
 
-    for (let attempt = 0; attempt < (region === "__gid_mode__" ? 0 : 2); attempt++) {
+    for (let attempt = 0; attempt < (_isGidRegion ? 0 : 2); attempt++) {
       const stepKm = gridStepKmForCount(screensChosenCount);
       const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
 
