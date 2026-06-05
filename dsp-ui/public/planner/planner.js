@@ -4248,11 +4248,11 @@ async function onCalcClick() {
           const actualPph  = budgetMaxPlays / (chosen.length * hpd * days);
           if (actualPph < desiredPph - 0.5) {
             warnings.push(
-              "\\u2139\\uFE0F \\u0411\\u044e\\u0434\\u0436\\u0435\\u0442 \\u043f\\u043e\\u0437\\u0432\\u043e\\u043b\\u044f\\u0435\\u0442 " +
+              "ℹ️ Бюджет позволяет " +
               Math.round(actualPph * 10) / 10 +
-              " \\u0432\\u044b\\u0445/\\u0447\\u0430\\u0441 \\u043d\\u0430 \\u044d\\u043a\\u0440\\u0430\\u043d (" +
-              "\\u0437\\u0430\\u043f\\u0440\\u043e\\u0448\\u0435\\u043d\\u043e " + Math.round(desiredPph * 10) / 10 +
-              "). \\u0423\\u0432\\u0435\\u043b\\u0438\\u0447\\u044c\\u0442\\u0435 \\u0431\\u044e\\u0434\\u0436\\u0435\\u0442 \\u0434\\u043b\\u044f \\u043f\\u043e\\u043b\\u043d\\u043e\\u0439 \\u0447\\u0430\\u0441\\u0442\\u043e\\u0442\\u044b."
+              " вых/час на экран (запрошено " +
+              Math.round(desiredPph * 10) / 10 +
+              "). Увеличьте бюджет для полной частоты."
             );
           }
         }
