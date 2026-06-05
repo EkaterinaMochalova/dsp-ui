@@ -3690,6 +3690,7 @@ async function onCalcClick() {
       if (gidSet && gidSet.size > 0) {
         const before = pool.length;
         const seenGids = new Set();
+        const notFound = [];
         pool = pool.filter(s => {
           const sid = _screenIdOf(s);
           if (gidSet.has(sid) && !seenGids.has(sid)) {
@@ -3699,6 +3700,9 @@ async function onCalcClick() {
           }
           return false;
         });
+        // Log GIDs not matched in screensAll
+        gidSet.forEach(g => { if (!seenGids.has(g)) notFound.push(g); });
+        console.log("[GID-filter] gidSet.size=" + gidSet.size + " pool.before=" + before + " pool.after=" + pool.length + " notFound=" + JSON.stringify(notFound.slice(0,10)));
         if (!pool.length) {
           perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null,
             note: `ни один из ${gidSet.size} GID-ов не найден в регионе` });
