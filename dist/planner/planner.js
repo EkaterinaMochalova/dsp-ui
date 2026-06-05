@@ -5422,7 +5422,15 @@ async function dspFetchForecastBids(screens, brief) {
       if (method === "MIN_BID") price = price * BID_MULTIPLIER;
       _recoBidCache.set(dspId, { recoBid: price, ts: now });
       const s = idToScreen.get(dspId);
-      if (s) s.recoBid = price;
+      if (s) {
+        s.recoBid = price;
+        // Store estimated OTS if screen doesn't have real OTS data
+        const avgOts = elem?.statistic?.averageOts;
+        if (Number.isFinite(avgOts) && avgOts > 0 && !(Number.isFinite(s.ots) && s.ots > 0)) {
+          s.ots = avgOts;
+          s._otsEstimated = true;
+        }
+      }
     }
   }
 }
