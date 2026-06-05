@@ -1481,34 +1481,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
     <div id="geo2gis-wrap" style="display:none; margin-top:14px;">
       <div style="margin-bottom:10px;">
-        <div class="planner-label" style="margin-bottom:6px;">Категория объектов</div>
-        <select id="poi-category" style="width:100%; padding:9px 12px; border:1.5px solid #c4b5fd;
-            border-radius:10px; font-size:13px; color:#0b1220; background:#fff; outline:none; cursor:pointer;">
-          <option value="pharmacy">Аптеки</option>
-          <option value="food">Рестораны и кафе</option>
-          <option value="grocery">Продуктовые магазины</option>
-          <option value="mall">Торговые центры</option>
-          <option value="gas_station">АЗС</option>
-          <option value="beauty">Красота и уход</option>
-          <option value="bank">Банки и банкоматы</option>
-          <option value="auto_service">Автосервисы</option>
-          <option value="clinic">Медицина</option>
-          <option value="sport">Спорт и фитнес</option>
-          <option value="hotel">Гостиницы</option>
-          <option value="electronics">Техника и электроника</option>
-          <option value="clothes">Одежда и аксессуары</option>
-          <option value="furniture">Мебель и товары для дома</option>
-          <option value="alcohol">Алкоголь</option>
-          <option value="kindergarten">Детские сады</option>
-          <option value="pets">Зоотовары</option>
-          <option value="flowers">Цветы</option>
-          <option value="jewelry">Ювелирные украшения</option>
-          <option value="children">Детские товары</option>
-          <option value="books">Книги и канцелярия</option>
-          <option value="optics">Оптика</option>
-          <option value="hardware">Строительство и ремонт</option>
-          <option value="pickup_point">Пункты выдачи</option>
-        </select>
+        <div class="planner-label" style="margin-bottom:6px;">Название бренда или объекта</div>
+        <input type="text" id="poi-brand" placeholder="Напр.: Пятёрочка, Магнит, McDonald's"
+          style="width:100%; padding:9px 12px; border:1.5px solid #c4b5fd; border-radius:10px;
+                 font-size:13px; color:#0b1220; background:#fff; outline:none; box-sizing:border-box;">
       </div>
       <div style="margin-bottom:14px;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
@@ -1532,6 +1508,72 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <div id="poi-progress-bar" style="height:100%; width:0%; background:#5B3EF5; border-radius:3px; transition:width 0.2s;"></div>
         </div>
         <div id="poi-progress-text" style="font-size:11px; color:#9b8aff; margin-top:4px;"></div>
+      </div>
+    </div>
+  </div>
+  <!-- ===== ЯНДЕКС ГЕОАНАЛИТИКА ===== -->
+  <div class="planner-block" id="yandex-geo-block">
+    <div class="vk-card" id="yandex-geo-card">
+      <div class="vk-card-icon" style="background:#fc3f1d; font-size:10px; font-weight:800; letter-spacing:-0.5px;">ЯГео</div>
+      <div class="vk-card-body">
+        <div class="vk-card-title">Яндекс Геоаналитика</div>
+        <div class="vk-card-desc" id="yandex-geo-card-desc">Плотность категорий бизнеса на карте</div>
+      </div>
+      <div class="vk-toggle"></div>
+    </div>
+    <div id="yandex-geo-wrap" style="display:none; margin-top:14px;">
+      <div style="margin-bottom:10px;">
+        <div class="planner-label" style="margin-bottom:6px;">Категория бизнеса рядом с экраном</div>
+        <select id="poi-category" style="width:100%; padding:9px 12px; border:1.5px solid #c4b5fd;
+            border-radius:10px; font-size:13px; color:#0b1220; background:#fff; outline:none; cursor:pointer;">
+          <option value="searches.pharmacy">Аптеки</option>
+          <option value="searches.food">Рестораны и кафе</option>
+          <option value="searches.grocery">Продуктовые магазины</option>
+          <option value="searches.mall">Торговые центры</option>
+          <option value="searches.gas_station">АЗС</option>
+          <option value="searches.beauty">Красота и уход</option>
+          <option value="searches.bank">Банки и банкоматы</option>
+          <option value="searches.auto_service">Автосервисы</option>
+          <option value="searches.clinic">Медицина</option>
+          <option value="searches.sport">Спорт и фитнес</option>
+          <option value="searches.hotel">Гостиницы</option>
+          <option value="searches.electronics">Техника и электроника</option>
+          <option value="searches.clothes">Одежда и аксессуары</option>
+          <option value="searches.furniture">Мебель и товары для дома</option>
+          <option value="searches.alcohol">Алкоголь</option>
+          <option value="searches.kindergarten">Детские сады</option>
+          <option value="searches.pets">Зоотовары</option>
+          <option value="searches.flowers">Цветы</option>
+          <option value="searches.jewelry">Ювелирные украшения</option>
+          <option value="searches.children">Детские товары</option>
+          <option value="searches.books">Книги и канцелярия</option>
+          <option value="searches.optics">Оптика</option>
+          <option value="searches.hardware">Строительство и ремонт</option>
+          <option value="searches.pickup_point">Пункты выдачи</option>
+        </select>
+      </div>
+      <div class="planner-label" style="margin-bottom:6px;">Минимальная плотность POI</div>
+      <div id="poi-density-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+        <button type="button" class="poi-density-chip" data-val="1" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">1</button>
+        <button type="button" class="poi-density-chip" data-val="2" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">2</button>
+        <button type="button" class="poi-density-chip" data-val="3" style="padding:6px 14px; border-radius:8px; border:1.5px solid #5B3EF5; background:#5B3EF5; color:#fff; font-size:13px; cursor:pointer; font-weight:600;">3</button>
+        <button type="button" class="poi-density-chip" data-val="4" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">4</button>
+        <button type="button" class="poi-density-chip" data-val="5" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">5</button>
+        <button type="button" class="poi-density-chip" data-val="6" style="padding:6px 14px; border-radius:8px; border:1.5px solid #e0d9fd; background:#faf8ff; color:#5B3EF5; font-size:13px; cursor:pointer; font-weight:600;">6</button>
+      </div>
+      <div style="font-size:12px; color:#667085; margin-bottom:14px;">По шкале Яндекс ГеоАналитики: 1 — низкая, 6 — максимальная плотность</div>
+      <input type="hidden" id="poi-selected-density" value="3">
+      <button id="yandex-find-btn" type="button"
+        style="padding:11px 24px; background:#fc3f1d; color:#fff; border:none;
+               border-radius:12px; font-size:14px; font-weight:700; cursor:pointer; width:100%;">
+        🔍 Найти экраны
+      </button>
+      <div id="yandex-poi-status" style="font-size:13px; color:#667085; margin-top:10px; min-height:20px;"></div>
+      <div id="yandex-poi-progress-wrap" style="display:none; margin-top:8px;">
+        <div style="height:6px; background:rgba(252,63,29,0.12); border-radius:3px; overflow:hidden;">
+          <div id="yandex-poi-progress-bar" style="height:100%; width:0%; background:#fc3f1d; border-radius:3px; transition:width 0.2s;"></div>
+        </div>
+        <div id="yandex-poi-progress-text" style="font-size:11px; color:#fc3f1d; margin-top:4px;"></div>
       </div>
     </div>
   </div>
@@ -2403,6 +2445,140 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       }
     })();
 
+    // -- Yandex Geo card toggle + density chips + finder --------------------
+    (function(){
+      const card = el("yandex-geo-card");
+      const wrap = el("yandex-geo-wrap");
+      if (!card || !wrap) return;
+      card.addEventListener("click", () => {
+        const active = card.classList.toggle("active");
+        wrap.style.display = active ? "" : "none";
+      });
+
+      // density chips
+      document.querySelectorAll(".poi-density-chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          document.querySelectorAll(".poi-density-chip").forEach(c => {
+            c.style.background = "#faf8ff"; c.style.color = "#5B3EF5"; c.style.borderColor = "#e0d9fd";
+          });
+          chip.style.background = "#5B3EF5"; chip.style.color = "#fff"; chip.style.borderColor = "#5B3EF5";
+          const hidden = el("poi-selected-density");
+          if (hidden) hidden.value = chip.dataset.val;
+        });
+      });
+
+      // Yandex GeoAnalytics finder
+      el("yandex-find-btn")?.addEventListener("click", async () => {
+        const btn      = el("yandex-find-btn");
+        const statusEl = el("yandex-poi-status");
+        const progWrap = el("yandex-poi-progress-wrap");
+        const progBar  = el("yandex-poi-progress-bar");
+        const progText = el("yandex-poi-progress-text");
+
+        const category = el("poi-category")?.value || "searches.pharmacy";
+        const minColor = Number(el("poi-selected-density")?.value || 3);
+
+        const screensAll = window.PLANNER?.state?.screensAll || [];
+        if (!screensAll.length) {
+          return (statusEl.textContent = "\\u0418\\u043d\\u0432\\u0435\\u043d\\u0442\\u0430\\u0440\\u044c \\u0435\\u0449\\u0451 \\u0437\\u0430\\u0433\\u0440\\u0443\\u0436\\u0430\\u0435\\u0442\\u0441\\u044f\\u2026");
+        }
+
+        const selectedRegions = window.PLANNER?.state?.selectedRegions || [];
+        let screensPool = screensAll;
+        if (selectedRegions.length) {
+          const rset = new Set(selectedRegions);
+          screensPool = screensAll.filter(s =>
+            rset.has(String(s.region || "").trim()) || rset.has(String(s.city || "").trim())
+          );
+          if (!screensPool.length) screensPool = screensAll;
+        }
+
+        btn.disabled = true;
+        btn.textContent = "\\u0418\\u0449\\u0443 \\u044d\\u043a\\u0440\\u0430\\u043d\\u044b\\u2026";
+        statusEl.textContent = "";
+        if (progWrap) progWrap.style.display = "block";
+        if (progBar)  progBar.style.width = "0%";
+
+        try {
+          if (!window.h3) {
+            statusEl.textContent = "\\u0417\\u0430\\u0433\\u0440\\u0443\\u0436\\u0430\\u044e H3\\u2026";
+            await new Promise((resolve, reject) => {
+              const s = document.createElement("script");
+              s.src = "https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js";
+              s.onload = resolve; s.onerror = reject;
+              document.head.appendChild(s);
+            });
+          }
+          const h3Lib = window.h3;
+          const TILE_Z = 8;
+          const tileSet = new Set();
+          screensPool.forEach(s => {
+            const lat = Number(s.lat ?? s.latitude);
+            const lon = Number(s.lon ?? s.lng ?? s.longitude);
+            if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
+            const tx = Math.floor((lon + 180) / 360 * 256);
+            const ty = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * 256);
+            tileSet.add(tx + "," + ty);
+          });
+          const tiles = [...tileSet].map(k => { const [x,y] = k.split(",").map(Number); return {x,y}; });
+          statusEl.textContent = "\\u0417\\u0430\\u0433\\u0440\\u0443\\u0436\\u0430\\u044e \\u0442\\u0430\\u0439\\u043b\\u044b: 0 / " + tiles.length;
+          const hotCells = new Set();
+          const BATCH = 25;
+          let done = 0;
+          const GEO_BASE = "https://silent-surf-cd5e.mochalova-kathrine-v.workers.dev";
+          const GEO_VERSION = "2025-02-10T14%3A43%3A35Z";
+          for (let i = 0; i < tiles.length; i += BATCH) {
+            const batch = tiles.slice(i, i + BATCH);
+            const results = await Promise.all(batch.map(({x, y}) =>
+              fetch(GEO_BASE + "?version=" + GEO_VERSION + "&resolution=7&x=" + x + "&y=" + y + "&z=" + TILE_Z + "&layer=" + category)
+                .then(r => r.ok ? r.json() : null).catch(() => null)
+            ));
+            results.forEach(data => {
+              if (!data?.data?.items) return;
+              data.data.items.forEach(item => { if (item.color >= minColor) hotCells.add(item.hex); });
+            });
+            done += batch.length;
+            if (progBar)  progBar.style.width = Math.round(done / tiles.length * 100) + "%";
+            if (progText) progText.textContent = done + " / " + tiles.length;
+            statusEl.textContent = "\\u0422\\u0430\\u0439\\u043b\\u044b: " + done + " / " + tiles.length;
+          }
+          const matchingGids = [];
+          const seenIds = new Set();
+          screensPool.forEach(s => {
+            const lat = Number(s.lat ?? s.latitude);
+            const lon = Number(s.lon ?? s.lng ?? s.longitude);
+            if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return;
+            try {
+              const hexCell = h3Lib.latLngToCell(lat, lon, 7);
+              const decCell = BigInt("0x" + hexCell).toString(10);
+              if (!hotCells.has(decCell)) return;
+            } catch(e) { return; }
+            const gid = (s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").toString().trim();
+            if (gid && !seenIds.has(gid)) { seenIds.add(gid); matchingGids.push(gid); }
+          });
+          if (progWrap) progWrap.style.display = "none";
+          if (!matchingGids.length) {
+            statusEl.textContent = "\\u041d\\u0435 \\u043d\\u0430\\u0439\\u0434\\u0435\\u043d\\u043e \\u044d\\u043a\\u0440\\u0430\\u043d\\u043e\\u0432. \\u0421\\u043d\\u0438\\u0437\\u044c\\u0442\\u0435 \\u043f\\u043b\\u043e\\u0442\\u043d\\u043e\\u0441\\u0442\\u044c.";
+            statusEl.style.color = "#dc2626";
+          } else {
+            const ta = el("manual-gids");
+            if (ta) { ta.value = matchingGids.join("\\n"); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+            const selEl = el("selection-mode");
+            if (selEl) { selEl.value = "manual_screens"; selEl.dispatchEvent(new Event("change", { bubbles: true })); }
+            statusEl.textContent = "\\u041d\\u0430\\u0439\\u0434\\u0435\\u043d\\u043e \\u044d\\u043a\\u0440\\u0430\\u043d\\u043e\\u0432: " + matchingGids.length + " \\u2014 \\u043d\\u0430\\u0436\\u043c\\u0438\\u0442\\u0435 \\u00AB\\u0420\\u0430\\u0441\\u0441\\u0447\\u0438\\u0442\\u0430\\u0442\\u044c\\u00BB";
+            statusEl.style.color = "#fc3f1d";
+            renderProgress();
+          }
+        } catch(err) {
+          if (progWrap) progWrap.style.display = "none";
+          statusEl.textContent = "\\u041e\\u0448\\u0438\\u0431\\u043a\\u0430: " + err.message;
+          statusEl.style.color = "#dc2626";
+        }
+        btn.disabled = false;
+        btn.textContent = "\\uD83D\\uDD0D \\u041d\\u0430\\u0439\\u0442\\u0438 \\u044d\\u043a\\u0440\\u0430\\u043d\\u044b";
+      });
+    })();
+
     // -- 2GIS POI screen finder -----------------------------------------------
     el("poi-find-btn")?.addEventListener("click", async () => {
       const btn      = el("poi-find-btn");
@@ -2411,36 +2587,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const progBar  = el("poi-progress-bar");
       const progText = el("poi-progress-text");
 
-      const GEO2GIS_Q = {
-        "pharmacy":    "\\u0430\\u043f\\u0442\\u0435\\u043a\\u0430",
-        "food":        "\\u0440\\u0435\\u0441\\u0442\\u043e\\u0440\\u0430\\u043d \\u043a\\u0430\\u0444\\u0435",
-        "grocery":     "\\u043f\\u0440\\u043e\\u0434\\u0443\\u043a\\u0442\\u043e\\u0432\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
-        "mall":        "\\u0442\\u043e\\u0440\\u0433\\u043e\\u0432\\u044b\\u0439 \\u0446\\u0435\\u043d\\u0442\\u0440",
-        "gas_station": "\\u0430\\u0437\\u0441 \\u0437\\u0430\\u043f\\u0440\\u0430\\u0432\\u043a\\u0430",
-        "beauty":      "\\u0441\\u0430\\u043b\\u043e\\u043d \\u043a\\u0440\\u0430\\u0441\\u043e\\u0442\\u044b",
-        "bank":        "\\u0431\\u0430\\u043d\\u043a",
-        "auto_service":"\\u0430\\u0432\\u0442\\u043e\\u0441\\u0435\\u0440\\u0432\\u0438\\u0441",
-        "clinic":      "\\u043c\\u0435\\u0434\\u0438\\u0446\\u0438\\u043d\\u0441\\u043a\\u0438\\u0439 \\u0446\\u0435\\u043d\\u0442\\u0440",
-        "sport":       "\\u0444\\u0438\\u0442\\u043d\\u0435\\u0441 \\u0437\\u0430\\u043b",
-        "hotel":       "\\u0433\\u043e\\u0441\\u0442\\u0438\\u043d\\u0438\\u0446\\u0430 \\u043e\\u0442\\u0435\\u043b\\u044c",
-        "electronics": "\\u044d\\u043b\\u0435\\u043a\\u0442\\u0440\\u043e\\u043d\\u0438\\u043a\\u0430",
-        "clothes":     "\\u043e\\u0434\\u0435\\u0436\\u0434\\u0430 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
-        "furniture":   "\\u043c\\u0435\\u0431\\u0435\\u043b\\u044c",
-        "alcohol":     "\\u0430\\u043b\\u043a\\u043e\\u0433\\u043e\\u043b\\u044c\\u043d\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
-        "kindergarten":"\\u0434\\u0435\\u0442\\u0441\\u043a\\u0438\\u0439 \\u0441\\u0430\\u0434",
-        "pets":        "\\u0437\\u043e\\u043e\\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
-        "flowers":     "\\u0446\\u0432\\u0435\\u0442\\u043e\\u0447\\u043d\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
-        "jewelry":     "\\u044e\\u0432\\u0435\\u043b\\u0438\\u0440\\u043d\\u044b\\u0439",
-        "children":    "\\u0434\\u0435\\u0442\\u0441\\u043a\\u0438\\u0435 \\u0442\\u043e\\u0432\\u0430\\u0440\\u044b",
-        "books":       "\\u043a\\u043d\\u0438\\u0436\\u043d\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
-        "optics":      "\\u043e\\u043f\\u0442\\u0438\\u043a\\u0430",
-        "hardware":    "\\u0441\\u0442\\u0440\\u043e\\u0438\\u0442\\u0435\\u043b\\u044c\\u043d\\u044b\\u0439 \\u043c\\u0430\\u0433\\u0430\\u0437\\u0438\\u043d",
-        "pickup_point":"\\u043f\\u0443\\u043d\\u043a\\u0442 \\u0432\\u044b\\u0434\\u0430\\u0447\\u0438"
-      };
-
-      const categoryKey = el("poi-category")?.value || "pharmacy";
-      const searchQuery = GEO2GIS_Q[categoryKey] || categoryKey;
-      const radius      = Number(el("poi-radius")?.value || 500);
+      const searchQuery = (el("poi-brand")?.value || "").trim();
+      if (!searchQuery) {
+        return (statusEl.textContent = "\\u0412\\u0432\\u0435\\u0434\\u0438\\u0442\\u0435 \\u043d\\u0430\\u0437\\u0432\\u0430\\u043d\\u0438\\u0435 \\u0431\\u0440\\u0435\\u043d\\u0434\\u0430.");
+      }
+      const radius = Number(el("poi-radius")?.value || 500);
 
       const screensAll = window.PLANNER?.state?.screensAll || [];
       if (!screensAll.length) {
