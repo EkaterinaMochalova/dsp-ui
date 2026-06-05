@@ -4388,12 +4388,13 @@ async function onCalcClick() {
     }
   }
 
-  // Apply manual exclusions — screens the user removed from the map
-  if (state.manuallyExcluded && state.manuallyExcluded.size) {
+  // Apply manual exclusions — screens the user removed from the map.
+  // Skip in GID mode: the user explicitly specified which screens they want.
+  if (!_isManualMode && state.manuallyExcluded && state.manuallyExcluded.size) {
     const before = chosenAll.length;
     chosenAll = chosenAll.filter(s => !state.manuallyExcluded.has(_screenIdOf(s)));
     if (chosenAll.length < before) {
-      warnings.push(`\\u2139\\uFE0F ${before - chosenAll.length} \\u044D\\u043A\\u0440. \\u0438\\u0441\\u043A\\u043B\\u044E\\u0447\\u0435\\u043D\\u043E \\u0432\\u0440\\u0443\\u0447\\u043D\\u0443\\u044E (\\u0441\\u0431\\u0440\\u043E\\u0441\\u0438\\u0442\\u044C: \\u043A\\u043D\\u043E\\u043F\\u043A\\u0430 \\u043D\\u0438\\u0436\\u0435).`);
+      warnings.push(`ℹ️ ${before - chosenAll.length} экр. исключено вручную (кнопка "Вернуть все" внизу).`);
     }
   }
 
