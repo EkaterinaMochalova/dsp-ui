@@ -4226,7 +4226,10 @@ async function onCalcClick() {
       totalPlaysTheory = Math.floor(budget / effectiveChosenBid);
     }
 
-    let capPlaysByChosen = Math.floor(effectivePPH * chosen.length * days * hpd);
+    // Per-screen-format cap: sum individual caps (e.g. MF=12, others=60)
+    const capPlaysByChosen = Math.floor(
+      chosen.reduce((sum, s) => sum + Math.min(effectivePPH, getScreenPphCap(s)), 0) * days * hpd
+    );
     // Если ppmOverride — теоретический максимум определяется частотой, а не бюджетом.
     // Но всё равно кэпим по бюджету, чтобы не выходить за введённую сумму.
     if (ppmOverride !== null) {
@@ -4238,7 +4241,23 @@ async function onCalcClick() {
     // ppm-слайдер — верхний предел частоты, но бюджет всегда ограничивает фактический расход.
     if (Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0 && Number.isFinite(budget) && budget > 0) {
       const budgetMaxPlays = Math.floor(budget / effectiveChosenBid);
-      totalPlaysEffective = Math.min(totalPlaysEffective, budgetMaxPlays);
+      if (budgetMaxPlays < totalPlaysEffective) {
+        // In GID mode: budget is tight — warn about reduced pph, keep all screens
+        if (_isManualMode && chosen.length > 0 && hpd > 0 && days > 0) {
+          const desiredPph = ppmOverride !== null ? ppmOverride : effectivePPH;
+          const actualPph  = budgetMaxPlays / (chosen.length * hpd * days);
+          if (actualPph < desiredPph - 0.5) {
+            warnings.push(
+              "\\u2139\\uFE0F \\u0411\\u044e\\u0434\\u0436\\u0435\\u0442 \\u043f\\u043e\\u0437\\u0432\\u043e\\u043b\\u044f\\u0435\\u0442 " +
+              Math.round(actualPph * 10) / 10 +
+              " \\u0432\\u044b\\u0445/\\u0447\\u0430\\u0441 \\u043d\\u0430 \\u044d\\u043a\\u0440\\u0430\\u043d (" +
+              "\\u0437\\u0430\\u043f\\u0440\\u043e\\u0448\\u0435\\u043d\\u043e " + Math.round(desiredPph * 10) / 10 +
+              "). \\u0423\\u0432\\u0435\\u043b\\u0438\\u0447\\u044c\\u0442\\u0435 \\u0431\\u044e\\u0434\\u0436\\u0435\\u0442 \\u0434\\u043b\\u044f \\u043f\\u043e\\u043b\\u043d\\u043e\\u0439 \\u0447\\u0430\\u0441\\u0442\\u043e\\u0442\\u044b."
+            );
+          }
+        }
+        totalPlaysEffective = budgetMaxPlays;
+      }
     }
 
     // Если выбранных экранов не хватает по ЁМКОСТИ (capPlays < theory) — добираем из пула.
