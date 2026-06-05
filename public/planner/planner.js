@@ -141,6 +141,14 @@ const POI_LABELS = {
 const BID_MULTIPLIER = 1.8;
 const SC_OPT = 30;
 const SC_MAX = 60;
+const MF_MAX_PPH = 12; // MediaFacade physical cap: max 12 plays/hour
+
+// Per-screen plays-per-hour cap based on format
+function getScreenPphCap(s) {
+  const fmt = String(s?.format || "").toUpperCase();
+  if (fmt === "MEDIAFACADE" || fmt === "MF") return MF_MAX_PPH;
+  return SC_MAX;
+}
 const RECO_HOURS_PER_DAY = 12; // для режима "нужна рекомендация"
 
 // ===== State =====
@@ -3781,7 +3789,7 @@ async function onCalcClick() {
     // screens with ots=0 (no data) so they don't pull the average down.
     const avgOts = avgNumberNonZero(pool.map(s => s.ots));
 
-    const capPlaysAbs = Math.floor(SC_MAX * pool.length * days * hpd);
+    const capPlaysAbs = Math.floor(pool.reduce((sum, s) => sum + getScreenPphCap(s), 0) * days * hpd);
     const capBudgetAbs = Math.floor(capPlaysAbs * bidPlus20);
     const capBudgetAbsMin = Math.floor(capPlaysAbs * avgBid);
     const capOtsAbs = (avgOts == null) ? null : (capPlaysAbs * avgOts);
@@ -4204,7 +4212,10 @@ async function onCalcClick() {
           ? (ppmRegionOverride > 0 ? ppmRegionOverride : null)           // бюджет: только per-region override
           : (ppmManual > 0 ? ppmManual : pphTarget))                     // рекомендация: слайдер или стратегия
       : (_isManualMode && ppmManual > 0 ? ppmManual : null);             // GID-режим без конструкций: уважаем слайдер
-    const effectivePPH = ppmOverride !== null ? ppmOverride : SC_MAX;
+    const _poolPphCap = pool.length > 0
+      ? Math.round(pool.reduce((sum, s) => sum + getScreenPphCap(s), 0) / pool.length)
+      : SC_MAX;
+    const effectivePPH = ppmOverride !== null ? Math.min(ppmOverride, _poolPphCap) : _poolPphCap;
 
     // Реальный расход = фактические выходы × ставка ВЫБРАННЫХ экранов (не среднее по пулу).
     // Пересчитываем totalPlaysTheory по фактической ставке выбранных экранов — это убирает
@@ -4255,7 +4266,7 @@ async function onCalcClick() {
         avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
         effectiveChosenBid = avgEffectiveBid(chosen, brief.bidMode, avgChosenBid * BID_MULTIPLIER);
 
-        capPlaysByChosen = Math.floor(SC_MAX * chosen.length * days * hpd);
+        capPlaysByChosen = Math.floor(chosen.reduce((sum, s) => sum + getScreenPphCap(s), 0) * days * hpd);
         const budgetCap = (effectiveChosenBid > 0) ? Math.floor(budget / effectiveChosenBid) : Infinity;
         totalPlaysEffective = Math.min(totalPlaysTheory, capPlaysByChosen, budgetCap);
       }
