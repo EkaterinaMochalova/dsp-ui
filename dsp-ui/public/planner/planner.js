@@ -2129,14 +2129,14 @@ async function buildMediaPlanBlob() {
   }
 
   // ── Group screens by region → format ───────────────────────────
-  // Use the same fuzzy matching as pool-building so screen keys align
-  // with perReg region names (e.g. DSP returns "Краснодарский край"
-  // but user selected "городской округ Геленджик").
   const _perRegKeys = perReg.map(r => r.region);
-  // In GID mode the single perReg key is "По GID-списку" — assign all screens to it
-  const _isGidMode = _perRegKeys.length === 1 && _perRegKeys[0] === "По GID-списку";
+  const _isGidMode  = _perRegKeys.length === 1 && _perRegKeys[0] === "По GID-списку";
+
   function _matchScreenRegion(s) {
-    if (_isGidMode) return "По GID-списку";
+    if (_isGidMode) {
+      // In GID mode group by actual city so МП shows real city breakdown
+      return String(s.city || s.region || "—").trim() || "—";
+    }
     const sReg  = String(s.region || "").trim();
     const sCity = String(s.city   || "").trim();
     for (const r of _perRegKeys) {
@@ -2151,6 +2151,7 @@ async function buildMediaPlanBlob() {
     }
     return sReg || sCity || "—";
   }
+
   const rfMap = {};
   for (const s of screens) {
     const reg  = _matchScreenRegion(s);
@@ -2160,8 +2161,31 @@ async function buildMediaPlanBlob() {
     rfMap[reg][fmt_].push(s);
   }
 
+  // In GID mode build a synthetic perReg from per-city screen groups
+  // (distribute total plays/OTS/budget proportionally by bid-weighted screen count)
+  let effectivePerReg = perReg;
+  if (_isGidMode && screens.length > 0) {
+    const totalPlaysAll  = meta.totalPlays  || 0;
+    const totalBudgetAll = meta.totalBudget || 0;
+    const playsPerScreen = totalPlaysAll  / screens.length;
+    const cityKeys = Object.keys(rfMap).sort();
+    effectivePerReg = cityKeys.map(city => {
+      const cityScreens = Object.values(rfMap[city] || {}).flat();
+      const n = cityScreens.length;
+      const cityPlays  = Math.round(playsPerScreen * n);
+      const cityBudget = cityScreens.reduce((sum, s) => {
+        const bid = Number(s.minBid || 0);
+        return sum + Math.round(playsPerScreen * bid);
+      }, 0);
+      const otsVals = cityScreens.map(s => s.ots).filter(v => Number.isFinite(v) && v > 0);
+      const avgOts  = otsVals.length ? otsVals.reduce((a, b) => a + b, 0) / otsVals.length : null;
+      const cityOts = avgOts != null ? Math.round(cityPlays * avgOts) : null;
+      return { region: city, plays: cityPlays, budget: cityBudget, ots: cityOts, screens: n };
+    });
+  }
+
   // Cities in perRegion order (only those present in rfMap)
-  const cities   = perReg.map(r => r.region).filter(c => rfMap[c]);
+  const cities = effectivePerReg.map(r => r.region).filter(c => rfMap[c]);
   const allFmts  = [...new Set(cities.flatMap(c => Object.keys(rfMap[c] || {})))];
 
   // Max formats across all cities (to pre-set column widths)
@@ -2268,7 +2292,7 @@ async function buildMediaPlanBlob() {
   // ── Per-(city, format) aggregated stats ─────────────────────────
   const cfStats = {};
   for (const city of cities) {
-    const rd = perReg.find(r => r.region === city) || {};
+    const rd = effectivePerReg.find(r => r.region === city) || {};
     const regBudget  = rd.budget  || 0;
     const regPlays   = rd.plays   || 0;
     const regOts     = rd.ots     || 0;
@@ -2314,7 +2338,7 @@ async function buildMediaPlanBlob() {
   // ── City summary rows (rows 8..8+n-1) ───────────────────────────
   for (const city of cities) {
     const r  = citySumRow[city];
-    const rd = perReg.find(x => x.region === city) || {};
+    const rd = effectivePerReg.find(x => x.region === city) || {};
     const b  = rd.budget || 0, p = rd.plays || 0, o = rd.ots || 0;
     sc(ws, r, 1, city, { bold: true, fill: C_LIGHT });
     sc(ws, r, 2, Math.round(p), { fill: C_LIGHT, numFmt: "#,##0" });
@@ -2339,9 +2363,9 @@ async function buildMediaPlanBlob() {
   // perReg may contain duplicate region aliases (e.g. "Сочи" + "городской округ Сочи")
   // that map to the same screens — only one of them survives the rfMap filter in `cities`.
   const citySet = new Set(cities);
-  const totB = perReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.budget || 0), 0);
-  const totP = perReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.plays  || 0), 0);
-  const totO = perReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.ots    || 0), 0);
+  const totB = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.budget || 0), 0);
+  const totP = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.plays  || 0), 0);
+  const totO = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.ots    || 0), 0);
   sc(ws, totalRow, 1, "итого", { bold: true, fill: C_HDR, h: "right" });
   sc(ws, totalRow, 2, Math.round(totP), { bold: true, fill: C_HDR, numFmt: "#,##0" });
   sc(ws, totalRow, 3, Math.round(totO), { bold: true, fill: C_HDR, numFmt: "#,##0" });
@@ -2362,7 +2386,7 @@ async function buildMediaPlanBlob() {
   // ── Detail blocks — one per city, format sub-columns at E, F, G… ─
   for (const city of cities) {
     const base     = blockStarts[city];
-    const rd       = perReg.find(r => r.region === city) || {};
+    const rd       = effectivePerReg.find(r => r.region === city) || {};
     const regBudget = rd.budget  || 0;
     const regPlays  = rd.plays   || 0;
     const regOts    = rd.ots     || 0;
