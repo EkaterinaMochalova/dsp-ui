@@ -3500,26 +3500,29 @@ async function onCalcClick() {
       });
     }
 
-    // ✅ uses formatsMode/manualFormats derived above
-    if (formatsMode === "manual" && manualFormats.length > 0) {
-      const fset = new Set(manualFormats);
-      pool = pool.filter(s => fset.has(s.format));
-    }
+    // Format / owner / polygon filters — skipped in GID mode (user's list is the selection)
+    if (!_isManualMode) {
+      // ✅ uses formatsMode/manualFormats derived above
+      if (formatsMode === "manual" && manualFormats.length > 0) {
+        const fset = new Set(manualFormats);
+        pool = pool.filter(s => fset.has(s.format));
+      }
 
-    if (window.PLANNER?.getScreensFilteredByOwner) {
-      pool = window.PLANNER.getScreensFilteredByOwner(pool);
-    }
+      if (window.PLANNER?.getScreensFilteredByOwner) {
+        pool = window.PLANNER.getScreensFilteredByOwner(pool);
+      }
 
-    // Фильтр по нарисованным полигонам (массив полигонов или один полигон — обратная совместимость)
-    const poly = state.polygonFilter;
-    if (poly && poly.length > 0) {
-      const isMulti = Array.isArray(poly[0]) && Array.isArray(poly[0][0]);
-      if (isMulti) {
-        pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
-          poly.some(p => pointInPolygon(s.lat, s.lon, p)));
-      } else if (poly.length >= 3) {
-        pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
-          pointInPolygon(s.lat, s.lon, poly));
+      // Фильтр по нарисованным полигонам (массив полигонов или один полигон — обратная совместимость)
+      const poly = state.polygonFilter;
+      if (poly && poly.length > 0) {
+        const isMulti = Array.isArray(poly[0]) && Array.isArray(poly[0][0]);
+        if (isMulti) {
+          pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+            poly.some(p => pointInPolygon(s.lat, s.lon, p)));
+        } else if (poly.length >= 3) {
+          pool = pool.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
+            pointInPolygon(s.lat, s.lon, poly));
+        }
       }
     }
 
@@ -3705,8 +3708,10 @@ async function onCalcClick() {
       }
     }
 
+    // In GID mode the user explicitly specified which screens to use —
+    // skip all additional filters (affinity, GRP, bid-filter) so the count stays fixed.
     // VK Affinity filter — top-X% by avg affinity score across selected segments
-    if (brief.audience?.enabled && brief.audience.segments?.length > 0) {
+    if (!_isManualMode && brief.audience?.enabled && brief.audience.segments?.length > 0) {
       if (state.affinityMap?.size > 0) {
         const segs = brief.audience.segments;
         const topPct = brief.audience.topPct ?? 0.10;
@@ -3775,9 +3780,9 @@ async function onCalcClick() {
       }
     }
 
-    // GRP filter
+    // GRP filter (skipped in GID mode)
     let grpDroppedNoValue = 0;
-    if (brief.grp?.enabled) {
+    if (!_isManualMode && brief.grp?.enabled) {
       grpDroppedNoValue = pool.filter(s => !Number.isFinite(s.grp)).length;
 
       pool = pool.filter(s =>
