@@ -3518,9 +3518,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const allItems = Array.isArray(items) ? items : [];
     const arrAll = allItems.filter(s => !!getImg(s));
     const coordCount = allItems.filter(s => Number.isFinite(Number(s.lat)) && Number.isFinite(Number(s.lon))).length;
-    const mapBtn = coordCount > 0
-      ? \`<button id="carousel-map-download-btn" style="padding:5px 12px;border:1px solid #5B3EF5;border-radius:8px;background:#fff;color:#5B3EF5;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">\\u2B07 Скачать карту</button>\`
-      : "";
+    const mapBtn = "";
 
     if(arrAll.length === 0){
       box.innerHTML = \`
@@ -3720,15 +3718,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;";
     header.innerHTML = \`
       <div style="font-weight:700;font-size:14px;color:#111827;">Карта экранов</div>
-      <button id="map-download-btn" style="padding:5px 12px;border:1px solid #5B3EF5;border-radius:8px;background:#fff;color:#5B3EF5;font-size:12px;font-weight:600;cursor:pointer;">
-        \\u2B07 Скачать карту
-      </button>
     \`;
     box.parentNode.insertBefore(header, box);
-
-    header.querySelector("#map-download-btn").addEventListener("click", () => {
-      if(window.PLANNER?.downloadMapHtml) window.PLANNER.downloadMapHtml();
-    });
   }
 
   function ensureMap(){
