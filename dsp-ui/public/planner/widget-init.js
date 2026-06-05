@@ -943,7 +943,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@a9914fa/geo.js");
-  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@6f7dfbd/planner.js");
+  await loadScript("https://cdn.jsdelivr.net/gh/EkaterinaMochalova/dspbov2.0@0911cd1/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -2382,6 +2382,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         const statusEl = el("manual-gids-status");
         if (ta && statusEl && !ta.dataset.counterBound) {
           ta.dataset.counterBound = "1";
+          // Clear manual exclusions when user edits the GID list — new list = fresh start
+          ta.addEventListener("input", () => {
+            if (window.PLANNER?.clearManualExclusions) window.PLANNER.clearManualExclusions();
+          }, { once: false });
           function _runGidCounter() {
             if (!window.PLANNER?._parseManualGids) return;
             const ids = window.PLANNER._parseManualGids(ta.value);
