@@ -2169,19 +2169,29 @@ async function buildMediaPlanBlob() {
     const totalBudgetAll = meta.totalBudget || 0;
     const playsPerScreen = totalPlaysAll  / screens.length;
     const cityKeys = Object.keys(rfMap).sort();
-    effectivePerReg = cityKeys.map(city => {
+    const cityRaw = cityKeys.map(city => {
       const cityScreens = Object.values(rfMap[city] || {}).flat();
       const n = cityScreens.length;
       const cityPlays  = Math.round(playsPerScreen * n);
-      const cityBudget = cityScreens.reduce((sum, s) => {
-        const bid = Number(s.minBid || 0);
-        return sum + Math.round(playsPerScreen * bid);
+      const cityBidSum = cityScreens.reduce((sum, s) => {
+        const eBid = Number(s.recoBid || 0) > 0
+          ? s.recoBid
+          : (Number(s.minBid || 0) * BID_MULTIPLIER);
+        return sum + eBid;
       }, 0);
       const otsVals = cityScreens.map(s => s.ots).filter(v => Number.isFinite(v) && v > 0);
       const avgOts  = otsVals.length ? otsVals.reduce((a, b) => a + b, 0) / otsVals.length : null;
       const cityOts = avgOts != null ? Math.round(cityPlays * avgOts) : null;
-      return { region: city, plays: cityPlays, budget: cityBudget, ots: cityOts, screens: n };
+      return { region: city, plays: cityPlays, _bidSum: cityBidSum, ots: cityOts, screens: n };
     });
+    // Distribute actual system budget proportionally by bid-weighted screen count
+    const totalBidSum = cityRaw.reduce((s, r) => s + r._bidSum, 0);
+    effectivePerReg = cityRaw.map(r => ({
+      ...r,
+      budget: totalBidSum > 0
+        ? Math.round(totalBudgetAll * r._bidSum / totalBidSum)
+        : Math.round(totalBudgetAll * r.screens / screens.length)
+    }));
   }
 
   // Cities in perRegion order (only those present in rfMap)
