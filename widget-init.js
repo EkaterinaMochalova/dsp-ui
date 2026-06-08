@@ -975,9 +975,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     <div class="planner-sub">Ответь на несколько вопросов — и мы соберём программу.</div>
     <div class="wiz-steps" id="wiz-steps">
       <button type="button" class="wiz-chip active" data-step="1">1. География</button>
-      <button type="button" class="wiz-chip" data-step="2">2. Период</button>
-      <button type="button" class="wiz-chip" data-step="3">3. Цели</button>
-      <button type="button" class="wiz-chip" data-step="4">4. Настройки</button>
+      <button type="button" class="wiz-chip" data-step="2">2. Цели</button>
+      <button type="button" class="wiz-chip" data-step="3">3. Настройки</button>
+      <button type="button" class="wiz-chip" data-step="4">4. Период</button>
     </div>
     <!-- STEP 1 -->
     <div class="wiz-step active" id="wiz-step-1">
@@ -1176,8 +1176,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <div class="wiz-nav">
-    <button type="button" class="wiz-btn ghost" id="wiz-back-2">Назад</button>
-    <button type="button" class="wiz-btn" id="wiz-next-2">Дальше</button>
+    <button type="button" class="wiz-btn ghost" id="wiz-back-2">← Настройки</button>
+    <button type="button" class="wiz-btn" id="wiz-next-2">🔍 Рассчитать</button>
   </div>
 </div>
       <!-- STEP 3 -->
@@ -1669,6 +1669,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <div id="status" class="planner-status"></div>
   <div class="wiz-nav" style="margin-top:12px;">
     <button type="button" class="wiz-btn ghost" id="wiz-back-4">Назад</button>
+    <button type="button" class="wiz-btn" id="wiz-to-period">4. Период →</button>
   </div>
 </div>
   </div>
@@ -1683,6 +1684,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 <div id="charts" style="margin-top:12px;"></div>
 <div class="download-row">
   <button id="download-csv" class="wiz-btn">Скачать GIDы</button>
+  <button id="download-pool-gids" class="wiz-btn ghost" style="display:none;" title="Скачать все экраны пула (до ограничений бюджета)">Скачать все экраны пула</button>
   <div style="position:relative;display:inline-flex;align-items:center;gap:4px;">
     <button id="download-plan-xlsx" class="wiz-btn ghost" disabled>Скачать план</button>
     <button id="dl-settings-btn" class="dl-settings-gear" title="Настройки скачивания" disabled>
@@ -1856,13 +1858,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 (function(){
   function el(id){ return document.getElementById(id); }
 
+  // New step order: 1=Geography, 2=Goals(div3), 3=Settings(div4), 4=Period(div2)
+  const STEP_TO_DIV = { 1: 1, 2: 3, 3: 4, 4: 2 };
   function setStep(step){
     // Используем и class, и inline style -- чтобы CSS Tilda не перебивал display
     document.querySelectorAll("#planner-widget .wiz-step").forEach(s => {
       s.classList.remove("active");
       s.style.display = "none";
     });
-    const target = el("wiz-step-" + step);
+    const divId = STEP_TO_DIV[step] || step;
+    const target = el("wiz-step-" + divId);
     if (target) {
       target.classList.add("active");
       target.style.display = "block";
@@ -1885,9 +1890,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Отмечаем посещение шага 4 -- чтобы чип не был зелёным до первого визита
   const _origSetStep = setStep;
   window.setStep = function(step) {
-    if (step === 4) window._plannerStep4Visited = true;
+    if (step === 3) window._plannerStep4Visited = true; // logical step 3 = Settings (physical div 4)
     _origSetStep(step);
-    if (step === 4) {
+    if (step === 3) { // Настройки is now logical step 3
       // В GID-режиме скрываем лишнее -- только кнопка "Рассчитать" + "Назад"
       const gidsBlock = el("geo-gids-block");
       const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
@@ -1948,19 +1953,23 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.setStep(2);
   });
 
+  // wiz-step-2 (Период, shown as logical step 4) → validate dates → trigger calc
   el("wiz-next-2")?.addEventListener("click", () => {
     if(!hasDates()) return alert("Выберите даты начала и окончания.");
     if(window.PLANNER_UI?.validateStep2Schedule && !window.PLANNER_UI.validateStep2Schedule()){
       return alert("Проверьте рваный график: включите хотя бы один день и задайте корректные интервалы времени.");
     }
-    window.setStep(3);
+    // Период is now last step — trigger calculation
+    el("calc-btn")?.click();
   });
 
-  el("wiz-next-3")?.addEventListener("click", () => window.setStep(4));
+  // wiz-step-3 (Цели, shown as logical step 2) → validate budget → go to Настройки (logical 3)
+  el("wiz-next-3")?.addEventListener("click", () => window.setStep(3));
 
-  el("wiz-back-2")?.addEventListener("click", () => window.setStep(1));
-  el("wiz-back-3")?.addEventListener("click", () => window.setStep(2));
-  el("wiz-back-4")?.addEventListener("click", () => window.setStep(3));
+  el("wiz-back-2")?.addEventListener("click", () => window.setStep(3)); // Период back → Настройки
+  el("wiz-back-3")?.addEventListener("click", () => window.setStep(1)); // Цели back → Geography
+  el("wiz-back-4")?.addEventListener("click", () => window.setStep(2)); // Настройки back → Цели
+  el("wiz-to-period")?.addEventListener("click", () => window.setStep(4)); // Настройки → Период
 
   window.setStep(1);
 })();
@@ -2268,7 +2277,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     // --- Обновляем состояние чипов шагов (done / active) ---
     // Шаг 4 "выполнен" только если пользователь его посещал или уже был расчёт
     const step4Done = !!(window._plannerStep4Visited || window.PLANNER?.lastCalc);
-    const stepDoneMap = { "1": !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length), "2": !!(p.dates.start && p.dates.end), "3": p.done >= 2 && (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })(), "4": step4Done };
+    const _budgetOk = (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })();
+    const stepDoneMap = { "1": !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length), "2": p.done >= 2 && _budgetOk, "3": step4Done, "4": !!(p.dates.start && p.dates.end) };
     document.querySelectorAll("#wiz-steps .wiz-chip").forEach(chip => {
       const s = chip.dataset.step;
       chip.classList.toggle("done", !!stepDoneMap[s]);
@@ -5685,6 +5695,61 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   });
   if (planBtn) observer.observe(planBtn, { attributes: true, attributeFilter: ["disabled"] });
   gearBtn.disabled = !!planBtn?.disabled;
+})();
+`);
+
+  // Script block: Download full pool GIDs
+  runScript(`
+(function(){
+  const btn = document.getElementById("download-pool-gids");
+  if (!btn) return;
+
+  // Show button after first calc when there's a full pool to export
+  window.addEventListener("planner:calc-done", () => {
+    const all = window.PLANNER?.state?.screensAll || [];
+    const chosen = window.PLANNER?.state?.lastChosen || [];
+    // Show only if pool is larger than chosen (user missed some due to budget)
+    if (all.length > 0 && chosen.length > 0) btn.style.display = "inline-flex";
+    // Update title with counts
+    btn.title = "\\u0421\\u043a\\u0430\\u0447\\u0430\\u0442\\u044c \\u0432\\u0441\\u0435 " + chosen.length + " GID (" + all.length + " \\u0432 \\u0438\\u043d\\u0432\\u0435\\u043d\\u0442\\u0430\\u0440\\u0435)";
+  });
+
+  btn.addEventListener("click", () => {
+    const st = window.PLANNER?.state;
+    const selectedRegions = st?.selectedRegions || [];
+    const screensAll = st?.screensAll || [];
+
+    // Build pool: all screens filtered by selected regions (same logic as planner)
+    let pool = screensAll;
+    if (selectedRegions.length) {
+      const rset = new Set(selectedRegions);
+      const filtered = screensAll.filter(s =>
+        rset.has(String(s.region || "").trim()) ||
+        rset.has(String(s.city   || "").trim())
+      );
+      if (filtered.length > 0) pool = filtered;
+    }
+
+    if (!pool.length) return alert("\\u041d\\u0435\\u0442 \\u044d\\u043a\\u0440\\u0430\\u043d\\u043e\\u0432 \\u0432 \\u043f\\u0443\\u043b\\u0435.");
+
+    const lines = ["GID,\\u0413\\u043e\\u0440\\u043e\\u0434,\\u041e\\u043f\\u0435\\u0440\\u0430\\u0442\\u043e\\u0440,\\u0410\\u0434\\u0440\\u0435\\u0441,\\u0424\\u043e\\u0440\\u043c\\u0430\\u0442"];
+    pool.forEach(s => {
+      const gid  = String(s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").trim();
+      const city = String(s.city || "").replace(/,/g, ";");
+      const own  = String(s.owner || "").replace(/,/g, ";");
+      const addr = String(s.address || "").replace(/,/g, ";");
+      const fmt  = String(s.format || "");
+      if (gid) lines.push([gid, city, own, addr, fmt].join(","));
+    });
+
+    const blob = new Blob([lines.join("\\n")], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = "pool_" + pool.length + "_screens.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
 })();
 `);
 
