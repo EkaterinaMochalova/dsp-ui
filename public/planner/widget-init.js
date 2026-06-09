@@ -976,8 +976,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     <div class="wiz-steps" id="wiz-steps">
       <button type="button" class="wiz-chip active" data-step="1">1. География</button>
       <button type="button" class="wiz-chip" data-step="2">2. Цели</button>
-      <button type="button" class="wiz-chip" data-step="3">3. Настройки</button>
-      <button type="button" class="wiz-chip" data-step="4">4. Период</button>
+      <button type="button" class="wiz-chip" data-step="3">3. Период</button>
+      <button type="button" class="wiz-chip" data-step="4">4. Настройки</button>
     </div>
     <!-- STEP 1 -->
     <div class="wiz-step active" id="wiz-step-1">
@@ -1176,8 +1176,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <div class="wiz-nav">
-    <button type="button" class="wiz-btn ghost" id="wiz-back-2">← Настройки</button>
-    <button type="button" class="wiz-btn" id="wiz-next-2">🔍 Рассчитать</button>
+    <button type="button" class="wiz-btn ghost" id="wiz-back-2">← Цели</button>
+    <button type="button" class="wiz-btn" id="wiz-next-2">Настройки →</button>
   </div>
 </div>
       <!-- STEP 3 -->
@@ -1668,8 +1668,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <div id="calc-blocked-hint" style="display:none; margin-top:8px; font-size:12px; color:#e84444; padding:6px 10px; background:#fff5f5; border-radius:8px;"></div>
   <div id="status" class="planner-status"></div>
   <div class="wiz-nav" style="margin-top:12px;">
-    <button type="button" class="wiz-btn ghost" id="wiz-back-4">Назад</button>
-    <button type="button" class="wiz-btn" id="wiz-to-period">4. Период →</button>
+    <button type="button" class="wiz-btn ghost" id="wiz-back-4">← Период</button>
   </div>
 </div>
   </div>
@@ -1858,8 +1857,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 (function(){
   function el(id){ return document.getElementById(id); }
 
-  // New step order: 1=Geography, 2=Goals(div3), 3=Settings(div4), 4=Period(div2)
-  const STEP_TO_DIV = { 1: 1, 2: 3, 3: 4, 4: 2 };
+  // Step order: 1=Geography(div1), 2=Goals(div3), 3=Period(div2), 4=Settings(div4)
+  const STEP_TO_DIV = { 1: 1, 2: 3, 3: 2, 4: 4 };
   function setStep(step){
     // Используем и class, и inline style -- чтобы CSS Tilda не перебивал display
     document.querySelectorAll("#planner-widget .wiz-step").forEach(s => {
@@ -1890,9 +1889,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Отмечаем посещение шага 4 -- чтобы чип не был зелёным до первого визита
   const _origSetStep = setStep;
   window.setStep = function(step) {
-    if (step === 3) window._plannerStep4Visited = true; // logical step 3 = Settings (physical div 4)
+    if (step === 4) window._plannerStep4Visited = true; // logical step 4 = Settings (physical div 4)
     _origSetStep(step);
-    if (step === 3) { // Настройки is now logical step 3
+    if (step === 4) { // Настройки is logical step 4
       // В GID-режиме скрываем лишнее -- только кнопка "Рассчитать" + "Назад"
       const gidsBlock = el("geo-gids-block");
       const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
@@ -1953,23 +1952,21 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.setStep(2);
   });
 
-  // wiz-step-2 (Период, shown as logical step 4) → validate dates → trigger calc
+  // wiz-step-2 (Период, logical step 3) → validate dates → go to Настройки (step 4)
   el("wiz-next-2")?.addEventListener("click", () => {
     if(!hasDates()) return alert("Выберите даты начала и окончания.");
     if(window.PLANNER_UI?.validateStep2Schedule && !window.PLANNER_UI.validateStep2Schedule()){
       return alert("Проверьте рваный график: включите хотя бы один день и задайте корректные интервалы времени.");
     }
-    // Период is now last step — trigger calculation
-    el("calc-btn")?.click();
+    window.setStep(4);
   });
 
-  // wiz-step-3 (Цели, shown as logical step 2) → validate budget → go to Настройки (logical 3)
+  // wiz-step-3 (Цели, logical step 2) → validate budget → go to Период (logical step 3)
   el("wiz-next-3")?.addEventListener("click", () => window.setStep(3));
 
-  el("wiz-back-2")?.addEventListener("click", () => window.setStep(3)); // Период back → Настройки
+  el("wiz-back-2")?.addEventListener("click", () => window.setStep(2)); // Период back → Цели
   el("wiz-back-3")?.addEventListener("click", () => window.setStep(1)); // Цели back → Geography
-  el("wiz-back-4")?.addEventListener("click", () => window.setStep(2)); // Настройки back → Цели
-  el("wiz-to-period")?.addEventListener("click", () => window.setStep(4)); // Настройки → Период
+  el("wiz-back-4")?.addEventListener("click", () => window.setStep(3)); // Настройки back → Период
 
   window.setStep(1);
 })();
@@ -2278,7 +2275,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     // Шаг 4 "выполнен" только если пользователь его посещал или уже был расчёт
     const step4Done = !!(window._plannerStep4Visited || window.PLANNER?.lastCalc);
     const _budgetOk = (()=>{ const bm = getBudgetMode(); const bv = Number(el("budget-input")?.value||0); const gv = Number(el("goal-ots")?.value||0); return bm==="recommendation"||(bm==="fixed"&&bv>0)||(bm==="goal_ots"&&gv>0); })();
-    const stepDoneMap = { "1": !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length), "2": p.done >= 2 && _budgetOk, "3": step4Done, "4": !!(p.dates.start && p.dates.end) };
+    const stepDoneMap = { "1": !!(Array.isArray(window.PLANNER?.state?.selectedRegions) && window.PLANNER.state.selectedRegions.length), "2": p.done >= 2 && _budgetOk, "3": !!(p.dates.start && p.dates.end), "4": step4Done };
     document.querySelectorAll("#wiz-steps .wiz-chip").forEach(chip => {
       const s = chip.dataset.step;
       chip.classList.toggle("done", !!stepDoneMap[s]);
