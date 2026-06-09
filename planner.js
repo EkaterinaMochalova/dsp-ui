@@ -1462,11 +1462,14 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
     constructions: {
       enabled:      !!el("constructions-enabled")?.checked,
       count:        toNumber(el("constructions-count")?.value ?? 0),
-      // In GID/manual mode use dedicated gid-ppm slider; otherwise constructions-ppm
+      // In GID mode: use gid-ppm slider.
+      // In city mode: only use constructions-ppm when constructions chip is actually ON.
       playsPerHour: (() => {
         const selMode = el("selection-mode")?.value || "";
         const isGidMode = selMode === "manual_screens" || selMode === "yandex_geo";
-        return toNumber(isGidMode ? (el("gid-ppm")?.value ?? 0) : (el("constructions-ppm")?.value ?? 0)) || 0;
+        if (isGidMode) return toNumber(el("gid-ppm")?.value ?? 0) || 0;
+        if (!el("constructions-enabled")?.checked) return 0; // chip off → no manual ppm
+        return toNumber(el("constructions-ppm")?.value ?? 0) || 0;
       })(),
       perRegionCount: (() => {
         const map = {};
