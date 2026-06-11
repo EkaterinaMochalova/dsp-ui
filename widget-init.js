@@ -3972,12 +3972,46 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     window.PLANNER.state.polygonFilter = p;
   }
   function getScreensAll() { return window.PLANNER?.state?.screensAll || []; }
-  // countInside: accepts array of L.Polygon objects
+
+  // Returns screens filtered by current region/format/owner selections
+  function getMapScreens() {
+    const st = window.PLANNER?.state;
+    if (!st) return [];
+    let pool = Array.isArray(st.screensAll) ? st.screensAll : [];
+
+    const regions = Array.isArray(st.selectedRegions) ? st.selectedRegions : [];
+    if (regions.length) {
+      const rset = new Set(regions.map(r => String(r || "").trim()));
+      let filtered = pool.filter(s =>
+        rset.has(String(s.region || "").trim()) || rset.has(String(s.city || "").trim())
+      );
+      if (!filtered.length && st.dspRegionToCities) {
+        const citySet = new Set(regions.flatMap(r => st.dspRegionToCities[r] || []));
+        filtered = pool.filter(s => citySet.has(String(s.city || "").trim()));
+      }
+      pool = filtered;
+    }
+
+    if (st.selectedFormats && st.selectedFormats.size > 0) {
+      pool = pool.filter(s => st.selectedFormats.has(String(s.format || "").trim()));
+    }
+
+    if (st.selectedOwners && st.selectedOwners.size > 0) {
+      pool = pool.filter(s => {
+        const own = String(s.owner ?? s.OWNER ?? s.operator ?? s.vendor ?? s.network ?? "").trim();
+        return st.selectedOwners.has(own);
+      });
+    }
+
+    return pool;
+  }
+
+  // countInside: accepts array of L.Polygon objects, counts only filtered screens
   function countInside(polys) {
     if (!polys || !polys.length) return 0;
     const fn = window.PLANNER?.pointInPolygon;
     if (!fn) return 0;
-    return getScreensAll().filter(s => {
+    return getMapScreens().filter(s => {
       if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return false;
       return polys.some(p => fn(s.lat, s.lon, p.getLatLngs()[0].map(ll => [ll.lat, ll.lng])));
     }).length;
@@ -3995,7 +4029,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       ? poly : (poly && poly.length >= 3 ? [poly] : null);
     if (polys && polys.length) {
       const fn = window.PLANNER?.pointInPolygon;
-      const cnt = fn ? getScreensAll().filter(s =>
+      const cnt = fn ? getMapScreens().filter(s =>
         Number.isFinite(s.lat) && Number.isFinite(s.lon) &&
         polys.some(p => fn(s.lat, s.lon, p))
       ).length : 0;
@@ -4059,9 +4093,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       currentPolys.push(p);
     });
 
-    // Render all screens as tiny dots (canvas for performance)
+    // Render screens matching current region/format/owner filters
     dotsLayer.clearLayers();
-    const screens = getScreensAll();
+    const screens = getMapScreens();
     const renderer = L.canvas({ padding: 0.5 });
     const bounds = [];
     screens.forEach(s => {
@@ -4200,7 +4234,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       // Buffer the polyline by 100m → polygon
       const bufCoords = bufferPolyline(vertices, 100);
       if (bufCoords) {
-        const poly = L.polygon(bufCoords, { color: "#EC4899", fillColor: "#EC4899", fillOpacity: 0.15, weight: 2 }).addTo(drawLayer);
+        const poly = L.polygon(bufCoords, { color: "#5B3EF5", fillOpacity: 0.15, weight: 2 }).addTo(drawLayer);
         currentPolys.push(poly);
       }
     } else {
