@@ -1757,6 +1757,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <button id="poly-modal-confirm" type="button" class="ux-primary" disabled>Применить</button>
       </div>
     </div>
+    <!-- Draw mode toolbar -->
+    <div style="padding:8px 20px; border-bottom:1px solid #f0f0f0; background:#FAFAFA; display:flex; gap:8px; align-items:center; flex-shrink:0;">
+      <span style="font-size:12px; color:#667085; font-weight:500;">Инструмент:</span>
+      <button id="draw-mode-polygon" type="button" style="padding:5px 14px; border-radius:999px; border:1.5px solid #5B3EF5; background:#EDE9FD; color:#4930C7; font-size:12px; font-weight:600; cursor:pointer;">◻ Полигон</button>
+      <button id="draw-mode-line" type="button" style="padding:5px 14px; border-radius:999px; border:1.5px solid rgba(15,23,42,.14); background:#fff; color:#374151; font-size:12px; font-weight:500; cursor:pointer;">— Линия (100 м)</button>
+    </div>
     <!-- Hint bar -->
     <div id="poly-hint" style="
       padding:8px 20px; font-size:12px; color:#667085;
@@ -4061,7 +4067,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     screens.forEach(s => {
       if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return;
       L.circleMarker([s.lat, s.lon], {
-        radius: 3, color: "#5B3EF5", fillColor: "#5B3EF5",
+        radius: 3, color: "#EC4899", fillColor: "#EC4899",
         fillOpacity: 0.5, weight: 0, renderer
       }).addTo(dotsLayer);
       bounds.push([s.lat, s.lon]);
@@ -4079,6 +4085,57 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     setupDrawing();
     updateModalState();
+  }
+
+  // -- draw mode: "polygon" | "line" ------------------------------------
+  let drawMode = "polygon";
+
+  // Buffer a polyline (array of Leaflet LatLng) by radiusM meters → [[lat,lng],...] polygon
+  function bufferPolyline(pts, radiusM) {
+    if (!pts || pts.length < 2) return null;
+    const n = pts.length;
+    const STEPS = 8;
+
+    function rightNorm(p1, p2) {
+      const cosLat = Math.cos((p1.lat + p2.lat) / 2 * Math.PI / 180);
+      const dLatM = (p2.lat - p1.lat) * 111320;
+      const dLonM = (p2.lng - p1.lng) * 111320 * cosLat;
+      const len = Math.hypot(dLatM, dLonM) || 1e-9;
+      return [-dLonM / len * radiusM / 111320, dLatM / len * radiusM / (111320 * cosLat)];
+    }
+
+    const vNorms = [];
+    for (let i = 0; i < n; i++) {
+      let dLat = 0, dLng = 0, c = 0;
+      if (i > 0)   { const nm = rightNorm(pts[i-1], pts[i]); dLat += nm[0]; dLng += nm[1]; c++; }
+      if (i < n-1) { const nm = rightNorm(pts[i], pts[i+1]); dLat += nm[0]; dLng += nm[1]; c++; }
+      vNorms.push([dLat/c, dLng/c]);
+    }
+
+    function arcPts(center, fromA, toA) {
+      const cosC = Math.cos(center.lat * Math.PI / 180);
+      const res = [];
+      for (let i = 0; i <= STEPS; i++) {
+        const a = fromA + (toA - fromA) * i / STEPS;
+        res.push([center.lat + Math.sin(a) * radiusM / 111320, center.lng + Math.cos(a) * radiusM / (111320 * cosC)]);
+      }
+      return res;
+    }
+
+    function segAngle(p1, p2) {
+      const cosLat = Math.cos((p1.lat + p2.lat) / 2 * Math.PI / 180);
+      return Math.atan2((p2.lat - p1.lat) * 111320, (p2.lng - p1.lng) * 111320 * cosLat);
+    }
+
+    const PI = Math.PI;
+    const aFirst = segAngle(pts[0], pts[1]);
+    const aLast  = segAngle(pts[n-2], pts[n-1]);
+    const poly = [];
+    for (let i = 0; i < n; i++) poly.push([pts[i].lat + vNorms[i][0], pts[i].lng + vNorms[i][1]]);
+    arcPts(pts[n-1], aLast - PI/2, aLast + PI/2).forEach(p => poly.push(p));
+    for (let i = n-1; i >= 0; i--) poly.push([pts[i].lat - vNorms[i][0], pts[i].lng - vNorms[i][1]]);
+    arcPts(pts[0], aFirst + PI/2, aFirst + PI/2 + PI).forEach(p => poly.push(p));
+    return poly;
   }
 
   // -- setup click-to-draw polygon --------------------------------------
@@ -4100,14 +4157,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     vertices.push(latlng);
 
     // Draw vertex marker
-    const isFirst = vertices.length === 1;
+    const isFirstPoly = vertices.length === 1 && drawMode === "polygon";
+    const mColor = drawMode === "line" ? "#EC4899" : (isFirstPoly ? "#e84444" : "#5B3EF5");
     const m = L.circleMarker(latlng, {
-      radius: isFirst ? 7 : 5,
-      color: isFirst ? "#e84444" : "#5B3EF5",
-      fillColor: isFirst ? "#e84444" : "#5B3EF5",
-      fillOpacity: 0.9, weight: 2
+      radius: isFirstPoly ? 7 : 5,
+      color: mColor, fillColor: mColor, fillOpacity: 0.9, weight: 2
     }).addTo(drawLayer);
-    if (isFirst) {
+    if (isFirstPoly) {
       m.bindTooltip("Кликните сюда, чтобы замкнуть", { permanent: false, direction: "top" });
       m.on("click", (ev) => { L.DomEvent.stopPropagation(ev); finishPolygon(); });
     }
@@ -4116,18 +4172,23 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     // Update polyline preview
     if (tempPolyline) { drawLayer.removeLayer(tempPolyline); tempPolyline = null; }
     if (vertices.length >= 2) {
-      tempPolyline = L.polyline(vertices, { color: "#5B3EF5", dashArray: "5,6", weight: 2 }).addTo(drawLayer);
+      const lineOpts = drawMode === "line"
+        ? { color: "#EC4899", weight: 3, opacity: 0.8 }
+        : { color: "#5B3EF5", dashArray: "5,6", weight: 2 };
+      tempPolyline = L.polyline(vertices, lineOpts).addTo(drawLayer);
     }
 
-    // Show finish button after 3+ vertices
+    // Show finish button
+    const minVerts = drawMode === "line" ? 2 : 3;
     const finBtn = el("poly-finish-btn");
-    if (finBtn) finBtn.style.display = vertices.length >= 3 ? "block" : "none";
+    if (finBtn) finBtn.style.display = vertices.length >= minVerts ? "block" : "none";
 
     updateModalState();
   }
 
   function finishPolygon() {
-    if (vertices.length < 3) return;
+    const minVerts = drawMode === "line" ? 2 : 3;
+    if (vertices.length < minVerts) return;
 
     // Remove temp drawing layers (keep finished polygons)
     if (tempPolyline) { drawLayer.removeLayer(tempPolyline); tempPolyline = null; }
@@ -4135,9 +4196,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     tempMarkers = [];
     polyMap.off("click", onMapClick);
 
-    // Add new finished polygon to the list
-    const poly = L.polygon(vertices, { color: "#5B3EF5", fillOpacity: 0.15, weight: 2 }).addTo(drawLayer);
-    currentPolys.push(poly);
+    if (drawMode === "line") {
+      // Buffer the polyline by 100m → polygon
+      const bufCoords = bufferPolyline(vertices, 100);
+      if (bufCoords) {
+        const poly = L.polygon(bufCoords, { color: "#EC4899", fillColor: "#EC4899", fillOpacity: 0.15, weight: 2 }).addTo(drawLayer);
+        currentPolys.push(poly);
+      }
+    } else {
+      const poly = L.polygon(vertices, { color: "#5B3EF5", fillOpacity: 0.15, weight: 2 }).addTo(drawLayer);
+      currentPolys.push(poly);
+    }
 
     vertices = [];
     const finBtn = el("poly-finish-btn");
@@ -4145,7 +4214,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     updateModalState();
 
-    // Automatically re-enable drawing so user can add another polygon
+    // Re-enable drawing for the next zone
     polyMap.on("click", onMapClick);
   }
 
@@ -4169,11 +4238,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     const countBadge = el("poly-modal-count");
     const hint       = el("poly-hint");
 
+    const minVerts = drawMode === "line" ? 2 : 3;
     const hasPolys = currentPolys.length > 0;
-    const hasVerts = vertices.length >= 3;
+    const hasVerts = vertices.length >= minVerts;
 
     if (confirmBtn) confirmBtn.disabled = !hasPolys;
     if (resetBtn)   resetBtn.style.display = (hasPolys || hasVerts) ? "block" : "none";
+
+    // Update finish button text based on mode
+    const finBtn = el("poly-finish-btn");
+    if (finBtn) finBtn.textContent = drawMode === "line" ? "\\u2713 Завершить линию" : "\\u2713 Завершить полигон";
 
     if (hasPolys && countBadge) {
       const cnt = countInside(currentPolys);
@@ -4181,8 +4255,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       const zonesLabel = n === 1 ? "зона" : n < 5 ? "зоны" : "зон";
       countBadge.textContent = \`\${n} \${zonesLabel} \\u00B7 \${cnt.toLocaleString("ru-RU")} экранов\`;
       countBadge.style.display = "block";
+      const what = drawMode === "line" ? "линию" : "зону";
       const drawingMore = hasVerts
-        ? \` Рисуете зону \${n + 1} \\u2014 добавлено \${vertices.length} точек.\`
+        ? \` Рисуете \${what} \${n + 1} \\u2014 добавлено \${vertices.length} точек.\`
         : " Нажмите \\u00ABПрименить\\u00BB или нарисуйте ещё зону.";
       if (hint) hint.textContent = cnt > 0
         ? \`В \${n === 1 ? "зоне" : "зонах"} \${cnt.toLocaleString("ru-RU")} экранов.\${drawingMore}\`
@@ -4190,8 +4265,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     } else {
       if (countBadge) countBadge.style.display = "none";
       if (hint) hint.textContent = hasVerts
-        ? \`Добавлено \${vertices.length} точек. Кликните на первую точку или нажмите \\u00ABЗавершить\\u00BB.\`
-        : "Кликайте на карту, чтобы добавлять точки полигона. Замкните его \\u2014 кликните на первую точку или нажмите \\u00ABЗавершить\\u00BB.";
+        ? \`Добавлено \${vertices.length} точек. \${drawMode === "line" ? "Нажмите \\u00ABЗавершить\\u00BB." : "Кликните на первую точку или нажмите \\u00ABЗавершить\\u00BB."}\`
+        : (drawMode === "line"
+          ? "Кликайте на карту, чтобы добавлять точки линии. Линия выберет всё в радиусе 100 м вокруг неё."
+          : "Кликайте на карту, чтобы добавлять точки полигона. Замкните его \\u2014 кликните на первую точку или нажмите \\u00ABЗавершить\\u00BB.");
     }
   }
 
@@ -4216,6 +4293,35 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   // -- init event listeners ---------------------------------------------
   function init() {
+    function setDrawMode(mode) {
+      drawMode = mode;
+      // Clear any in-progress drawing (don't wipe finished zones)
+      if (vertices.length > 0) {
+        vertices = [];
+        if (tempPolyline && drawLayer) { drawLayer.removeLayer(tempPolyline); tempPolyline = null; }
+        tempMarkers.forEach(m => drawLayer && drawLayer.removeLayer(m));
+        tempMarkers = [];
+        const finBtn = el("poly-finish-btn");
+        if (finBtn) finBtn.style.display = "none";
+      }
+      // Toggle button styles
+      const polyBtn = el("draw-mode-polygon");
+      const lineBtn = el("draw-mode-line");
+      if (polyBtn && lineBtn) {
+        if (mode === "polygon") {
+          polyBtn.style.cssText = "padding:5px 14px;border-radius:999px;border:1.5px solid #5B3EF5;background:#EDE9FD;color:#4930C7;font-size:12px;font-weight:600;cursor:pointer;";
+          lineBtn.style.cssText = "padding:5px 14px;border-radius:999px;border:1.5px solid rgba(15,23,42,.14);background:#fff;color:#374151;font-size:12px;font-weight:500;cursor:pointer;";
+        } else {
+          lineBtn.style.cssText = "padding:5px 14px;border-radius:999px;border:1.5px solid #EC4899;background:#FDF2F8;color:#9D174D;font-size:12px;font-weight:600;cursor:pointer;";
+          polyBtn.style.cssText = "padding:5px 14px;border-radius:999px;border:1.5px solid rgba(15,23,42,.14);background:#fff;color:#374151;font-size:12px;font-weight:500;cursor:pointer;";
+        }
+      }
+      updateModalState();
+    }
+
+    el("draw-mode-polygon")?.addEventListener("click", () => setDrawMode("polygon"));
+    el("draw-mode-line")?.addEventListener("click", () => setDrawMode("line"));
+
     el("poly-draw-btn")?.addEventListener("click", openModal);
     el("poly-modal-cancel")?.addEventListener("click", closeModal);
     el("poly-modal-confirm")?.addEventListener("click", confirmPolygon);
