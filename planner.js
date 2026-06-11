@@ -2357,16 +2357,16 @@ async function buildMediaPlanBlob() {
     const rd = effectivePerReg.find(x => x.region === city) || {};
     const b  = rd.budget || 0, p = rd.plays || 0, o = rd.ots || 0;
     sc(ws, r, 1, city, { bold: true, fill: C_LIGHT });
-    sc(ws, r, 2, Math.round(p), { fill: C_LIGHT, numFmt: "#,##0" });
-    sc(ws, r, 3, Math.round(o), { fill: C_LIGHT, numFmt: "#,##0" });
-    sc(ws, r, 4, Math.round(b), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+    sc(ws, r, 2, p, { fill: C_LIGHT, numFmt: "#,##0" });
+    sc(ws, r, 3, o, { fill: C_LIGHT, numFmt: "#,##0" });
+    sc(ws, r, 4, b, { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
     if (commOn && commRate > 0) {
       const wc = b * (1 + commRate);
-      sc(ws, r, 5, Math.round(wc), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
-      if (vatOn) sc(ws, r, 6, Math.round(wc * (1 + vatRate)), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+      sc(ws, r, 5, wc, { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+      if (vatOn) sc(ws, r, 6, wc * (1 + vatRate), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
       else ws.getCell(r, 6).border = NO_B;
     } else if (vatOn) {
-      sc(ws, r, 5, Math.round(b * (1 + vatRate)), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+      sc(ws, r, 5, b * (1 + vatRate), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
       ws.getCell(r, 6).border = NO_B;
     } else {
       ws.getCell(r, 5).border = NO_B;
@@ -2383,16 +2383,16 @@ async function buildMediaPlanBlob() {
   const totP = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.plays  || 0), 0);
   const totO = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.ots    || 0), 0);
   sc(ws, totalRow, 1, "итого", { bold: true, fill: C_HDR, h: "right" });
-  sc(ws, totalRow, 2, Math.round(totP), { bold: true, fill: C_HDR, numFmt: "#,##0" });
-  sc(ws, totalRow, 3, Math.round(totO), { bold: true, fill: C_HDR, numFmt: "#,##0" });
-  sc(ws, totalRow, 4, Math.round(totB), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+  sc(ws, totalRow, 2, totP, { bold: true, fill: C_HDR, numFmt: "#,##0" });
+  sc(ws, totalRow, 3, totO, { bold: true, fill: C_HDR, numFmt: "#,##0" });
+  sc(ws, totalRow, 4, totB, { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
   if (commOn && commRate > 0) {
     const twc = totB * (1 + commRate);
-    sc(ws, totalRow, 5, Math.round(twc), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
-    if (vatOn) sc(ws, totalRow, 6, Math.round(twc * (1 + vatRate)), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+    sc(ws, totalRow, 5, twc, { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+    if (vatOn) sc(ws, totalRow, 6, twc * (1 + vatRate), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
     else ws.getCell(totalRow, 6).border = NO_B;
   } else if (vatOn) {
-    sc(ws, totalRow, 5, Math.round(totB * (1 + vatRate)), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+    sc(ws, totalRow, 5, totB * (1 + vatRate), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
     ws.getCell(totalRow, 6).border = NO_B;
   } else {
     ws.getCell(totalRow, 5).border = NO_B;
@@ -2454,7 +2454,7 @@ async function buildMediaPlanBlob() {
     sc(ws, base + 3, 1, "Средний OTS*",     { bold: true, fill: C_LIGHT });
     sc(ws, base + 3, 2, wtOtsD,             { fill: C_GREEN, numFmt: "0.00" });
     fmts.forEach((fmt_, fi) => {
-      const o = cfStats[city][fmt_]?.avgOts > 0 ? Math.round(cfStats[city][fmt_].avgOts) : null;
+      const o = cfStats[city][fmt_]?.avgOts > 0 ? cfStats[city][fmt_].avgOts : null;
       sc(ws, base + 3, 5 + fi, o, { fill: C_GREEN, numFmt: "0" });
     });
 
@@ -2471,26 +2471,26 @@ async function buildMediaPlanBlob() {
 
     // ── base+5: Прогноз кол-ва выходов ───────────────────────────
     sc(ws, base + 5, 1, "Прогноз кол-ва выходов", { bold: true, fill: C_LIGHT });
-    sc(ws, base + 5, 2, Math.round(regPlays), { fill: C_GREEN, numFmt: "#,##0" });
+    sc(ws, base + 5, 2, regPlays, { fill: C_GREEN, numFmt: "#,##0" });
     fmts.forEach((fmt_, fi) => {
-      sc(ws, base + 5, 5 + fi, Math.round(cfStats[city][fmt_]?.plays || 0), { fill: C_GREEN, numFmt: "#,##0" });
+      sc(ws, base + 5, 5 + fi, cfStats[city][fmt_]?.plays || 0, { fill: C_GREEN, numFmt: "#,##0" });
     });
 
     // ── base+6: Прогноз кол-ва OTS* ──────────────────────────────
     ws.getRow(base + 6).height = 24.75;
     sc(ws, base + 6, 1, "Прогноз кол-ва OTS*", { bold: true, fill: C_LIGHT });
-    sc(ws, base + 6, 2, Math.round(regOts) || null, { fill: C_GREEN, numFmt: "#,##0" });
+    sc(ws, base + 6, 2, regOts || null, { fill: C_GREEN, numFmt: "#,##0" });
     fmts.forEach((fmt_, fi) => {
       const st = cfStats[city][fmt_];
-      const o  = st && st.avgOts > 0 ? Math.round(st.plays * st.avgOts) : null;
+      const o  = st && st.avgOts > 0 ? st.plays * st.avgOts : null;
       sc(ws, base + 6, 5 + fi, o, { fill: C_GREEN, numFmt: "#,##0" });
     });
 
     // ── base+7: Прогноз бюджета ───────────────────────────────────
     sc(ws, base + 7, 1, "Прогноз бюджета",  { bold: true, fill: C_LIGHT });
-    sc(ws, base + 7, 2, Math.round(regBudget), { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
+    sc(ws, base + 7, 2, regBudget, { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
     fmts.forEach((fmt_, fi) => {
-      sc(ws, base + 7, 5 + fi, Math.round(cfStats[city][fmt_]?.budget || 0),
+      sc(ws, base + 7, 5 + fi, cfStats[city][fmt_]?.budget || 0,
         { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
     });
 
