@@ -1232,9 +1232,12 @@ async function loadScreens() {
     }
   }
   for (const s of state.screens) {
-    if (isMagnitScreen(s)) { s.ots = 0; continue; } // Магнит: OTS = 0, no interpolation
+    if (isMagnitScreen(s)) { s.ots = 0; s._otsInterpolated = false; continue; } // Магнит: OTS = 0, no interpolation
     if (!(Number.isFinite(s.ots) && s.ots > 0) && s.format && otsByFormat[s.format]) {
       s.ots = otsByFormat[s.format].sum / otsByFormat[s.format].cnt;
+      s._otsInterpolated = true; // mark: real measurement may arrive later from forecast API
+    } else {
+      s._otsInterpolated = false; // has real OTS — don't overwrite
     }
   }
 
@@ -5444,9 +5447,10 @@ async function dspFetchForecastBids(screens, brief) {
         s.recoBid = price;
         // Store estimated OTS if screen doesn't have real OTS data
         const avgOts = elem?.statistic?.averageOts;
-        if (Number.isFinite(avgOts) && avgOts > 0 && !(Number.isFinite(s.ots) && s.ots > 0)) {
+        if (Number.isFinite(avgOts) && avgOts > 0 && (!(Number.isFinite(s.ots) && s.ots > 0) || s._otsInterpolated)) {
           s.ots = avgOts;
           s._otsEstimated = true;
+          s._otsInterpolated = false; // now has real measurement from API
         }
       }
     }
