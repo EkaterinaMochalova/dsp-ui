@@ -4099,6 +4099,35 @@ async function onCalcClick() {
         }
       }
 
+      // Fixed budget: capBudgetAbs was computed from minBid before API call; now that we have
+      // real recoBids, re-distribute the user's original budget with the correct caps.
+      // Without this, a screen with minBid=27₽ but recoBid=128₽ would cause capBudgetAbs=65k,
+      // silently capping 100k budget to 65k and leaving 34k "unspendable" even though the
+      // screens CAN absorb it at higher frequency.
+      if (brief.budget.mode === "fixed" && !(brief.budget.perCity && Object.keys(brief.budget.perCity).length > 0)) {
+        const totalBudget = Number(brief.budget.amount);
+        const newAlloc = allocateBudgetAcrossRegions(
+          totalBudget,
+          prepared.map(r => ({ key: r.region, tier: getTierForGeo(r.region) })),
+          { minShare: 0.10, maxShare: 0.70 }
+        );
+        for (const r of prepared) {
+          const found = newAlloc?.find(x => x.region === r.region);
+          budgets[r.region] = found ? Number(found.budget) : 0;
+        }
+        const newLeftover = redistributeByCapacity(prepared, budgets);
+        // Replace the stale capacity warning with the updated value
+        const warnIdx = warnings.findIndex(w => w.includes("Общая ёмкость выбранных регионов ограничена"));
+        if (warnIdx >= 0) warnings.splice(warnIdx, 1);
+        if (newLeftover > 0) {
+          warnings.push(
+            `⚠️ Общая ёмкость выбранных регионов ограничена: не удалось распределить ` +
+            `${Math.floor(newLeftover).toLocaleString("ru-RU")} ₽ (нет инвентаря).`
+          );
+        }
+        leftoverUnspent = newLeftover;
+      }
+
       // Если режим constructions (только recommendation) — пересчитываем бюджет с реальными recoBid
       if (brief.budget.mode === "recommendation" && brief.constructions?.enabled && brief.constructions.count > 0) {
         const allRecos = prepared.flatMap(r => r.pool.map(s => s.recoBid))
@@ -4310,8 +4339,9 @@ async function onCalcClick() {
     if (Number.isFinite(effectiveChosenBid) && effectiveChosenBid > 0 && Number.isFinite(budget) && budget > 0) {
       const budgetMaxPlays = Math.floor(budget / effectiveChosenBid);
       if (budgetMaxPlays < totalPlaysEffective) {
-        // In GID mode: budget is tight — warn about reduced pph, keep all screens
-        if (_isManualMode && chosen.length > 0 && hpd > 0 && days > 0) {
+        // In GID budget mode: frequency is OUTPUT (budget ÷ bid), not a target — no warning.
+        // In constructions mode with budget: warn if desired pph can't be met.
+        if (_isManualMode && !_isGidRegion && chosen.length > 0 && hpd > 0 && days > 0) {
           const desiredPph = ppmOverride !== null ? ppmOverride : effectivePPH;
           const actualPph  = budgetMaxPlays / (chosen.length * hpd * days);
           if (actualPph < desiredPph - 0.5) {
@@ -4388,8 +4418,8 @@ async function onCalcClick() {
       if (playsPerHourPerScreen > pphTarget && playsPerHourPerScreen <= SC_MAX) {
         warnings.push(`⚠️ Регион «${regionDisplay}»: в среднем ${playsPerHourPerScreen.toFixed(1)} выходов/час на экран (выше выбранной стратегии ${pphTarget}).`);
       }
-      // Warn when actual pph is below the desired pph (budget too tight for requested frequency)
-      const desiredPph = ppmManual > 0 ? ppmManual : (_isGidRegion ? null : pphTarget);
+      // In GID+budget mode frequency is a calculated output, not a target — suppress warning.
+      const desiredPph = (_isGidRegion && hasBudget) ? null : (ppmManual > 0 ? ppmManual : (_isGidRegion ? null : pphTarget));
       if (desiredPph != null && playsPerHourPerScreen < desiredPph - 0.4) {
         warnings.push(`⚠️ Бюджет позволяет ${playsPerHourPerScreen.toFixed(1)} вых/час на экран (запрошено ${desiredPph}). Увеличьте бюджет для полной частоты.`);
       }
