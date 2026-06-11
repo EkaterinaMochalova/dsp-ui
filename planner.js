@@ -2552,10 +2552,11 @@ async function buildMediaPlanBlob() {
   const dateFile = s => s ? String(s).split("-").reverse().join(".") : "plan";
   const baseName = `mediaplan_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateFile(brief.dates?.start)}`;
 
-  // HTML map of all screens
+  // HTML map of all screens (only if user opted in via settings checkbox)
   const mapScreensList = screens.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
   let mapBlob = null, mapFilename = null;
-  if (mapScreensList.length > 0) {
+  const downloadMapEnabled = el("dl-download-map") ? !!el("dl-download-map").checked : true;
+  if (downloadMapEnabled && mapScreensList.length > 0) {
     const regionLabel = (brief.geo?.regions || brief.selectedRegions || []).join(", ") || "план";
     const mapHtml = buildMapHtml(screens, regionLabel);
     if (mapHtml) {

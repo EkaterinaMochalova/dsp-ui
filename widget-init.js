@@ -1703,6 +1703,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <input type="checkbox" id="dl-split-operator">
         <span>Разбить строки по операторам</span>
       </label>
+      <label class="dl-settings-row">
+        <input type="checkbox" id="dl-download-map" checked>
+        <span>Скачивать карту</span>
+      </label>
     </div>
   </div>
   <button id="download-poi-csv" class="wiz-btn ghost" disabled>Скачать POI (CSV)</button>
@@ -5813,6 +5817,38 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   const popup   = document.getElementById("dl-settings-popup");
   const planBtn = document.getElementById("download-plan-xlsx");
   if (!gearBtn || !popup) return;
+
+  // Persist checkbox settings to localStorage
+  const DL_STORAGE_KEY = "dsp_dl_settings";
+  const chkIds = ["dl-show-commission", "dl-show-vat", "dl-split-operator", "dl-download-map"];
+
+  function loadDlSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DL_STORAGE_KEY) || "{}");
+      for (const id of chkIds) {
+        const chk = document.getElementById(id);
+        if (!chk) continue;
+        if (id in saved) chk.checked = saved[id];
+      }
+    } catch(e) {}
+  }
+
+  function saveDlSettings() {
+    try {
+      const out = {};
+      for (const id of chkIds) {
+        const chk = document.getElementById(id);
+        if (chk) out[id] = chk.checked;
+      }
+      localStorage.setItem(DL_STORAGE_KEY, JSON.stringify(out));
+    } catch(e) {}
+  }
+
+  loadDlSettings();
+  for (const id of chkIds) {
+    const chk = document.getElementById(id);
+    if (chk) chk.addEventListener("change", saveDlSettings);
+  }
 
   gearBtn.addEventListener("click", (e) => {
     e.stopPropagation();
