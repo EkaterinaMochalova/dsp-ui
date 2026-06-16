@@ -975,7 +975,8 @@ function renderSelectionExtra() {
 // Парсит текст с GID-ами → Set строк
 function _parseManualGids(text) {
   const raw = String(text || "");
-  const tokens = raw.split(/[\n,\r\t ]+/).map(t => t.trim()).filter(Boolean);
+  // Split only on newlines/commas/semicolons/tabs — NOT spaces, since GIDs can contain spaces
+  const tokens = raw.split(/[\n,;\r\t]+/).map(t => t.trim()).filter(Boolean);
   return new Set(tokens);
 }
 
