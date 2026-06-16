@@ -5476,12 +5476,13 @@ async function dspFetchForecastBids(screens, brief) {
       const s = idToScreen.get(dspId);
       if (s) {
         s.recoBid = price;
-        // Store estimated OTS if screen doesn't have real OTS data
+        // Forecast API OTS is always preferred — period-specific traffic data
+        // beats both the inventory's static value and format-average interpolation.
         const avgOts = elem?.statistic?.averageOts;
-        if (Number.isFinite(avgOts) && avgOts > 0 && (!(Number.isFinite(s.ots) && s.ots > 0) || s._otsInterpolated)) {
+        if (Number.isFinite(avgOts) && avgOts > 0) {
           s.ots = avgOts;
           s._otsEstimated = true;
-          s._otsInterpolated = false; // now has real measurement from API
+          s._otsInterpolated = false;
         }
       }
     }
