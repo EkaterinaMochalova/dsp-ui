@@ -4301,16 +4301,18 @@ async function onCalcClick() {
     //   SC_OPT используется только в режиме рекомендации бюджета (budget=0).
     // perRegionPpm — явный per-city override (редкий), playsPerHour — слайдер UI (дефолт 10).
     // Слайдер применяется только в режиме рекомендации (budget=0): там он задаёт целевую частоту.
-    // Когда задан бюджет — игнорируем слайдер и используем SC_MAX (60/ч) как физический предел;
-    // фактическая частота определяется бюджетом ÷ ставка.
+    // ppmOverride — верхняя планка частоты на экран в час.
+    // GID + бюджет: частота = бюджет ÷ ставка, слайдер НЕ является целью → null.
+    // Конструкции + бюджет: слайдер — жёсткий cap (выходов не больше), бюджет дополнительно ограничивает расход.
+    // Конструкции без бюджета / рекомендация: слайдер или стратегия.
     const ppmRegionOverride = Number(brief.constructions?.perRegionPpm?.[region] || 0);
     const ppmManual = ppmRegionOverride > 0 ? ppmRegionOverride : Number(brief.constructions?.playsPerHour || 0);
     const hasBudget = Number.isFinite(budget) && budget > 0;
     const ppmOverride = (constructionsTarget !== null)
       ? (hasBudget
-          ? (ppmRegionOverride > 0 ? ppmRegionOverride : null)           // бюджет: только per-region override
-          : (ppmManual > 0 ? ppmManual : pphTarget))                     // рекомендация: слайдер или стратегия
-      : (_isManualMode && ppmManual > 0 ? ppmManual : null);             // GID-режим без конструкций: уважаем слайдер
+          ? (ppmRegionOverride > 0 ? ppmRegionOverride : (_isGidRegion ? null : (ppmManual > 0 ? ppmManual : null)))
+          : (ppmManual > 0 ? ppmManual : pphTarget))
+      : (_isManualMode && ppmManual > 0 ? ppmManual : null);
     const _poolPphCap = pool.length > 0
       ? Math.round(pool.reduce((sum, s) => sum + getScreenPphCap(s), 0) / pool.length)
       : SC_MAX;
