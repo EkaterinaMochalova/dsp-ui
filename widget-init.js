@@ -1375,6 +1375,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           max
         </button>
       </div>
+      <!-- per-format screen count -->
+      <div id="cns-format-count-wrap" style="display:none; margin-top:8px;">
+        <button type="button" class="cns-per-region-toggle" id="cns-format-count-toggle">
+          <span id="cns-format-count-arrow">▶</span> По форматам
+        </button>
+        <div id="cns-format-count-rows" class="cns-per-region-rows" style="display:none;"></div>
+      </div>
       <!-- per-region screen count -->
       <div id="cns-region-count-wrap" style="display:none; margin-top:8px;">
         <button type="button" class="cns-per-region-toggle" id="cns-region-count-toggle">
@@ -5562,71 +5569,88 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 })();
 `);
 
-  // Script block 21c — Per-region constructions (count + ppm)
+  // Script block 21c — Per-region constructions (count + ppm) + per-format count
   runScript(`
 (function(){
   let _lastRegionSig = "";
+  let _lastFormatSig = "";
 
   function getRegions(){
     return Array.isArray(window.PLANNER?.state?.selectedRegions)
       ? window.PLANNER.state.selectedRegions.filter(Boolean) : [];
   }
 
-  function renderRows(containerId, inputClass, unit, min, max, step, regions) {
+  function getFormats(){
+    const screens = window.PLANNER?.state?.screensAll || [];
+    const fmts = [...new Set(screens.map(s => String(s.format || "").trim()).filter(Boolean))].sort();
+    return fmts;
+  }
+
+  function renderRows(containerId, inputClass, keyAttr, unit, min, max, step, items) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    // Preserve existing values
     const existing = {};
     container.querySelectorAll("." + inputClass).forEach(inp => {
-      if (inp.dataset.region && inp.value) existing[inp.dataset.region] = inp.value;
+      const k = inp.dataset[keyAttr]; if (k && inp.value) existing[k] = inp.value;
     });
-    container.innerHTML = regions.map(r => {
+    container.innerHTML = items.map(r => {
       const v = existing[r] || "";
       return \`<div class="cns-per-region-row">
         <span class="cns-per-region-label">\${r}</span>
-        <input type="number" class="ux-input \${inputClass}" data-region="\${r}"
+        <input type="number" class="ux-input \${inputClass}" data-\${keyAttr}="\${r}"
           min="\${min}" max="\${max}" step="\${step}" placeholder="\\u2014" value="\${v}">
         <span class="cns-per-region-unit">\${unit}</span>
       </div>\`;
     }).join("");
   }
 
-  const _opens = { cnt: false, ppm: false };
+  const _opens = { cnt: false, ppm: false, fmt: false };
 
   function refreshVisibility(forceRender) {
-    const regions = getRegions();
-    const sig = regions.join("|");
-    const multi = regions.length >= 2;
+    const regions   = getRegions();
+    const formats   = getFormats();
+    const regSig    = regions.join("|");
+    const fmtSig    = formats.join("|");
+    const multiReg  = regions.length >= 2;
+    const multiFmt  = formats.length >= 2;
     const cnsActive = document.getElementById("constructions-enabled")?.checked;
-    const show = multi && cnsActive;
 
-    document.getElementById("cns-region-count-wrap").style.display = show ? "block" : "none";
-    document.getElementById("cns-region-ppm-wrap").style.display   = show ? "block" : "none";
+    const showReg = multiReg && cnsActive;
+    const showFmt = multiFmt && cnsActive;
+    document.getElementById("cns-region-count-wrap").style.display = showReg ? "block" : "none";
+    document.getElementById("cns-region-ppm-wrap").style.display   = showReg ? "block" : "none";
+    document.getElementById("cns-format-count-wrap").style.display = showFmt ? "block" : "none";
 
-    // Only re-render rows when regions actually change
-    if (show && (sig !== _lastRegionSig || forceRender)) {
-      _lastRegionSig = sig;
-      if (_opens.cnt) renderRows("cns-region-count-rows", "cns-region-count-input", "экр.", 1, 99999, 1, regions);
-      if (_opens.ppm) renderRows("cns-region-ppm-rows",   "cns-region-ppm-input",   "/ч",   1,    60, 1, regions);
+    if (showReg && (regSig !== _lastRegionSig || forceRender)) {
+      _lastRegionSig = regSig;
+      if (_opens.cnt) renderRows("cns-region-count-rows", "cns-region-count-input", "region", "экр.", 1, 99999, 1, regions);
+      if (_opens.ppm) renderRows("cns-region-ppm-rows",   "cns-region-ppm-input",   "region", "/ч",   1,    60, 1, regions);
     }
-    if (!show) _lastRegionSig = "";
+    if (!showReg) _lastRegionSig = "";
+
+    if (showFmt && (fmtSig !== _lastFormatSig || forceRender)) {
+      _lastFormatSig = fmtSig;
+      if (_opens.fmt) renderRows("cns-format-count-rows", "cns-format-count-input", "format", "экр.", 0, 99999, 1, formats);
+    }
+    if (!showFmt) _lastFormatSig = "";
   }
 
-  function makeToggle(btnId, arrowId, rowsId, openKey, inputClass, unit, min, max) {
+  function makeToggle(btnId, arrowId, rowsId, openKey, inputClass, keyAttr, unit, min, max, getItems) {
     const btn = document.getElementById(btnId);
     if (!btn) return;
     btn.addEventListener("click", () => {
       _opens[openKey] = !_opens[openKey];
       const rows  = document.getElementById(rowsId);
       const arrow = document.getElementById(arrowId);
-      if (rows) rows.style.display = _opens[openKey] ? "flex" : "none";
-      if (arrow) arrow.textContent = _opens[openKey] ? "\\u25BC" : "\\u25B6";
-      if (_opens[openKey]) renderRows(rowsId, inputClass, unit, 1, max, 1, getRegions());
+      if (rows)  rows.style.display  = _opens[openKey] ? "flex" : "none";
+      if (arrow) arrow.textContent   = _opens[openKey] ? "\\u25BC" : "\\u25B6";
+      if (_opens[openKey]) renderRows(rowsId, inputClass, keyAttr, unit, 1, max, 1, getItems());
     });
   }
 
-  makeToggle("cns-region-count-toggle", "cns-region-count-arrow", "cns-region-count-rows", "cnt", "cns-region-count-input", "экр.", 1, 99999);
-  makeToggle("cns-region-ppm-toggle",   "cns-region-ppm-arrow",   "cns-region-ppm-rows",   "ppm", "cns-region-ppm-input",   "/ч",   1, 60);
+  makeToggle("cns-region-count-toggle", "cns-region-count-arrow", "cns-region-count-rows", "cnt", "cns-region-count-input", "region", "экр.", 1, 99999, getRegions);
+  makeToggle("cns-region-ppm-toggle",   "cns-region-ppm-arrow",   "cns-region-ppm-rows",   "ppm", "cns-region-ppm-input",   "region", "/ч",   1, 60,    getRegions);
+  makeToggle("cns-format-count-toggle", "cns-format-count-arrow", "cns-format-count-rows", "fmt", "cns-format-count-input", "format", "экр.", 0, 99999, getFormats);
 
   document.getElementById("constructions-enabled")?.addEventListener("change", () => refreshVisibility(false));
   document.getElementById("constructions-chip")?.addEventListener("click", () => setTimeout(() => refreshVisibility(false), 50));

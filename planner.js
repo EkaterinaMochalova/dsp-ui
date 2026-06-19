@@ -1491,6 +1491,14 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
         });
         return Object.keys(map).length ? map : null;
       })(),
+      perFormatCount: (() => {
+        const map = {};
+        document.querySelectorAll(".cns-format-count-input").forEach(inp => {
+          const f = inp.dataset.format; const v = toNumber(inp.value);
+          if (f && Number.isFinite(v) && v >= 0) map[f] = v;
+        });
+        return Object.keys(map).length ? map : null;
+      })(),
     },
     audience: {
       enabled: !!el("audience-enabled")?.checked,
@@ -4292,6 +4300,21 @@ async function onCalcClick() {
 
       screensChosenCount = adjustedScreensNeeded;
       totalPlaysTheory = adjustedTotalPlaysTheory;
+    }
+
+    // Apply per-format screen count caps: trim chosen list so each format doesn't exceed its cap.
+    // Cap of 0 means "exclude this format entirely". Screens not covered by any cap are kept as-is.
+    const perFormatCap = brief.constructions?.perFormatCount || null;
+    if (perFormatCap && Object.keys(perFormatCap).length > 0) {
+      const fmtCounts = {};
+      chosen = chosen.filter(s => {
+        const fmt = String(s.format || "").trim();
+        if (!(fmt in perFormatCap)) return true; // no cap for this format
+        fmtCounts[fmt] = (fmtCounts[fmt] || 0) + 1;
+        return fmtCounts[fmt] <= perFormatCap[fmt];
+      });
+      avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
+      effectiveChosenBid = avgEffectiveBid(chosen, brief.bidMode, avgChosenBid * BID_MULTIPLIER);
     }
 
     // В режиме конструкций:
