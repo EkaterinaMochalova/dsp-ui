@@ -2464,9 +2464,7 @@ async function buildMediaPlanBlob() {
     sc(ws, base + 3, 2, wtOtsD,             { fill: C_GREEN, numFmt: "0.##" });
     fmts.forEach((fmt_, fi) => {
       const st = cfStats[city][fmt_];
-      // Use per-screen avgOts when available; fall back to regional-proportional estimate
-      const o = st?.avgOts > 0 ? st.avgOts
-              : (st?.ots > 0 && st?.plays > 0 ? st.ots / st.plays : null);
+      const o = st?.avgOts > 0 ? st.avgOts : 0;
       sc(ws, base + 3, 5 + fi, o, { fill: C_GREEN, numFmt: "0.##" });
     });
 
@@ -2494,8 +2492,7 @@ async function buildMediaPlanBlob() {
     sc(ws, base + 6, 2, regOts || null, { fill: C_GREEN, numFmt: "#,##0" });
     fmts.forEach((fmt_, fi) => {
       const st = cfStats[city][fmt_];
-      // Use per-screen computation when avgOts available; fall back to proportional share of regional OTS
-      const o  = st?.avgOts > 0 ? st.plays * st.avgOts : (st?.ots > 0 ? st.ots : null);
+      const o  = st?.avgOts > 0 ? st.plays * st.avgOts : 0;
       sc(ws, base + 6, 5 + fi, o, { fill: C_GREEN, numFmt: "#,##0" });
     });
 
