@@ -2590,7 +2590,7 @@ function buildSberScheduleGrid(sch) {
   if (!sch || sch.type === "all_day") {
     for (let h = 0; h < 24; h++) for (let d = 0; d < 7; d++) grid[h][d] = true;
   } else if (sch.type === "peak") {
-    for (let h = 7; h < 23; h++) for (let d = 0; d < 5; d++) grid[h][d] = true;
+    for (let d = 0; d < 7; d++) { markHours("07:00", "10:00", [d]); markHours("17:00", "21:00", [d]); }
   } else if (sch.type === "custom") {
     for (let d = 0; d < 7; d++) markHours(sch.from, sch.to, [d]);
   } else if (sch.type === "weekly") {
