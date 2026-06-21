@@ -2577,8 +2577,309 @@ async function buildMediaPlanBlob() {
   return { blob, filename: baseName + ".xlsx", mapBlob, mapFilename };
 }
 
+// ===== Sber custom media plan (sbermarketing@omni360.io) =====
+
+function buildSberScheduleGrid(sch) {
+  const grid = Array.from({length: 24}, () => new Array(7).fill(false));
+  const DOW_ORDER = ["mon","tue","wed","thu","fri","sat","sun"];
+  function markHours(from, to, days) {
+    const fh = parseInt((from || "00:00").split(":")[0], 10) || 0;
+    const th = parseInt((to   || "24:00").split(":")[0], 10) || 24;
+    for (const d of days) for (let h = fh; h < Math.min(th, 24); h++) grid[h][d] = true;
+  }
+  if (!sch || sch.type === "all_day") {
+    for (let h = 0; h < 24; h++) for (let d = 0; d < 7; d++) grid[h][d] = true;
+  } else if (sch.type === "peak") {
+    for (let h = 7; h < 23; h++) for (let d = 0; d < 5; d++) grid[h][d] = true;
+  } else if (sch.type === "custom") {
+    for (let d = 0; d < 7; d++) markHours(sch.from, sch.to, [d]);
+  } else if (sch.type === "weekly") {
+    if (sch.mode === "global") {
+      const activeDow = (sch.activeDow || DOW_ORDER).map(dk => DOW_ORDER.indexOf(dk)).filter(i => i >= 0);
+      for (const iv of (sch.globalIntervals || [])) markHours(iv.from, iv.to, activeDow);
+    } else {
+      const weekly = sch.weekly || {};
+      DOW_ORDER.forEach((dk, di) => { for (const iv of (weekly[dk] || [])) markHours(iv.from, iv.to, [di]); });
+    }
+  }
+  return grid;
+}
+
+async function buildSberMediaPlanBlob() {
+  const calc = window.PLANNER?.lastCalc;
+  if (!calc) { alert("Сначала нажмите «Рассчитать»."); return null; }
+  const ExcelJS = window.ExcelJS;
+  if (!ExcelJS) { alert("ExcelJS не загружен — обновите страницу."); return null; }
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "DSP Planner";
+
+  const brief   = calc.brief    || {};
+  const meta    = calc.meta     || {};
+  const perReg  = calc.perRegion || [];
+  const screens = calc.chosen   || [];
+
+  const C_GREEN  = "FFE2EFD9";
+  const C_GREY   = "FFF0F0F0";
+  const SBER_PCT = 0.20;
+
+  const dateStr   = s => s ? String(s).split("-").reverse().join(".") : "—";
+  const periodStr = `${dateStr(brief.dates?.start)} — ${dateStr(brief.dates?.end)}`;
+
+  // ── Region-grouping logic (mirrors buildMediaPlanBlob) ────────────
+  const _perRegKeys = perReg.map(r => r.region);
+  const _isGidMode  = _perRegKeys.length === 1 && _perRegKeys[0] === "По GID-списку";
+
+  function _matchReg(s) {
+    if (_isGidMode) return String(s.city || s.region || "—").trim() || "—";
+    const sReg = String(s.region || "").trim();
+    const sCity = String(s.city  || "").trim();
+    for (const r of _perRegKeys) {
+      if (sReg === r || sCity === r) return r;
+      const rn = normalizeGeoName(r); if (!rn) continue;
+      const srn = normalizeGeoName(sReg), scn = normalizeGeoName(sCity);
+      if (srn === rn || scn === rn) return r;
+      if ((srn && (srn.includes(rn) || rn.includes(srn))) ||
+          (scn && (scn.includes(rn) || rn.includes(scn)))) return r;
+    }
+    return sReg || sCity || "—";
+  }
+
+  const rfMap = {};
+  for (const s of screens) {
+    const reg = _matchReg(s), fmt_ = String(s.format || "—").trim();
+    if (!rfMap[reg]) rfMap[reg] = {};
+    if (!rfMap[reg][fmt_]) rfMap[reg][fmt_] = [];
+    rfMap[reg][fmt_].push(s);
+  }
+
+  let effectivePerReg = perReg;
+  if (_isGidMode && screens.length > 0) {
+    const totalPlaysAll = meta.totalPlays || 0, totalBudgetAll = meta.totalBudget || 0;
+    const playsPerScreen = totalPlaysAll / screens.length;
+    const cityRaw = Object.keys(rfMap).sort().map(city => {
+      const cityScr = Object.values(rfMap[city] || {}).flat();
+      const n = cityScr.length;
+      const cityPlays = Math.round(playsPerScreen * n);
+      const cityBidSum = cityScr.reduce((sum, s) => {
+        const eBid = Number(s.recoBid || 0) > 0 ? s.recoBid : (Number(s.minBid || 0) * BID_MULTIPLIER);
+        return sum + eBid;
+      }, 0);
+      const otsVals = cityScr.map(s => s.ots).filter(v => Number.isFinite(v) && v > 0);
+      const avgOts  = otsVals.length ? otsVals.reduce((a,b) => a+b, 0) / otsVals.length : null;
+      return { region: city, plays: cityPlays, _bidSum: cityBidSum,
+               ots: avgOts != null ? Math.round(cityPlays * avgOts) : null, screens: n };
+    });
+    const totalBidSum = cityRaw.reduce((s,r) => s + r._bidSum, 0);
+    effectivePerReg = cityRaw.map(r => ({
+      ...r,
+      budget: totalBidSum > 0
+        ? Math.round(totalBudgetAll * r._bidSum / totalBidSum)
+        : Math.round(totalBudgetAll * r.screens / screens.length)
+    }));
+  }
+
+  const cities = effectivePerReg.map(r => r.region).filter(c => rfMap[c]);
+
+  // ── cfStats: per-city per-format stats ───────────────────────────
+  const cfStats = {};
+  for (const city of cities) {
+    const rd = effectivePerReg.find(r => r.region === city) || {};
+    const regBudget = rd.budget || 0, regPlays = rd.plays || 0, regOts = rd.ots || 0;
+    const regCnt = rd.screens || Object.values(rfMap[city] || {}).reduce((a,v) => a + v.length, 0);
+    cfStats[city] = {};
+    for (const [fmt_, fmtScr] of Object.entries(rfMap[city] || {})) {
+      const w = regCnt > 0 ? fmtScr.length / regCnt : (1 / Object.keys(rfMap[city]).length);
+      const bids = fmtScr.map(s => {
+        const b = brief.bidMode === "min" ? s.minBid : (s.recoBid || s.minBid);
+        return Number.isFinite(b) && b > 0 ? b : null;
+      }).filter(Boolean);
+      const avgBid = bids.length ? bids.reduce((a,b) => a+b, 0) / bids.length : 0;
+      const otsArr = fmtScr.map(s => Number.isFinite(s.ots) && s.ots > 0 ? s.ots : null).filter(Boolean);
+      const avgOts = otsArr.length ? otsArr.reduce((a,b) => a+b, 0) / otsArr.length : 0;
+      cfStats[city][fmt_] = { cnt: fmtScr.length, avgBid, avgOts, _w: w,
+        plays: regPlays * w, ots: regOts * w, budget: 0 };
+    }
+    const fmtKeys = Object.keys(cfStats[city]);
+    const bidWtSum = fmtKeys.reduce((s,f) => { const st = cfStats[city][f]; return s + st.cnt * st.avgBid; }, 0);
+    for (const f of fmtKeys) {
+      const st = cfStats[city][f];
+      st.budget = bidWtSum > 0 ? regBudget * (st.cnt * st.avgBid) / bidWtSum : regBudget * st._w;
+    }
+  }
+
+  const citySet   = new Set(cities);
+  const totBudget = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a,r) => a + (r.budget || 0), 0);
+  const totPlays  = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a,r) => a + (r.plays  || 0), 0);
+  const totOts    = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a,r) => a + (r.ots    || 0), 0);
+  const allFmts   = [...new Set(cities.flatMap(c => Object.keys(rfMap[c] || {})))];
+
+  // ── Cell helpers ─────────────────────────────────────────────────
+  function ssc(ws, row, col, value, fill, bold, numFmt, hAlign) {
+    const cell = ws.getCell(row, col);
+    cell.value = (value === undefined || value === null) ? null : value;
+    cell.font  = { bold: !!bold, name: "Calibri", size: 11 };
+    if (fill) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fill } };
+    if (numFmt) cell.numFmt = numFmt;
+    if (hAlign) cell.alignment = { horizontal: hAlign };
+    return cell;
+  }
+  function sberHlink(ws, row, col, text, href) {
+    const cell = ws.getCell(row, col);
+    cell.value = { text: text || "Ссылка", hyperlink: href };
+    cell.font  = { name: "Calibri", size: 11, color: { argb: "FF2563EB" }, underline: true };
+    return cell;
+  }
+  function greenHeader(ws, row, col, value) {
+    const cell = ws.getCell(row, col);
+    cell.value = value;
+    cell.font  = { bold: true, name: "Calibri", size: 11 };
+    cell.fill  = { type: "pattern", pattern: "solid", fgColor: { argb: C_GREEN } };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    return cell;
+  }
+
+  // ════════════════ Sheet 1: Свод ════════════════════════════════
+  const wsSvod = wb.addWorksheet("Свод");
+  [26, 22, 22, 18, 14, 22, 14, 22, 18].forEach((w, i) => wsSvod.getColumn(i + 1).width = w);
+
+  // Rows 1-7: KV block
+  [
+    ["Даты кампании",  periodStr],
+    ["Всего экранов",  screens.length],
+    ["Города",         cities.join(", ") || "—"],
+    ["Бюджет без НДС", totBudget],
+    ["Всего выходов",  totPlays],
+    ["Всего OTS",      totOts],
+    ["Карта",          ""],
+  ].forEach(([label, value], i) => {
+    ssc(wsSvod, i + 1, 1, label, C_GREEN, true);
+    const vc = ssc(wsSvod, i + 1, 2, value, null, false);
+    if (i === 3 || i === 4 || i === 5) vc.numFmt = "#,##0";
+  });
+
+  // Row 9: group headers ("Инвентарь" A9:C9, "Прогноз" D9:I9)
+  wsSvod.mergeCells(9, 1, 9, 3);
+  greenHeader(wsSvod, 9, 1, "Инвентарь");
+  wsSvod.mergeCells(9, 4, 9, 9);
+  greenHeader(wsSvod, 9, 4, "Прогноз");
+
+  // Row 10: column headers
+  ["Город","Формат","Всего конструкций","Бюджет","Выходов",
+   "Средний OTS на выход","OTS","Средняя цена 1 показа","СК Сбер 20%"]
+    .forEach((h, i) => greenHeader(wsSvod, 10, i + 1, h));
+
+  // Shared numFmt array for table columns D-I
+  const COL_FMT = [null, null, "#,##0", "#,##0.00", "#,##0", "0.00", "#,##0", "0.00", "#,##0.00"];
+
+  // Row 11: totals
+  const totAvgOts   = totPlays > 0 ? totOts    / totPlays : null;
+  const totAvgPrice = totPlays > 0 ? totBudget / totPlays : null;
+  [cities.length, allFmts.length, screens.length, totBudget, totPlays,
+   totAvgOts, totOts, totAvgPrice, totBudget * SBER_PCT]
+    .forEach((v, i) => ssc(wsSvod, 11, i + 1, v, C_GREY, true, COL_FMT[i]));
+
+  // Rows 12+: per city-format data rows
+  let dataRow = 12;
+  for (const city of cities) {
+    for (const [fmt_, st] of Object.entries(cfStats[city] || {})) {
+      const avgOtsRow   = st.plays > 0 ? st.ots / st.plays : (st.avgOts > 0 ? st.avgOts : null);
+      const avgPriceRow = st.plays > 0 ? st.budget / st.plays : null;
+      [city, fmt_, st.cnt, st.budget, st.plays, avgOtsRow, st.ots || null, avgPriceRow, st.budget * SBER_PCT]
+        .forEach((v, i) => ssc(wsSvod, dataRow, i + 1, v, null, false, COL_FMT[i]));
+      dataRow++;
+    }
+  }
+
+  // ════════════════ City sheets ══════════════════════════════════
+  const SCHED_SHEET = "График вещания #1";
+  const CITY_HDRS  = ["ИД","GID","Город","Оператор","Адрес","Сторона",
+                       "Формат экрана","Видимое разрешение","Соотношение сторон",
+                       "Ставка (без НДС)","График вещания","Фото","Технические требования"];
+  const CITY_WIDTHS = [12, 26, 16, 20, 50, 10, 16, 22, 20, 18, 20, 10, 24];
+
+  for (const city of cities) {
+    const sheetName = city.replace(/[\[\]\*\?\/\\:]/g, "_").slice(0, 31);
+    const wsCity = wb.addWorksheet(sheetName);
+    CITY_HDRS.forEach((_, i) => wsCity.getColumn(i + 1).width = CITY_WIDTHS[i]);
+
+    // Row 1: city title
+    wsCity.getCell(1, 1).value = city;
+    wsCity.getCell(1, 1).font  = { bold: true, name: "Calibri", size: 12 };
+
+    // Rows 2-3: merged column headers
+    CITY_HDRS.forEach((h, i) => {
+      wsCity.mergeCells(2, i + 1, 3, i + 1);
+      greenHeader(wsCity, 2, i + 1, h);
+    });
+
+    // Data from row 4
+    const cityScr = Object.values(rfMap[city] || {}).flat();
+    cityScr.forEach((s, si) => {
+      const r = si + 4;
+      wsCity.getCell(r, 1).value  = s.id ?? null;
+      wsCity.getCell(r, 2).value  = s.gid ?? s.screen_id ?? "";
+      wsCity.getCell(r, 3).value  = s.city ?? "";
+      wsCity.getCell(r, 4).value  = s.owner ?? "";
+      wsCity.getCell(r, 5).value  = s.address ?? "";
+      wsCity.getCell(r, 6).value  = s.side ?? "";
+      wsCity.getCell(r, 7).value  = s.format ?? "";
+      wsCity.getCell(r, 8).value  = s.resolution ?? "";
+      wsCity.getCell(r, 9).value  = s.aspectRatio ?? "";
+      const bid = brief.bidMode === "min" ? s.minBid : (s.recoBid || s.minBid);
+      wsCity.getCell(r, 10).value  = Number.isFinite(bid) ? bid : null;
+      wsCity.getCell(r, 10).numFmt = "0.00";
+      sberHlink(wsCity, r, 11, "Ссылка", `#'${SCHED_SHEET}'!A1`);
+      if (s.image_url) sberHlink(wsCity, r, 12, "Фото", String(s.image_url));
+      const techUrl = s.tech_url || s.tech_requirements_url;
+      if (techUrl) sberHlink(wsCity, r, 13, "Ссылка", String(techUrl));
+    });
+  }
+
+  // ════════════════ Schedule sheet ══════════════════════════════
+  const wsSched = wb.addWorksheet(SCHED_SHEET);
+  wsSched.getColumn(1).width = 22;
+  for (let c = 2; c <= 8; c++) wsSched.getColumn(c).width = 8;
+
+  // Row 1: "День недели" merged B1:H1
+  wsSched.mergeCells(1, 2, 1, 8);
+  greenHeader(wsSched, 1, 2, "День недели");
+
+  // Row 2: "Часы" + day labels
+  greenHeader(wsSched, 2, 1, "Часы");
+  ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"].forEach((lbl, i) => greenHeader(wsSched, 2, i + 2, lbl));
+
+  // Rows 3-26: hourly slots
+  const grid = buildSberScheduleGrid(brief.schedule);
+  for (let h = 0; h < 24; h++) {
+    const r = h + 3;
+    wsSched.getCell(r, 1).value = `${String(h).padStart(2,"0")}:00 — ${String(h+1).padStart(2,"0")}:00`;
+    wsSched.getCell(r, 1).font  = { name: "Calibri", size: 11 };
+    for (let d = 0; d < 7; d++) {
+      if (grid[h][d]) {
+        const cell = wsSched.getCell(r, d + 2);
+        cell.value = "+";
+        cell.font  = { bold: true, name: "Calibri", size: 11 };
+        cell.alignment = { horizontal: "center" };
+      }
+    }
+  }
+
+  // ── Export ────────────────────────────────────────────────────
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+  const dateFile = s => s ? String(s).split("-").reverse().join(".") : "plan";
+  const baseName = `mediaplan_sber_${(brief.geo?.regions || brief.selectedRegions || []).join("-") || "plan"}_${dateFile(brief.dates?.start)}`;
+  return { blob, filename: baseName + ".xlsx" };
+}
+
 async function downloadMediaPlan() {
-  const result = await buildMediaPlanBlob();
+  const userEmail = (getDspUserEmail?.() || sessionStorage?.getItem("dsp_user_email") || "").toLowerCase().trim();
+  const result = userEmail === "sbermarketing@omni360.io"
+    ? await buildSberMediaPlanBlob()
+    : await buildMediaPlanBlob();
   if (!result) return;
   const { blob, filename, mapBlob, mapFilename } = result;
 
