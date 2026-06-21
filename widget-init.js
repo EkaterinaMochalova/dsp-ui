@@ -2669,50 +2669,82 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if (progBar)  progBar.style.width = "0%";
 
       try {
-        // 2GIS Places API: for each screen check if POI of selected category
-        // exists within the given radius (meters). Batch 20 concurrent requests.
+        // Optimised approach: fetch ALL POIs of the given brand across the city/region
+        // using paginated 2GIS search (radius = city-wide ~50 km), then match screens
+        // locally by distance. O(pages) requests instead of O(screens).
         const GEO2GIS_KEY = "ba3c806e-746b-40b7-a1c8-4fc79c1a9667";
-        const BATCH = 20;
-        const total = screensPool.length;
-        let done = 0;
+
+        // Local haversine distance in metres
+        function distM(lat1, lon1, lat2, lon2) {
+          const R = 6371000, toR = Math.PI / 180;
+          const dLat = (lat2 - lat1) * toR, dLon = (lon2 - lon1) * toR;
+          const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toR)*Math.cos(lat2*toR)*Math.sin(dLon/2)**2;
+          return R * 2 * Math.asin(Math.sqrt(a));
+        }
+
+        // Compute centroid of the screen pool to use as city-wide search centre
+        const validScreens = screensPool.filter(s => {
+          const la = Number(s.lat ?? s.latitude), lo = Number(s.lon ?? s.lng ?? s.longitude);
+          return isFinite(la) && isFinite(lo) && la !== 0 && lo !== 0;
+        });
+        if (!validScreens.length) throw new Error("Нет экранов с координатами.");
+
+        const avgLat = validScreens.reduce((a,s) => a + Number(s.lat ?? s.latitude), 0) / validScreens.length;
+        const avgLon = validScreens.reduce((a,s) => a + Number(s.lon ?? s.lng ?? s.longitude), 0) / validScreens.length;
+
+        // Fetch all POI pages (max 50 per page) for the brand in a 50 km city-wide radius
+        const PAGE_SIZE = 50, CITY_RADIUS = 50000;
+        const allPois = []; // [{lat, lon}]
+        let page = 1, totalPages = 1;
+        statusEl.textContent = "Загружаю объекты 2GIS…";
+
+        while (page <= totalPages && page <= 40) { // safety cap: 40 pages × 50 = 2000 POIs
+          const url = "https://silent-surf-cd5e.mochalova-kathrine-v.workers.dev/2gis?q=" +
+            encodeURIComponent(searchQuery) +
+            "&location=" + avgLon + "," + avgLat +
+            "&radius=" + CITY_RADIUS +
+            "&page=" + page +
+            "&page_size=" + PAGE_SIZE +
+            "&fields=items.point" +
+            "&key=" + GEO2GIS_KEY;
+          const data = await fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
+          if (!data?.result) break;
+          const items = data.result.items || [];
+          items.forEach(item => {
+            const pt = item.point;
+            if (pt?.lat && pt?.lon) allPois.push({ lat: Number(pt.lat), lon: Number(pt.lon) });
+          });
+          const total2 = data.result.total || 0;
+          totalPages = Math.ceil(total2 / PAGE_SIZE);
+          if (progBar)  progBar.style.width = Math.round(page / totalPages * 60) + "%";
+          if (progText) progText.textContent = "POI: " + allPois.length + " / " + total2;
+          statusEl.textContent = "Загружаю POI: " + allPois.length + " из " + total2;
+          page++;
+          if (!items.length) break;
+        }
+
+        if (!allPois.length) {
+          if (progWrap) progWrap.style.display = "none";
+          statusEl.textContent = "2GIS не нашёл «" + searchQuery + "» в этом городе.";
+          statusEl.style.color = "#dc2626";
+          btn.disabled = false; btn.textContent = "🔍 Найти экраны";
+          return;
+        }
+
+        // Local match: screen is included if any POI is within radius
+        statusEl.textContent = "Сопоставляю экраны…";
         const matchingGids = [];
         const seenIds = new Set();
+        validScreens.forEach(s => {
+          const sLat = Number(s.lat ?? s.latitude), sLon = Number(s.lon ?? s.lng ?? s.longitude);
+          const near = allPois.some(p => distM(sLat, sLon, p.lat, p.lon) <= radius);
+          if (!near) return;
+          const gid = (s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").toString().trim();
+          if (gid && !seenIds.has(gid)) { seenIds.add(gid); matchingGids.push(gid); }
+        });
 
-        statusEl.textContent = "\\u041f\\u0440\\u043e\\u0432\\u0435\\u0440\\u044f\\u044e: 0 / " + total;
-
-        for (let i = 0; i < screensPool.length; i += BATCH) {
-          const batch = screensPool.slice(i, i + BATCH);
-          const results = await Promise.all(batch.map(s => {
-            const lat = Number(s.lat ?? s.latitude);
-            const lon = Number(s.lon ?? s.lng ?? s.longitude);
-            if (!isFinite(lat) || !isFinite(lon) || lat === 0 || lon === 0) return Promise.resolve(false);
-            const url = "https://silent-surf-cd5e.mochalova-kathrine-v.workers.dev/2gis?q=" +
-              encodeURIComponent(searchQuery) +
-              "&location=" + lon + "," + lat +
-              "&radius=" + radius +
-              "&page_size=1&fields=items.point" +
-              "&key=" + GEO2GIS_KEY;
-            return fetch(url)
-              .then(r => r.ok ? r.json() : null)
-              .then(data => {
-                const found = data?.result?.total > 0 || (Array.isArray(data?.result?.items) && data.result.items.length > 0);
-                if (!found) return false;
-                const gid = (s.screen_id ?? s.gid ?? s.GID ?? s.id ?? "").toString().trim();
-                return gid || false;
-              })
-              .catch(() => false);
-          }));
-
-          results.forEach(gid => {
-            if (gid && !seenIds.has(gid)) { seenIds.add(gid); matchingGids.push(gid); }
-          });
-
-          done += batch.length;
-          const pct = Math.round(done / total * 100);
-          if (progBar)  progBar.style.width = pct + "%";
-          if (progText) progText.textContent = done + " / " + total;
-          statusEl.textContent = "\\u041f\\u0440\\u043e\\u0432\\u0435\\u0440\\u044f\\u044e: " + done + " / " + total;
-        }
+        if (progBar)  progBar.style.width = "100%";
+        if (progText) progText.textContent = "Готово";
 
         if (progWrap) progWrap.style.display = "none";
 
