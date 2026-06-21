@@ -2461,10 +2461,13 @@ async function buildMediaPlanBlob() {
     // ── base+3: Средний OTS* ─────────────────────────────────────
     const wtOtsD = wtAvgOts > 0 ? +wtAvgOts.toFixed(2) : null;
     sc(ws, base + 3, 1, "Средний OTS*",     { bold: true, fill: C_LIGHT });
-    sc(ws, base + 3, 2, wtOtsD,             { fill: C_GREEN, numFmt: "0.00" });
+    sc(ws, base + 3, 2, wtOtsD,             { fill: C_GREEN, numFmt: "0.##" });
     fmts.forEach((fmt_, fi) => {
-      const o = cfStats[city][fmt_]?.avgOts > 0 ? cfStats[city][fmt_].avgOts : null;
-      sc(ws, base + 3, 5 + fi, o, { fill: C_GREEN, numFmt: "0" });
+      const st = cfStats[city][fmt_];
+      // Use per-screen avgOts when available; fall back to regional-proportional estimate
+      const o = st?.avgOts > 0 ? st.avgOts
+              : (st?.ots > 0 && st?.plays > 0 ? st.ots / st.plays : null);
+      sc(ws, base + 3, 5 + fi, o, { fill: C_GREEN, numFmt: "0.##" });
     });
 
     // ── base+4: График ч/сутки ────────────────────────────────────
@@ -2491,7 +2494,8 @@ async function buildMediaPlanBlob() {
     sc(ws, base + 6, 2, regOts || null, { fill: C_GREEN, numFmt: "#,##0" });
     fmts.forEach((fmt_, fi) => {
       const st = cfStats[city][fmt_];
-      const o  = st && st.avgOts > 0 ? st.plays * st.avgOts : null;
+      // Use per-screen computation when avgOts available; fall back to proportional share of regional OTS
+      const o  = st?.avgOts > 0 ? st.plays * st.avgOts : (st?.ots > 0 ? st.ots : null);
       sc(ws, base + 6, 5 + fi, o, { fill: C_GREEN, numFmt: "#,##0" });
     });
 
