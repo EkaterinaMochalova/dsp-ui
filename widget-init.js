@@ -3809,10 +3809,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // Убирает экран из выборки и перерисовывает карту
   function removeScreenFromChosen(gid) {
     const planner = window.PLANNER;
-    if (!planner?.state) return;
-    planner.state.lastChosen = (planner.state.lastChosen || []).filter(s => getGid(s) !== gid);
-    renderChosenOnMap(planner.state.lastChosen);
-    // показываем кнопку "Пересчитать" чтобы обновить статистику
+    if (!planner?.removeScreen) return;
+    // removeScreen() removes from lastChosen AND adds to manuallyExcluded so recalc respects it
+    planner.removeScreen(gid);
+    renderChosenOnMap(planner.state?.lastChosen || []);
     window.dispatchEvent(new CustomEvent("planner:filters-changed"));
   }
 
