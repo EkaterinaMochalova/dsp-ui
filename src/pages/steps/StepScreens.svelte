@@ -1158,10 +1158,16 @@
   function clearPoi() {
     poiItems = []
     poiLayer?.clearLayers()
+    draft.poiItems  = []
+    draft.poiRadius = poiRadius
   }
 
   // Re-render circles whenever radius changes or items toggle
   $: if (map && poiItems.length > 0) renderPoiLayer()
+
+  // Keep draft in sync so StepSummary / share link can read POI
+  $: draft.poiItems  = poiItems
+  $: draft.poiRadius = poiRadius
 </script>
 
 <svelte:window on:click={onDocClick}/>

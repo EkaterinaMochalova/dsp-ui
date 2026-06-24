@@ -139,10 +139,44 @@
     return next
   }
 
+  // ── Data-layer toggles ────────────────────────────────────────────────────
+  let includePoi      = true
+  let includeVkAud    = true
+  let includeSchedule = true
+  let includeClientBid = true
+
+  $: hasPoi      = (draft.poiItems?.filter(p => p.enabled)?.length ?? 0) > 0
+  $: hasVkAud    = (draft.dmpData?.length ?? 0) > 0
+  $: hasSchedule = draft.schedule != null
+  $: hasClientBid = Object.keys(draft.screenBids ?? {}).some(k => (draft.screenBids[k] ?? 0) > 0)
+
   let copied = false
   function copyLink() {
-    const url = `${window.location.origin}${window.location.pathname}#/map/campaign?` +
-      `screen=${[...selectedScreen].join(',')}&aud=${[...selectedAud].join(',')}&bid=${[...selectedBid].join(',')}&period=${audPeriod}`
+    const payload = {
+      v: 2,
+      // always: screen coordinates + basic info
+      screens: (draft.screenObjects ?? []).map(s => ({
+        id: s.id, gid: s.gid, lat: s.lat, lon: s.lon,
+        city: s.city, addr: s.address, fmt: s.format,
+        ots: s.ots ?? null,
+      })),
+      // column visibility
+      cols: {
+        screen: [...selectedScreen],
+        aud:    [...selectedAud],
+        bid:    [...selectedBid],
+        period: audPeriod,
+      },
+      // optional data layers
+      ...(hasPoi && includePoi ? {
+        poi: { items: draft.poiItems.filter(p => p.enabled).map(p => ({ name: p.name, lat: p.lat, lon: p.lon })), radius: draft.poiRadius ?? 500 }
+      } : {}),
+      ...(hasVkAud && includeVkAud ? { dmp: draft.dmpData } : {}),
+      ...(hasSchedule && includeSchedule ? { schedule: draft.schedule } : {}),
+      ...(hasClientBid && includeClientBid ? { bids: draft.screenBids } : {}),
+    }
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+    const url = `${window.location.origin}${window.location.pathname}#/map/campaign?d=${b64}`
     navigator.clipboard?.writeText(url).catch(() => {})
     copied = true
     setTimeout(() => (copied = false), 2000)
@@ -446,6 +480,51 @@
       </div>
     </div>
 
+    <!-- Данные карты -->
+    {#if hasPoi || hasVkAud || hasSchedule || hasClientBid}
+      <div class="sv-share-section">
+        <span class="sv-share-section-label">Данные карты</span>
+        <div class="sv-data-layers">
+          {#if hasPoi}
+            <label class="sv-layer-row">
+              <input type="checkbox" bind:checked={includePoi} />
+              <span class="sv-layer-icon sv-layer-icon--poi">
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="8" fill-opacity=".2" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="10" r="3"/></svg>
+              </span>
+              <span class="sv-layer-name">POI ({draft.poiItems.filter(p => p.enabled).length} точ., радиус {draft.poiRadius ?? 500} м)</span>
+            </label>
+          {/if}
+          {#if hasVkAud}
+            <label class="sv-layer-row">
+              <input type="checkbox" bind:checked={includeVkAud} />
+              <span class="sv-layer-icon sv-layer-icon--vk">
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 3a2 2 0 110 4 2 2 0 010-4zm0 9c-2.67 0-5.33-1.33-5.33-2s2.66-2 5.33-2 5.33 1.33 5.33 2-2.66 2-5.33 2z"/></svg>
+              </span>
+              <span class="sv-layer-name">ВК-аудитория ({draft.dmpData.length} {draft.dmpData.length === 1 ? 'сегмент' : 'сегм.'})</span>
+            </label>
+          {/if}
+          {#if hasSchedule}
+            <label class="sv-layer-row">
+              <input type="checkbox" bind:checked={includeSchedule} />
+              <span class="sv-layer-icon sv-layer-icon--sched">
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+              </span>
+              <span class="sv-layer-name">Расписание вещания</span>
+            </label>
+          {/if}
+          {#if hasClientBid}
+            <label class="sv-layer-row">
+              <input type="checkbox" bind:checked={includeClientBid} />
+              <span class="sv-layer-icon sv-layer-icon--bid">
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"/><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.077 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.077-2.354-1.253V5z" clip-rule="evenodd"/></svg>
+              </span>
+              <span class="sv-layer-name">Клиентская ставка за выход</span>
+            </label>
+          {/if}
+        </div>
+      </div>
+    {/if}
+
     <button class="sv-copy-link-btn" on:click={copyLink}>
       {#if copied}
         <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
@@ -718,6 +797,47 @@
     transition: opacity 0.15s;
   }
   .sv-copy-link-btn:hover { opacity: 0.88; }
+
+  /* ── Data layers ─────────────────────────────────────────────────────── */
+  .sv-data-layers {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sv-layer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.1s;
+    font-size: 12.5px;
+    color: var(--text, #1e293b);
+    user-select: none;
+  }
+  .sv-layer-row:hover { background: var(--bg-muted, #f3f4f6); }
+  .sv-layer-row input[type="checkbox"] {
+    accent-color: #6366f1;
+    width: 14px; height: 14px;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .sv-layer-icon {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .sv-layer-icon--poi  { background: #dcfce7; color: #16a34a; }
+  .sv-layer-icon--vk   { background: #ede9fe; color: #7c3aed; }
+  .sv-layer-icon--sched { background: #fef3c7; color: #d97706; }
+  .sv-layer-icon--bid  { background: #dbeafe; color: #2563eb; }
+  .sv-layer-name {
+    flex: 1;
+    line-height: 1.3;
+    font-size: 12px;
+  }
 
   /* ── Toast ───────────────────────────────────────────────────────────── */
   .sv-toast {
