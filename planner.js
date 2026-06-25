@@ -2387,22 +2387,24 @@ async function buildMediaPlanBlob() {
     }
   }
 
+  const r2 = v => Math.round((v || 0) * 100) / 100;
+
   // ── City summary rows (rows 8..8+n-1) ───────────────────────────
   for (const city of cities) {
     const r  = citySumRow[city];
     const rd = effectivePerReg.find(x => x.region === city) || {};
-    const b  = rd.budget || 0, p = rd.plays || 0, o = rd.ots || 0;
+    const b  = r2(rd.budget || 0), p = rd.plays || 0, o = rd.ots || 0;
     sc(ws, r, 1, city, { bold: true, fill: C_LIGHT });
     sc(ws, r, 2, p, { fill: C_LIGHT, numFmt: "#,##0" });
     sc(ws, r, 3, o, { fill: C_LIGHT, numFmt: "#,##0" });
     sc(ws, r, 4, b, { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
     if (commOn && commRate > 0) {
-      const wc = b * (1 + commRate);
+      const wc = r2(b * (1 + commRate));
       sc(ws, r, 5, wc, { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
-      if (vatOn) sc(ws, r, 6, wc * (1 + vatRate), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+      if (vatOn) sc(ws, r, 6, r2(wc * (1 + vatRate)), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
       else ws.getCell(r, 6).border = NO_B;
     } else if (vatOn) {
-      sc(ws, r, 5, b * (1 + vatRate), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
+      sc(ws, r, 5, r2(b * (1 + vatRate)), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
       ws.getCell(r, 6).border = NO_B;
     } else {
       ws.getCell(r, 5).border = NO_B;
@@ -2415,7 +2417,7 @@ async function buildMediaPlanBlob() {
   // perReg may contain duplicate region aliases (e.g. "Сочи" + "городской округ Сочи")
   // that map to the same screens — only one of them survives the rfMap filter in `cities`.
   const citySet = new Set(cities);
-  const totB = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.budget || 0), 0);
+  const totB = r2(effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.budget || 0), 0));
   const totP = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.plays  || 0), 0);
   const totO = effectivePerReg.filter(r => citySet.has(r.region)).reduce((a, r) => a + (r.ots    || 0), 0);
   sc(ws, totalRow, 1, "итого", { bold: true, fill: C_HDR, h: "right" });
@@ -2423,12 +2425,12 @@ async function buildMediaPlanBlob() {
   sc(ws, totalRow, 3, totO, { bold: true, fill: C_HDR, numFmt: "#,##0" });
   sc(ws, totalRow, 4, totB, { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
   if (commOn && commRate > 0) {
-    const twc = totB * (1 + commRate);
+    const twc = r2(totB * (1 + commRate));
     sc(ws, totalRow, 5, twc, { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
-    if (vatOn) sc(ws, totalRow, 6, twc * (1 + vatRate), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+    if (vatOn) sc(ws, totalRow, 6, r2(twc * (1 + vatRate)), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
     else ws.getCell(totalRow, 6).border = NO_B;
   } else if (vatOn) {
-    sc(ws, totalRow, 5, totB * (1 + vatRate), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
+    sc(ws, totalRow, 5, r2(totB * (1 + vatRate)), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
     ws.getCell(totalRow, 6).border = NO_B;
   } else {
     ws.getCell(totalRow, 5).border = NO_B;
@@ -2525,9 +2527,9 @@ async function buildMediaPlanBlob() {
 
     // ── base+7: Прогноз бюджета ───────────────────────────────────
     sc(ws, base + 7, 1, "Прогноз бюджета",  { bold: true, fill: C_LIGHT });
-    sc(ws, base + 7, 2, regBudget, { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
+    sc(ws, base + 7, 2, r2(regBudget), { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
     fmts.forEach((fmt_, fi) => {
-      sc(ws, base + 7, 5 + fi, cfStats[city][fmt_]?.budget || 0,
+      sc(ws, base + 7, 5 + fi, r2(cfStats[city][fmt_]?.budget || 0),
         { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
     });
 
@@ -2771,19 +2773,22 @@ async function buildSberMediaPlanBlob() {
   const wsSvod = wb.addWorksheet("Свод");
   [26, 22, 22, 18, 14, 22, 14, 22, 18].forEach((w, i) => wsSvod.getColumn(i + 1).width = w);
 
+  const r2 = v => Math.round((v || 0) * 100) / 100;
+
   // Rows 1-7: KV block
   [
     ["Даты кампании",  periodStr],
     ["Всего экранов",  screens.length],
     ["Города",         cities.join(", ") || "—"],
-    ["Бюджет без НДС", totBudget],
+    ["Бюджет без НДС", r2(totBudget)],
     ["Всего выходов",  totPlays],
     ["Всего OTS",      totOts],
     ["Карта",          ""],
   ].forEach(([label, value], i) => {
     ssc(wsSvod, i + 1, 1, label, C_GREEN, true);
     const vc = ssc(wsSvod, i + 1, 2, value, null, false);
-    if (i === 3 || i === 4 || i === 5) vc.numFmt = "#,##0";
+    if (i === 3) vc.numFmt = "#,##0.00";
+    else if (i === 4 || i === 5) vc.numFmt = "#,##0";
   });
 
   // Row 9: group headers ("Инвентарь" A9:C9, "Прогноз" D9:I9)
@@ -2802,9 +2807,9 @@ async function buildSberMediaPlanBlob() {
 
   // Row 11: totals
   const totAvgOts   = totPlays > 0 ? totOts    / totPlays : null;
-  const totAvgPrice = totPlays > 0 ? totBudget / totPlays : null;
-  [cities.length, allFmts.length, screens.length, totBudget, totPlays,
-   totAvgOts, totOts, totAvgPrice, totBudget * SBER_PCT]
+  const totAvgPrice = totPlays > 0 ? r2(totBudget / totPlays) : null;
+  [cities.length, allFmts.length, screens.length, r2(totBudget), totPlays,
+   totAvgOts, totOts, totAvgPrice, r2(totBudget * SBER_PCT)]
     .forEach((v, i) => ssc(wsSvod, 11, i + 1, v, C_GREY, true, COL_FMT[i]));
 
   // Rows 12+: per city-format data rows
@@ -2812,8 +2817,9 @@ async function buildSberMediaPlanBlob() {
   for (const city of cities) {
     for (const [fmt_, st] of Object.entries(cfStats[city] || {})) {
       const avgOtsRow   = st.plays > 0 ? st.ots / st.plays : (st.avgOts > 0 ? st.avgOts : null);
-      const avgPriceRow = st.plays > 0 ? st.budget / st.plays : null;
-      [city, fmt_, st.cnt, st.budget, st.plays, avgOtsRow, st.ots || null, avgPriceRow, st.budget * SBER_PCT]
+      const avgPriceRow = st.plays > 0 ? r2(st.budget / st.plays) : null;
+      const bgt = r2(st.budget);
+      [city, fmt_, st.cnt, bgt, st.plays, avgOtsRow, st.ots || null, avgPriceRow, r2(bgt * SBER_PCT)]
         .forEach((v, i) => ssc(wsSvod, dataRow, i + 1, v, null, false, COL_FMT[i]));
       dataRow++;
     }
