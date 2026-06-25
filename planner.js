@@ -3853,11 +3853,13 @@ async function onCalcClick() {
     }
 
     // Format / owner / polygon filters — skipped in GID mode (user's list is the selection)
+    console.warn("[fmt-filter] region=" + region + " _isManualMode=" + _isManualMode + " formatsMode=" + formatsMode + " manualFormats=" + JSON.stringify(manualFormats) + " selectedFormats=" + JSON.stringify([...state.selectedFormats]) + " poolBefore=" + pool.length);
     if (!_isManualMode) {
       // ✅ uses formatsMode/manualFormats derived above
       if (formatsMode === "manual" && manualFormats.length > 0) {
         const fset = new Set(manualFormats);
         pool = pool.filter(s => fset.has(String(s.format || "").trim()));
+        console.warn("[fmt-filter] poolAfter=" + pool.length + " formats=" + JSON.stringify([...new Set(pool.map(s => s.format))]));
       }
 
       if (window.PLANNER?.getScreensFilteredByOwner) {
