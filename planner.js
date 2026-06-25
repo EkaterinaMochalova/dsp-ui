@@ -1987,15 +1987,42 @@ function groupByGrid(screens, stepKm = 2) {
   return [...map.values()];
 }
 
-function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2) {
+function pickScreensUniformByGrid(pool, count, stepKm = 2, perCellMax = 2, fmtOrder = null) {
   const cells = groupByGrid(pool, stepKm);
   for (const cell of cells) {
-    // Сначала приоритетные операторы, внутри приоритета — по minBid (дешевле → выше)
-    cell.sort((a, b) => {
-      const pa = ownerPriority(a), pb = ownerPriority(b);
-      if (pa !== pb) return pa - pb;
-      return (a.minBid ?? 1e18) - (b.minBid ?? 1e18);
-    });
+    if (fmtOrder && fmtOrder.length > 0) {
+      // Round-robin по форматам внутри ячейки: CF1, MF1, BB1, CF2, CF3, …
+      // Это гарантирует, что каждый формат попадёт в первые perCellMax слотов ячейки.
+      const byFmt = {};
+      for (const s of cell) {
+        const f = String(s.format || "").trim();
+        if (!byFmt[f]) byFmt[f] = [];
+        byFmt[f].push(s);
+      }
+      const bidSort = (a, b) => {
+        const pa = ownerPriority(a), pb = ownerPriority(b);
+        if (pa !== pb) return pa - pb;
+        return (a.minBid ?? 1e18) - (b.minBid ?? 1e18);
+      };
+      for (const arr of Object.values(byFmt)) arr.sort(bidSort);
+      // Порядок форматов: сначала selected (fmtOrder), потом остальные
+      const keys = [...new Set([...fmtOrder, ...Object.keys(byFmt)])].filter(f => byFmt[f]?.length);
+      cell.length = 0;
+      let anyLeft = true;
+      while (anyLeft) {
+        anyLeft = false;
+        for (const f of keys) {
+          if (byFmt[f] && byFmt[f].length) { cell.push(byFmt[f].shift()); anyLeft = true; }
+        }
+      }
+    } else {
+      // Сначала приоритетные операторы, внутри приоритета — по minBid (дешевле → выше)
+      cell.sort((a, b) => {
+        const pa = ownerPriority(a), pb = ownerPriority(b);
+        if (pa !== pb) return pa - pb;
+        return (a.minBid ?? 1e18) - (b.minBid ?? 1e18);
+      });
+    }
   }
   cells.sort(() => Math.random() - 0.5);
 
@@ -3853,13 +3880,11 @@ async function onCalcClick() {
     }
 
     // Format / owner / polygon filters — skipped in GID mode (user's list is the selection)
-    console.warn("[fmt-filter] region=" + region + " _isManualMode=" + _isManualMode + " formatsMode=" + formatsMode + " manualFormats=" + JSON.stringify(manualFormats) + " selectedFormats=" + JSON.stringify([...state.selectedFormats]) + " poolBefore=" + pool.length);
     if (!_isManualMode) {
       // ✅ uses formatsMode/manualFormats derived above
       if (formatsMode === "manual" && manualFormats.length > 0) {
         const fset = new Set(manualFormats);
         pool = pool.filter(s => fset.has(String(s.format || "").trim()));
-        console.warn("[fmt-filter] poolAfter=" + pool.length + " formats=" + JSON.stringify([...new Set(pool.map(s => s.format))]));
       }
 
       if (window.PLANNER?.getScreensFilteredByOwner) {
@@ -4568,13 +4593,20 @@ async function onCalcClick() {
 
     for (let attempt = 0; attempt < (_isGidRegion ? 0 : 2); attempt++) {
       const stepKm = gridStepKmForCount(screensChosenCount);
-      const perCellMax = (screensChosenCount <= 15) ? 1 : 2;
+      // При ручном выборе форматов: perCellMax = число уникальных форматов в пуле,
+      // чтобы каждый формат мог попасть в выборку из одной ячейки.
+      const _fmtOrder = (formatsMode === "manual" && manualFormats.length > 0) ? manualFormats : null;
+      const _fmtCount = _fmtOrder ? new Set(pool.map(s => String(s.format || "").trim()).filter(Boolean)).size : 0;
+      const perCellMax = _fmtOrder
+        ? Math.max(2, _fmtCount)
+        : (screensChosenCount <= 15 ? 1 : 2);
 
       chosen = pickScreensUniformByGrid(
         pool,
         screensChosenCount,
         stepKm,
-        perCellMax
+        perCellMax,
+        _fmtOrder
       );
 
       avgChosenBid = avgNumber(chosen.map(s => s.minBid)) ?? pr.avgBid;
