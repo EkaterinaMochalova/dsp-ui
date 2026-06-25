@@ -2483,7 +2483,7 @@ async function buildMediaPlanBlob() {
     fmts.forEach((fmt_, fi) => {
       const r = isRussCity
         ? (rd.avgCpm != null ? +rd.avgCpm.toFixed(2) : null)
-        : (cfStats[city][fmt_]?.avgBid > 0 ? roundRate(cfStats[city][fmt_].avgBid) : null);
+        : (cfStats[city][fmt_]?.avgBid > 0 ? +(cfStats[city][fmt_].avgBid).toFixed(2) : null);
       sc(ws, base + 2, 5 + fi, r, { fill: C_GREEN, numFmt: "0.00" });
     });
 
