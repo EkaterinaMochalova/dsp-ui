@@ -9,31 +9,31 @@
   <div style="width:100%;max-width:480px;display:flex;flex-direction:column;gap:12px">
     <button class="start-card" on:click={() => dispatch('start')}>
       <div>
-        <div class="start-card-title">Запустить кампанию</div>
-        <div class="start-card-desc">Настройте и запустите кампанию в соответствие с вашим бюджетом.</div>
+        <div class="start-card-title">Стандартный запуск</div>
+        <div class="start-card-desc">Настройте и запустите кампанию в соответствии с вашим бюджетом.</div>
       </div>
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="color:var(--text-muted);flex-shrink:0">
         <path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
 
-    <button class="start-card" on:click={() => dispatch('explore')}>
+    <button class="start-card" on:click={() => dispatch('planner')}>
       <div>
-        <div class="start-card-title">Изучить экраны</div>
-        <div class="start-card-desc">Найдите и сохраните список экранов в нужных локациях.</div>
+        <div class="start-card-title">Планировщик</div>
+        <div class="start-card-desc">Подберите оптимальный набор экранов по городам и бюджету с помощью медиапланировщика.</div>
       </div>
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="color:var(--text-muted);flex-shrink:0">
         <path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
 
-    <button class="start-card start-card--auto" on:click={() => dispatch('autoplan')}>
+    <button class="start-card start-card--ai" on:click={() => dispatch('brief')}>
       <div>
         <div class="start-card-title">
-          Собрать АП автоматически
-          <span class="auto-badge">AI</span>
+          ИИ бриф
+          <span class="ai-badge">AI</span>
         </div>
-        <div class="start-card-desc">Укажите города, бюджет и форматы — система автоматически подберёт оптимальный набор экранов.</div>
+        <div class="start-card-desc">Опишите кампанию в свободной форме — ИИ автоматически составит план на основе вашего брифа.</div>
       </div>
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="color:#6366f1;flex-shrink:0">
         <path d="M7 4l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -61,15 +61,15 @@
     border-color: var(--navy);
     box-shadow: 0 2px 12px rgba(17,40,83,.08);
   }
-  .start-card--auto {
+  .start-card--ai {
     border-color: #e0e7ff;
     background: linear-gradient(135deg, #fff 60%, #f5f3ff);
   }
-  .start-card--auto:hover {
+  .start-card--ai:hover {
     border-color: #6366f1;
     box-shadow: 0 2px 16px rgba(99,102,241,.14);
   }
-  .auto-badge {
+  .ai-badge {
     display: inline-flex;
     align-items: center;
     background: #6366f1;

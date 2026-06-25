@@ -6,6 +6,7 @@
   import RightBar from '../components/RightBar.svelte'
   import StatusBadge from '../components/StatusBadge.svelte'
   import StepStart        from './steps/StepStart.svelte'
+  import StepBrief        from './steps/StepBrief.svelte'
   import StepPlanner      from './steps/StepPlanner.svelte'
   import StepBasicParams  from './steps/StepBasicParams.svelte'
   import StepBudget       from './steps/StepBudget.svelte'
@@ -899,6 +900,21 @@
     goToStep('basic')
   }
 
+  // ── AI brief integration ───────────────────────────────────────────────────
+  function applyBriefResult(p) {
+    if (!p) return
+    if (p.name)              draft = { ...draft, name: p.name }
+    if (p.startDate)         draft = { ...draft, startDate: p.startDate }
+    if (p.endDate)           draft = { ...draft, endDate: p.endDate }
+    if (p.customBudgetTotal) draft = { ...draft, customBudgetTotal: p.customBudgetTotal }
+    if (p.cities?.length)    draft = { ...draft, cities: p.cities }
+    if (p.bidType)           draft = { ...draft, bidType: p.bidType }
+    if (p.limitCampaign)     draft = { ...draft, limitCampaign: p.limitCampaign }
+    if (p.limitDay)          draft = { ...draft, limitDay: p.limitDay }
+    if (p.limitHour)         draft = { ...draft, limitHour: p.limitHour }
+    goToStep('basic')
+  }
+
   function formatDateRange() {
     if (!draft.startDate || !draft.endDate) return null
     const fmt = d => new Date(d).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'2-digit' }).replace(/\./g, '.')
@@ -1099,8 +1115,13 @@
     {:else if currentStep === 'start'}
       <StepStart
         on:start={() => goToStep('basic')}
-        on:explore={() => goToStep('screens')}
-        on:autoplan={() => goToStep('planner')}
+        on:planner={() => goToStep('planner')}
+        on:brief={() => goToStep('brief')}
+      />
+    {:else if currentStep === 'brief'}
+      <StepBrief
+        on:back={() => goToStep('start')}
+        on:apply={(e) => applyBriefResult(e.detail)}
       />
     {:else if currentStep === 'planner'}
       <StepPlanner
