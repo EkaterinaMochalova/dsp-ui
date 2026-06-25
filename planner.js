@@ -1495,7 +1495,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
         const map = {};
         document.querySelectorAll(".cns-format-count-input").forEach(inp => {
           const f = inp.dataset.format; const v = toNumber(inp.value);
-          if (f && Number.isFinite(v) && v >= 0) map[f] = v;
+          if (f && Number.isFinite(v) && v > 0) map[f] = v;
         });
         return Object.keys(map).length ? map : null;
       })(),
@@ -3857,7 +3857,7 @@ async function onCalcClick() {
       // ✅ uses formatsMode/manualFormats derived above
       if (formatsMode === "manual" && manualFormats.length > 0) {
         const fset = new Set(manualFormats);
-        pool = pool.filter(s => fset.has(s.format));
+        pool = pool.filter(s => fset.has(String(s.format || "").trim()));
       }
 
       if (window.PLANNER?.getScreensFilteredByOwner) {
