@@ -68,13 +68,84 @@
     } catch { return [] }
   }
 
-  async function execSearchPois({ query, city, radius_m }) {
+  // OSM tag map: Russian POI names → OpenStreetMap key=value
+  const OSM_TAGS = {
+    'детский сад': 'amenity=kindergarten',
+    'детские сады': 'amenity=kindergarten',
+    'супермаркет': 'shop=supermarket',
+    'супермаркеты': 'shop=supermarket',
+    'гипермаркет': 'shop=supermarket',
+    'салон красоты': 'shop=beauty',
+    'парикмахерская': 'shop=hairdresser',
+    'аптека': 'amenity=pharmacy',
+    'аптеки': 'amenity=pharmacy',
+    'поликлиника': 'amenity=clinic',
+    'больница': 'amenity=hospital',
+    'бизнес-центр': 'office=company',
+    'бизнес центр': 'office=company',
+    'университет': 'amenity=university',
+    'колледж': 'amenity=college',
+    'школа': 'amenity=school',
+    'азс': 'amenity=fuel',
+    'автозаправка': 'amenity=fuel',
+    'автосервис': 'shop=car_repair',
+    'автосалон': 'shop=car',
+    'автомойка': 'amenity=car_wash',
+    'спортивный центр': 'leisure=sports_centre',
+    'фитнес': 'leisure=fitness_centre',
+    'фитнес-клуб': 'leisure=fitness_centre',
+    'торговый центр': 'shop=mall',
+    'тц': 'shop=mall',
+    'банк': 'amenity=bank',
+    'мфц': 'amenity=townhall',
+    'парк': 'leisure=park',
+    'отель': 'tourism=hotel',
+    'достопримечательность': 'tourism=attraction',
+    'кафе': 'amenity=cafe',
+    'ресторан': 'amenity=restaurant',
+  }
+
+  async function execSearchPois({ query, city }) {
+    const q = (query ?? '').toLowerCase().trim()
+    // Find matching OSM tag (exact or partial match)
+    const osmTag = OSM_TAGS[q]
+      ?? Object.entries(OSM_TAGS).find(([k]) => q.includes(k) || k.includes(q))?.[1]
+
+    if (osmTag) {
+      try {
+        const result = await overpassCount(osmTag, city)
+        if (result.count >= 0) return result
+      } catch {}
+    }
+
+    // Fallback: try 2GIS proxy
     try {
-      const qs = new URLSearchParams({ q: query, city, radius_m: radius_m ?? 500 })
+      const qs = new URLSearchParams({ q: query, city, radius_m: 500 })
       const r = await fetch(`/api/2gis/search?${qs}`)
       if (r.ok) return await r.json()
     } catch {}
-    return { count: 0, sample: [], note: 'Поиск POI временно недоступен' }
+
+    return { count: 0, sample: [], note: 'Поиск POI недоступен' }
+  }
+
+  async function overpassCount(osmTag, cityName) {
+    const [key, val] = osmTag.split('=')
+    const tagFilter = val ? `["${key}"="${val}"]` : `["${key}"]`
+    // Match Russian city at admin levels 4–8 to handle both regions and cities
+    const ql = `
+[out:json][timeout:20];
+area["name"~"^${cityName}$"]["admin_level"~"4|6|8"]->.city;
+(node${tagFilter}(area.city);way${tagFilter}(area.city););
+out count;`
+    const r = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: ql,
+    })
+    if (!r.ok) throw new Error(`Overpass ${r.status}`)
+    const data = await r.json()
+    const count = data?.elements?.[0]?.tags?.total ?? 0
+    return { count, sample: [], source: 'OSM' }
   }
 
   async function executeTool(name, input) {

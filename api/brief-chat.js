@@ -155,7 +155,23 @@ Unlike a one-shot parser, you have TOOLS that query the real inventory. USE THEM
 1. Call list_cities with every city named in the brief to resolve them (recognise abbreviations: МСК→Москва, СПБ→Санкт-Петербург). If a city does not match, note it.
 2. Call count_inventory with the resolved ids + sellingType to confirm each city actually has screens. If a city has 0 (or very few), say so in "assumptions" and consider dropping it.
 3. When the brief gives a target KPI/OTS or a tight budget, call sample_pricing to check feasibility. If there is a clear mismatch (budget far too low to reach the stated KPI), add ONE short line to assumptions. Do NOT put bid numbers, inventory counts, or estimates into assumptions or reasoning.
-4. When the brief targets placement near specific object types — ЖК, бизнес-центры, ТЦ, метро, школы, парки, etc. — call search_pois with that object type + city BEFORE finalizing. If found, add to geoPoiSearches; if not found, note it in assumptions.
+4. AUDIENCE & PRODUCT → POI (call search_pois automatically when the brief names a target audience or product category):
+   - домохозяйки / мамы / семьи с детьми → детский сад, супермаркет, салон красоты
+   - офисные работники / бизнес-аудитория → бизнес-центр
+   - студенты / молодёжь → университет, колледж
+   - автомобилисты / водители → АЗС (автозаправка), автосервис
+   - пенсионеры / люди старшего возраста → поликлиника, аптека, парк
+   - спортсмены / фитнес-аудитория → спортивный центр, фитнес-клуб
+   - туристы / путешественники → отель, достопримечательность
+   - лекарства / здоровье / фармацевтика → аптека, поликлиника
+   - продукты питания / FMCG / ретейл → супермаркет, гипермаркет
+   - одежда / мода → торговый центр
+   - финансы / банки / страхование → банк, МФЦ
+   - рестораны / кофейни / доставка еды → бизнес-центр, университет, торговый центр
+   - недвижимость / ЖК → строящийся жилой комплекс, МФЦ
+   - автомобили / автодилер → автосалон, автомойка, АЗС
+   For each relevant POI type call search_pois with the Russian name of the object type + the city. If found, include in geoPoiSearches. Search up to 3 POI types per city (pick the most relevant to the audience).
+5. When the brief targets placement near specific object types explicitly named — call search_pois as above.
 Keep tool calls minimal and purposeful; then call finalize_plan EXACTLY ONCE.
 
 sellingType for the tools = RTB unless the brief clearly asks for guaranteed/programmatic.
