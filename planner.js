@@ -4177,8 +4177,8 @@ async function onCalcClick() {
           });
         }
       }
-    } else if (_isManualMode) {
-      // GID mode: estimate bids for screens that don't have one, using format-avg from pool
+    } else {
+      // GID mode or constructions mode: estimate bids for screens that don't have one
       const bidScreens = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
       if (bidScreens.length > 0 && bidScreens.length < pool.length) {
         const fmtAvg = {};
