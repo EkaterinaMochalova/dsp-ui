@@ -857,6 +857,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     font-size:12px; color:#667085; min-width:24px;
   }
 
+  /* ===== PER-CITY FORMATS ===== */
+  #planner-widget .city-fmt-rows{ display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+  #planner-widget .city-fmt-row{ display:flex; align-items:center; gap:5px; flex-wrap:wrap; padding:3px 0; border-bottom:1px solid rgba(15,23,42,.05); }
+  #planner-widget .city-fmt-row:last-child{ border-bottom:none; }
+  #planner-widget .city-fmt-lbl{ font-size:12px; font-weight:600; color:#344054; min-width:72px; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; }
+  #planner-widget .city-fmt-chip{ padding:2px 8px; border-radius:999px; border:1px solid rgba(15,23,42,.14); background:#fff; font-size:11px; cursor:pointer; white-space:nowrap; transition:background .1s,border-color .1s; }
+  #planner-widget .city-fmt-chip.on{ border-color:rgba(37,99,235,.5); background:rgba(37,99,235,.10); color:#1D4ED8; font-weight:600; }
+  #planner-widget .city-fmt-reset{ font-size:11px; color:#9ca3af; cursor:pointer; padding:2px 4px; border:none; background:none; white-space:nowrap; }
+  #planner-widget .city-fmt-reset:hover{ color:#ef4444; }
+
   /* ===== SEND PLAN BUTTON ===== */
   #planner-widget #send-plan-btn{
     background:#22c55e; color:#fff; border:1.5px solid #16a34a;
@@ -1339,6 +1349,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <button type="button" id="formats-toggle" class="fmt-toggle" style="display:none;">
         Показать все форматы
       </button>
+    </div>
+    <div id="city-formats-section" style="display:none; margin-top:10px;">
+      <button type="button" class="cns-per-region-toggle" id="city-formats-toggle">
+        <span id="city-formats-arrow">▶</span> Форматы по городам
+      </button>
+      <div id="city-formats-rows" class="city-fmt-rows" style="display:none;"></div>
     </div>
   </div>
   <!-- Стратегия подбора -->
@@ -3243,6 +3259,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         renderFormatsCards();
       };
     }
+
+    // Sync per-city section availability (needs formatsAll to be set)
+    if(typeof window.renderCityFmtRows === "function") window.renderCityFmtRows();
   }
 
   window.renderFormatsCards = renderFormatsCards;
@@ -3304,8 +3323,105 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 })();
 `);
 
-  // Script block 8
+  // Script block 7b — per-city formats
   runScript(`
+(function(){
+  function el(id){ return document.getElementById(id); }
+
+  function fmtShort(f){
+    const u = String(f||"").toUpperCase();
+    if(u==="MEDIAFACADE"||u==="MF") return "MF";
+    if(u==="BILLBOARD"  ||u==="BB") return "BB";
+    if(u==="SUPERSITE"  ||u==="SS") return "SS";
+    if(u==="CITY_BOARD" ||u==="CB"||u==="CITYBOARD") return "CB";
+    if(u==="CITY_FORMAT"||u==="CF") return "CF";
+    if(u==="PVZ_SCREEN" ||u==="PVZ") return "PVZ";
+    return String(f||"").slice(0,6);
+  }
+
+  function renderCityFmtRows(){
+    const st = window.PLANNER?.state;
+    if(!st) return;
+    const regions = (Array.isArray(st.selectedRegions)?st.selectedRegions:[]).filter(Boolean);
+    const fmts    = (Array.isArray(st.formatsAll)?st.formatsAll:[]).map(x=>String(x||"").trim()).filter(Boolean);
+    const section = el("city-formats-section");
+    const rowsWrap= el("city-formats-rows");
+    if(!section||!rowsWrap) return;
+
+    if(regions.length < 2 || !fmts.length){ section.style.display="none"; return; }
+    section.style.display = "block";
+
+    // Only update content when rows are visible
+    if(rowsWrap.style.display==="none") return;
+
+    if(!st.cityFormats) st.cityFormats = {};
+
+    rowsWrap.innerHTML = "";
+    for(const region of regions){
+      const override = st.cityFormats[region] || null;
+      const row = document.createElement("div");
+      row.className = "city-fmt-row";
+
+      const lbl = document.createElement("span");
+      lbl.className = "city-fmt-lbl";
+      lbl.title = region;
+      lbl.textContent = region;
+      row.appendChild(lbl);
+
+      for(const fmt of fmts){
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "city-fmt-chip" + (override&&override.has(fmt)?" on":"");
+        chip.textContent = fmtShort(fmt);
+        chip.title = fmt;
+        chip.addEventListener("click", ()=>{
+          if(!st.cityFormats) st.cityFormats = {};
+          if(!st.cityFormats[region]) st.cityFormats[region] = new Set();
+          const s = st.cityFormats[region];
+          if(s.has(fmt)) s.delete(fmt); else s.add(fmt);
+          if(s.size===0) delete st.cityFormats[region];
+          renderCityFmtRows();
+        });
+        row.appendChild(chip);
+      }
+
+      if(override && override.size > 0){
+        const rst = document.createElement("button");
+        rst.type = "button";
+        rst.className = "city-fmt-reset";
+        rst.textContent = "сбросить";
+        rst.addEventListener("click", ()=>{
+          delete st.cityFormats[region];
+          renderCityFmtRows();
+        });
+        row.appendChild(rst);
+      }
+
+      rowsWrap.appendChild(row);
+    }
+  }
+
+  el("city-formats-toggle")?.addEventListener("click", ()=>{
+    const rows  = el("city-formats-rows");
+    const arrow = el("city-formats-arrow");
+    if(!rows) return;
+    const open = rows.style.display !== "none";
+    rows.style.display = open ? "none" : "flex";
+    if(arrow) arrow.textContent = open ? "▶" : "▼";
+    if(!open) renderCityFmtRows();
+  });
+
+  window.renderCityFmtRows = renderCityFmtRows;
+
+  window.addEventListener("planner:screens-loaded",  renderCityFmtRows);
+  window.addEventListener("planner:filters-changed", renderCityFmtRows);
+  window.addEventListener("planner:regions-changed", renderCityFmtRows);
+  renderCityFmtRows();
+})();
+\`);
+
+  // Script block 8
+  runScript(\`
 (function(){
   const PAD = 12;
   let tt = null;

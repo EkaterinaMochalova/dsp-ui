@@ -3913,10 +3913,13 @@ async function onCalcClick() {
 
     // Format / owner / polygon filters — skipped in GID mode (user's list is the selection)
     if (!_isManualMode) {
-      // ✅ uses formatsMode/manualFormats derived above
-      if (formatsMode === "manual" && manualFormats.length > 0) {
-        const fset = new Set(manualFormats);
-        pool = pool.filter(s => fset.has(String(s.format || "").trim()));
+      // ✅ per-city override takes priority over global format selection
+      const _cityFmtOverride = state.cityFormats?.[region];
+      const _activeFmtSet = (_cityFmtOverride && _cityFmtOverride.size > 0)
+        ? _cityFmtOverride
+        : (formatsMode === "manual" && manualFormats.length > 0 ? new Set(manualFormats) : null);
+      if (_activeFmtSet) {
+        pool = pool.filter(s => _activeFmtSet.has(String(s.format || "").trim()));
       }
 
       if (window.PLANNER?.getScreensFilteredByOwner) {
