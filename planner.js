@@ -2499,7 +2499,7 @@ async function buildMediaPlanBlob() {
     sc(ws, base + 3, 2, wtOtsD,             { fill: C_GREEN, numFmt: "0.##" });
     fmts.forEach((fmt_, fi) => {
       const st = cfStats[city][fmt_];
-      const o = st?.avgOts > 0 ? st.avgOts : 0;
+      const o = st?.avgOts > 0 ? st.avgOts : null;
       sc(ws, base + 3, 5 + fi, o, { fill: C_GREEN, numFmt: "0.##" });
     });
 
