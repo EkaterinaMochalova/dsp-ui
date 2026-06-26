@@ -1303,6 +1303,17 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     </div>
   </div>
   <div class="budget-extra-hint" id="commission-display"></div>
+
+  <div class="budget-extra-row">
+    <label style="cursor:default; font-size:13px; font-weight:500;">
+      Надбавка на клиента
+    </label>
+    <div class="budget-extra-rate" style="display:flex;">
+      <input type="number" id="client-markup-rate" min="0" max="100" step="0.1" placeholder="0">
+      <span>%</span>
+    </div>
+  </div>
+  <div class="budget-extra-hint" id="client-markup-display"></div>
 </div>
 
         </div>
@@ -5516,9 +5527,22 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         commDisp.style.display = "none";
       }
     }
+
+    // --- Надбавка на клиента ---
+    const markupRate = Math.max(0, Number(el("client-markup-rate")?.value || 0));
+    const markupDisp = el("client-markup-display");
+    if(markupDisp){
+      if(markupRate > 0 && budget > 0){
+        const clientBudget = budget * (1 + markupRate / 100);
+        markupDisp.style.display = "block";
+        markupDisp.innerHTML = "Клиентский бюджет: <b>" + fmtMoney(clientBudget) + "</b>";
+      } else {
+        markupDisp.style.display = "none";
+      }
+    }
   }
 
-  ["vat-enabled","vat-rate","commission-enabled","commission-rate"].forEach(id => {
+  ["vat-enabled","vat-rate","commission-enabled","commission-rate","client-markup-rate"].forEach(id => {
     el(id)?.addEventListener("change", update);
     el(id)?.addEventListener("input",  update);
   });
