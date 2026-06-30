@@ -1008,8 +1008,8 @@
       {#each stepRows as step (step.id)}
         <div class="wizard-step">
           <button class="wizard-step-header"
-            class:readonly-step={isReadonly && step.id !== 'stats'}
-            on:click={() => { if (!isReadonly || step.id === 'stats') goToStep(step.id) }}>
+            class:readonly-step={isReadonly && step.id !== 'stats' && step.id !== 'summary'}
+            on:click={() => { if (!isReadonly || step.id === 'stats' || step.id === 'summary') goToStep(step.id) }}>
             {#if step.status === 'done'}
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="flex-shrink:0;margin-top:1px">
                 <circle cx="9" cy="9" r="9" fill="#112853"/>
