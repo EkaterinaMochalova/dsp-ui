@@ -44,7 +44,8 @@
   let preCampaignOpen  = false
   let preCampaignLoading = false
   let preCampaignError = ''
-  let scoreMap = {}        // inventoryId → score (0..1)
+  let scoreMap = {}        // inventoryId → score (0..1), includes extrapolated values
+  let estimatedScoreIds = new Set()   // ids whose score was extrapolated, not returned by the API
   let scoreSortActive = false   // when true, sort by score desc
 
   // Interests for pre-campaign — two-level tree scraped from prod app
@@ -560,11 +561,16 @@
           if (map[id] == null || sc > map[id]) map[id] = sc
         }
       }
-      scoreMap = map
       const cnt = Object.keys(map).length
       if (cnt === 0) {
+        scoreMap = {}
+        estimatedScoreIds = new Set()
         preCampaignError = 'Нет данных скоров для этой кампании'
       } else {
+        const estimated = new Set()
+        fillMissingScores(map, screens, estimated)
+        scoreMap = map
+        estimatedScoreIds = estimated
         scoreSortActive  = true
         preCampaignOpen  = false
       }
@@ -584,10 +590,57 @@
 
   function clearPreCampaign() {
     scoreMap = {}
+    estimatedScoreIds = new Set()
     scoreSortActive = false
     preCampaignError = ''
     pcSelectedSub = ''
     pcAffinityMin = 0
+  }
+
+  // For screens the pre-campaign API returned no score for, extrapolate an
+  // approximate value from nearby scored screens (same city+format first,
+  // then same city, then any) using inverse-distance weighting. Mutates `map`
+  // in place and records extrapolated ids in `estimatedSet` so the UI can
+  // mark them as approximate rather than measured.
+  function fillMissingScores(map, list, estimatedSet) {
+    const scored = list.filter(s =>
+      map[s.id] != null && Number.isFinite(s.lat) && Number.isFinite(s.lon)
+    )
+    if (scored.length === 0) return
+
+    const K = 5
+    const MAX_RADIUS_M = 3000
+
+    for (const s of list) {
+      if (map[s.id] != null) continue
+      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) continue
+
+      const pools = [
+        scored.filter(o => o.city === s.city && o.format === s.format),
+        scored.filter(o => o.city === s.city),
+        scored,
+      ]
+      let neighbours = []
+      for (const pool of pools) {
+        if (pool.length === 0) continue
+        neighbours = pool
+          .map(o => ({ o, d: haversine(s.lat, s.lon, o.lat, o.lon) }))
+          .filter(n => n.d <= MAX_RADIUS_M)
+          .sort((a, b) => a.d - b.d)
+          .slice(0, K)
+        if (neighbours.length > 0) break
+      }
+      if (neighbours.length === 0) continue
+
+      let wSum = 0, vSum = 0
+      for (const { o, d } of neighbours) {
+        const w = 1 / (d + 50)   // +50m floor avoids over-weighting near-coincident screens
+        wSum += w
+        vSum += w * map[o.id]
+      }
+      map[s.id] = vSum / wSum
+      estimatedSet.add(s.id)
+    }
   }
 
   onMount(() => {
@@ -820,15 +873,17 @@
       } else {
         fill = '#55C1FA'; stroke = '#2a8fb5'
       }
+      const estimated = estimatedScoreIds.has(s.id)
       const m = L.circleMarker([s.lat, s.lon], {
         radius: sel ? 8 : zoom >= 10 ? 6 : 4,
         fillColor: fill,
         color: stroke,
         weight: sel ? 2 : 1,
-        fillOpacity: opacity,
+        fillOpacity: estimated ? opacity * 0.6 : opacity,
+        dashArray: estimated ? '2 2' : null,
       })
       m.bindTooltip(
-        `<strong>${s.address || s.city}</strong><br/>${s.format || ''}${s.minBid ? `<br/>от ${formatMoney(s.minBid)}` : ''}`,
+        `<strong>${s.address || s.city}</strong><br/>${s.format || ''}${s.minBid ? `<br/>от ${formatMoney(s.minBid)}` : ''}${estimated ? '<br/><em>скор оценочный (по соседним экранам)</em>' : ''}`,
         { direction: 'top', offset: [0, -4] }
       )
       m.on('click', () => { toggleScreen(s.id); renderMarkers(filtered) })
@@ -938,7 +993,8 @@
       case 'requestHourlyAvg': return s.requestHourlyAvg != null ? s.requestHourlyAvg.toLocaleString('ru-RU') : '—'
       case 'score': {
         const sc = scoreMap[s.id]
-        return sc != null ? (sc * 100).toFixed(1) + '%' : '—'
+        if (sc == null) return '—'
+        return (estimatedScoreIds.has(s.id) ? '~' : '') + (sc * 100).toFixed(1) + '%'
       }
       case 'resolution':       return s.resolution || '—'
       case 'address':          return s.address || '—'
@@ -1207,7 +1263,9 @@
         </svg>
         Pre-campaign
         {#if scoreSortActive}
-          <span class="pc-score-count">{Object.keys(scoreMap).length}</span>
+          <span class="pc-score-count" title={estimatedScoreIds.size ? `в т.ч. ${estimatedScoreIds.size} оценочных (по соседним экранам)` : ''}>
+            {Object.keys(scoreMap).length}{estimatedScoreIds.size ? ` (~${estimatedScoreIds.size})` : ''}
+          </span>
         {/if}
         <svg class="chip-arrow" viewBox="0 0 10 6" fill="none" width="9" height="9">
           <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
