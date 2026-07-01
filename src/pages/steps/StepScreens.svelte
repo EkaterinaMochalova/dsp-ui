@@ -643,23 +643,27 @@
     if (scored.length === 0) return
 
     const K = 5
-    const MAX_RADIUS_M = 3000
+    // Same-city tiers aren't distance-capped — a city is the relevant unit
+    // of "nearby" regardless of how spread out its screens are. Only the
+    // cross-city fallback is capped, so we don't average in an unrelated
+    // city just because it happens to have scored data.
+    const pools = [
+      { list: s => scored.filter(o => o.city === s.city && o.format === s.format), maxRadius: Infinity },
+      { list: s => scored.filter(o => o.city === s.city),                          maxRadius: Infinity },
+      { list: () => scored,                                                        maxRadius: 5000 },
+    ]
 
     for (const s of list) {
       if (map[s.id] != null) continue
       if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) continue
 
-      const pools = [
-        scored.filter(o => o.city === s.city && o.format === s.format),
-        scored.filter(o => o.city === s.city),
-        scored,
-      ]
       let neighbours = []
-      for (const pool of pools) {
+      for (const { list: poolFn, maxRadius } of pools) {
+        const pool = poolFn(s)
         if (pool.length === 0) continue
         neighbours = pool
           .map(o => ({ o, d: haversine(s.lat, s.lon, o.lat, o.lon) }))
-          .filter(n => n.d <= MAX_RADIUS_M)
+          .filter(n => n.d <= maxRadius)
           .sort((a, b) => a.d - b.d)
           .slice(0, K)
         if (neighbours.length > 0) break
