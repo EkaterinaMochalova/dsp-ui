@@ -478,6 +478,40 @@
     ? sortedFiltered.filter(s => draft.screenIds.includes(s.id))
     : sortedFiltered
 
+  // ── Table virtualisation ────────────────────────────────────────────────
+  // With 10k+ screens, rendering every <tr> at once freezes the page. Only
+  // mount rows within the visible viewport (+ a small buffer) and use two
+  // spacer rows to preserve scrollbar height/position.
+  const ROW_HEIGHT = 45   // matches .screen-thumb height (36px) + cell padding
+  const ROW_BUFFER = 10
+  let tableWrapEl
+  let tableScrollTop = 0
+  let tableViewportH = 0
+
+  function onTableScroll() {
+    tableScrollTop = tableWrapEl?.scrollTop ?? 0
+  }
+
+  function measureTableViewport() {
+    tableViewportH = tableWrapEl?.clientHeight ?? 0
+  }
+
+  // Clamped against tabRows.length so that filtering/sorting to a shorter
+  // list can't leave the window pointing past the end (which would render
+  // nothing until the next scroll event).
+  $: rowStart = Math.max(0, Math.min(
+    Math.floor(tableScrollTop / ROW_HEIGHT) - ROW_BUFFER,
+    Math.max(0, tabRows.length - 1)
+  ))
+  $: rowCount = Math.ceil(tableViewportH / ROW_HEIGHT) + ROW_BUFFER * 2
+  $: rowEnd   = Math.min(tabRows.length, rowStart + rowCount)
+  $: visibleRows  = tabRows.slice(rowStart, rowEnd)
+  $: topSpacerH    = rowStart * ROW_HEIGHT
+  $: bottomSpacerH = Math.max(0, (tabRows.length - rowEnd) * ROW_HEIGHT)
+
+  // Re-measure viewport once the table mounts.
+  $: if (tableWrapEl) measureTableViewport()
+
   // Reactive score range — used in both filtered and renderMarkers
   $: scoreValues = Object.values(scoreMap)
   $: scoreMin    = scoreValues.length ? Math.min(...scoreValues) : 0
@@ -645,6 +679,9 @@
 
   onMount(() => {
     loadScreens()
+    measureTableViewport()
+    window.addEventListener('resize', measureTableViewport)
+    return () => window.removeEventListener('resize', measureTableViewport)
   })
 
   // Init map on mount (loading is always false now — progress shown via badge)
@@ -1647,7 +1684,7 @@
     </div>
 
     <!-- Table -->
-    <div class="panel-table-wrap">
+    <div class="panel-table-wrap" bind:this={tableWrapEl} on:scroll={onTableScroll}>
       <table class="panel-table">
         <thead>
           <tr>
@@ -1770,7 +1807,10 @@
               {activeTab === 'selected' ? 'Нет выбранных экранов' : 'Экраны не найдены'}
             </td></tr>
           {:else}
-            {#each tabRows as s (s.id)}
+            {#if topSpacerH > 0}
+              <tr class="row-spacer" style="height:{topSpacerH}px"><td colspan={colSpan}></td></tr>
+            {/if}
+            {#each visibleRows as s (s.id)}
               <tr class="screen-row" class:sel={isSelected(s.id)} on:click={() => { focusScreen(s); toggleScreen(s.id); renderMarkers(filtered) }}>
                 <td on:click|stopPropagation>
                   <input type="checkbox" checked={isSelected(s.id)} on:change={() => { toggleScreen(s.id); renderMarkers(filtered) }} />
@@ -1802,6 +1842,9 @@
                 </td>
               </tr>
             {/each}
+            {#if bottomSpacerH > 0}
+              <tr class="row-spacer" style="height:{bottomSpacerH}px"><td colspan={colSpan}></td></tr>
+            {/if}
           {/if}
         </tbody>
       </table>
@@ -2409,6 +2452,8 @@
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
   }
+
+  .row-spacer td { padding: 0; border: 0; }
 
   .screen-row { cursor: pointer; }
   .screen-row:hover td { background: var(--navy-light); }
