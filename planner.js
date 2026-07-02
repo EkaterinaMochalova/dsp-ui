@@ -4697,14 +4697,15 @@ async function onCalcClick() {
     // Слайдер применяется только в режиме рекомендации (budget=0): там он задаёт целевую частоту.
     // ppmOverride — верхняя планка частоты на экран в час.
     // GID + бюджет: частота = бюджет ÷ ставка, слайдер НЕ является целью → null.
-    // Конструкции + бюджет: слайдер — жёсткий cap (выходов не больше), бюджет дополнительно ограничивает расход.
+    // Конструкции + бюджет: частота авто-увеличивается до SC_MAX, чтобы освоить весь бюджет → null.
+    //   Исключение: явный per-region PPM override (perRegionPpm) остаётся жёстким капом.
     // Конструкции без бюджета / рекомендация: слайдер или стратегия.
     const ppmRegionOverride = Number(brief.constructions?.perRegionPpm?.[region] || 0);
     const ppmManual = ppmRegionOverride > 0 ? ppmRegionOverride : Number(brief.constructions?.playsPerHour || 0);
     const hasBudget = Number.isFinite(budget) && budget > 0;
     const ppmOverride = (constructionsTarget !== null)
       ? (hasBudget
-          ? (ppmRegionOverride > 0 ? ppmRegionOverride : (_isGidRegion ? null : (ppmManual > 0 ? ppmManual : null)))
+          ? (ppmRegionOverride > 0 ? ppmRegionOverride : null)
           : (ppmManual > 0 ? ppmManual : pphTarget))
       : (_isManualMode && ppmManual > 0 ? ppmManual : null);
     const _poolPphCap = pool.length > 0
