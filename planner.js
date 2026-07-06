@@ -4098,31 +4098,63 @@ async function onCalcClick() {
       setStatus(`Экраны у «${hwName}»: ${pool.length} из ${before} (радиус: ${screenRadius}м)`);
     }
 
-    // Manual GID filter — используем только указанные экраны
+    // Manual GID filter — базовый набор = указанные GID-ы (сохраняются ВСЕГДА).
+    // Дополнительно: экраны внутри нарисованной на карте зоны, суженные выбранными
+    // форматами/операторами, ДОБАВЛЯЮТСЯ к GID-набору. На сами GID-экраны фильтры
+    // форматов/операторов НЕ влияют. Зона не нарисована → ничего не добавляется
+    // (поведение 1-в-1 как раньше — обратная совместимость).
     if (brief.selection?.mode === "manual_screens") {
-      const gidSet = brief.selection.manual_gids;
-      if (gidSet && gidSet.size > 0) {
+      const gidSet = brief.selection.manual_gids || new Set();
+
+      // --- Дополнительная зона на карте (аддитивно) ---
+      const _addPolyRaw  = state.polygonFilter;
+      const _addPolyList = (_addPolyRaw && _addPolyRaw.length)
+        ? (Array.isArray(_addPolyRaw[0]) && Array.isArray(_addPolyRaw[0][0])
+            ? _addPolyRaw
+            : (_addPolyRaw.length >= 3 ? [_addPolyRaw] : []))
+        : [];
+      const _addFmt  = (state.selectedFormats && state.selectedFormats.size > 0) ? state.selectedFormats : null;
+      const _addOwn  = (state.selectedOwners  && state.selectedOwners.size  > 0) ? state.selectedOwners  : null;
+      const _ownerOf = (s) => String(s.owner ?? s.OWNER ?? s.operator ?? s.vendor ?? s.network ?? "").trim();
+      const _isAddedScreen = (s) => {
+        if (!_addPolyList.length) return false;
+        if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return false;
+        if (!_addPolyList.some(p => pointInPolygon(s.lat, s.lon, p))) return false;
+        if (_addFmt && !_addFmt.has(String(s.format || "").trim())) return false;
+        if (_addOwn && !_addOwn.has(_ownerOf(s))) return false;
+        return true;
+      };
+
+      if (gidSet.size > 0 || _addPolyList.length) {
         const before = pool.length;
         const seenGids = new Set();
-        const notFound = [];
+        let addedFromZone = 0;
         pool = pool.filter(s => {
           const sid = _screenIdOf(s);
+          // 1) типизированный GID-список — сохраняем всегда
           if (gidSet.has(sid) && !seenGids.has(sid)) {
             seenGids.add(sid);
             _foundGids.add(sid);
             return true;
           }
+          // 2) добавленные с карты (в зоне + подходят по формату/оператору),
+          //    исключая уже учтённые GID-экраны
+          if (!gidSet.has(sid) && _isAddedScreen(s)) {
+            addedFromZone++;
+            return true;
+          }
           return false;
         });
-        // Log GIDs not matched in screensAll
+        // GID-ы из списка, не найденные в инвентаре (для кнопки «скачать не найденные»)
+        const notFound = [];
         gidSet.forEach(g => { if (!seenGids.has(g)) notFound.push(g); });
-        console.log("[GID-filter] gidSet.size=" + gidSet.size + " pool.before=" + before + " pool.after=" + pool.length + " notFound=" + JSON.stringify(notFound.slice(0,10)));
+        console.log("[GID-filter] gidSet.size=" + gidSet.size + " matched=" + seenGids.size + " added-from-zone=" + addedFromZone + " pool.before=" + before + " pool.after=" + pool.length + " notFound=" + JSON.stringify(notFound.slice(0,10)));
         if (!pool.length) {
           perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null,
-            note: `ни один из ${gidSet.size} GID-ов не найден в регионе` });
+            note: `ни один из ${gidSet.size} GID-ов не найден, и зона пуста` });
           continue;
         }
-        setStatus(`GID-фильтр: ${pool.length} из ${before} в регионе «${region}»`);
+        setStatus(`Отобрано: ${pool.length} (GID: ${seenGids.size}${addedFromZone ? `, +${addedFromZone} с карты` : ""}) в регионе «${region}»`);
       }
     }
 
@@ -6128,6 +6160,7 @@ function computeRecoBudgetTiers() {
 }
 
 window.PLANNER = window.PLANNER || {};
+window.PLANNER.pointInPolygon = pointInPolygon;
 window.PLANNER.saveCalcToHistory = saveCalcToHistory;
 window.PLANNER.restoreBriefToUI = restoreBriefToUI;
 window.PLANNER.buildMediaPlanBlob = buildMediaPlanBlob;

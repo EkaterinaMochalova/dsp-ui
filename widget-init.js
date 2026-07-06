@@ -1448,6 +1448,27 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <span>1 / час</span><span>60 / час</span>
     </div>
   </div>
+  <!-- Дополнительные экраны с карты (только GID-режим) -->
+  <div class="planner-block" id="step4-gid-extra-block" style="display:none;">
+    <div class="planner-label">Дополнительные экраны с карты</div>
+    <div class="planner-note" style="margin-bottom:8px;">
+      GID-список используется полностью. Здесь можно <b>добавить</b> экраны из зоны на карте и при необходимости сузить их по формату/оператору — на сам GID-список эти фильтры не влияют.
+    </div>
+    <div id="gid-extra-zone-badge" style="display:none; align-items:center; gap:8px; margin-bottom:8px; padding:8px 12px; background:#EDE9FD; border-radius:8px; font-size:13px; color:#3a2bb5;">
+      <span>📍</span><span id="gid-extra-zone-text"></span>
+      <button id="gid-extra-zone-clear" type="button" style="margin-left:auto; background:none; border:none; color:#5B3EF5; cursor:pointer; font-size:12px; text-decoration:underline; padding:0;">Очистить зону</button>
+    </div>
+    <button id="gid-extra-zone-draw" type="button" class="wiz-btn ghost">🗺 Нарисовать зону на карте</button>
+    <div id="gid-extra-filters" style="display:none; margin-top:14px;">
+      <div class="planner-label" style="font-size:13px; margin-bottom:4px;">Форматы добавленных экранов</div>
+      <div class="planner-note" style="margin-bottom:6px;">Ничего не выбрано = берём все форматы из зоны.</div>
+      <div id="gid-extra-formats" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      <div class="planner-label" style="font-size:13px; margin-top:12px; margin-bottom:4px;">Операторы добавленных экранов</div>
+      <div class="planner-note" style="margin-bottom:6px;">Ничего не выбрано = берём всех операторов из зоны.</div>
+      <div id="gid-extra-owners" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+    </div>
+    <div id="gid-extra-summary" style="margin-top:12px; font-size:13px; color:#5b3ef5; font-weight:600;"></div>
+  </div>
   <!-- Режим ставки -->
   <div class="planner-block" id="step4-bid-mode-block">
     <div class="planner-label">Режим ставки</div>
@@ -1954,6 +1975,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       // В GID-режиме показываем слайдер выходов в час
       const gidPpmBlock = el("step4-gid-ppm-block");
       if (gidPpmBlock) gidPpmBlock.style.display = isGidMode ? "" : "none";
+      // В GID-режиме показываем блок «Дополнительные экраны с карты»
+      const gidExtraBlock = el("step4-gid-extra-block");
+      if (gidExtraBlock) gidExtraBlock.style.display = isGidMode ? "" : "none";
+      if (isGidMode && typeof window.renderGidExtra === "function") window.renderGidExtra();
     }
     if (typeof window.renderProgress === "function") window.renderProgress();
   };
@@ -4547,8 +4572,127 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       window.dispatchEvent(new CustomEvent("planner:filters-changed"));
     });
 
+    // GID-режим: панель «Дополнительные экраны с карты»
+    document.getElementById("gid-extra-zone-draw")?.addEventListener("click", openModal);
+    document.getElementById("gid-extra-zone-clear")?.addEventListener("click", () => { clearPolygon(); });
+    window.addEventListener("planner:filters-changed", renderGidExtra);
+    window.addEventListener("planner:screens-ready", renderGidExtra);
+
     updateBadge();
   }
+
+  // ===== GID-режим: «Дополнительные экраны с карты» =====
+  // База — типизированный GID-список (сохраняется всегда). Здесь считаем/рисуем
+  // ТОЛЬКО добавляемые экраны: внутри нарисованной зоны + подходящие под выбранные
+  // форматы/операторы. Пишем в state.selectedFormats / state.selectedOwners /
+  // state.polygonFilter — те же поля, что читает planner.js (аддитивно в GID-режиме).
+  function _gidExtraTypedSet() {
+    var ta = document.getElementById("manual-gids");
+    var raw = (ta && ta.value) ? ta.value : "";
+    var set = new Set();
+    // Разделители как в planner.js: перевод строки / запятая / ; / таб / CR (НЕ пробел)
+    raw.split(/[\\n,;\\r\\t]+/).forEach(function(t){ t = String(t || "").trim(); if (t) set.add(t); });
+    return set;
+  }
+  function _gidExtraScreenId(s) {
+    if (!s) return "";
+    var v = (s.screen_id != null) ? s.screen_id
+          : (s.gid != null) ? s.gid
+          : (s.GID != null) ? s.GID
+          : (s.id != null) ? s.id : "";
+    return String(v).trim();
+  }
+  function _gidExtraOwnerOf(s) {
+    if (!s) return "";
+    var v = (s.owner != null) ? s.owner
+          : (s.OWNER != null) ? s.OWNER
+          : (s.operator != null) ? s.operator
+          : (s.vendor != null) ? s.vendor
+          : (s.network != null) ? s.network : "";
+    return String(v).trim();
+  }
+  function _gidExtraZoneScreensRaw() {
+    var poly = getPoly();
+    if (!poly || !poly.length) return [];
+    var list = (Array.isArray(poly[0]) && Array.isArray(poly[0][0]))
+      ? poly : (poly.length >= 3 ? [poly] : []);
+    if (!list.length) return [];
+    var fn = window.PLANNER && window.PLANNER.pointInPolygon;
+    if (!fn) return [];
+    var all = (window.PLANNER && window.PLANNER.state && window.PLANNER.state.screensAll) || [];
+    return all.filter(function(s){
+      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return false;
+      return list.some(function(p){ return fn(s.lat, s.lon, p); });
+    });
+  }
+  function renderGidExtra() {
+    var block = document.getElementById("step4-gid-extra-block");
+    if (!block) return;
+    var st = window.PLANNER && window.PLANNER.state;
+    if (!st) return;
+    if (!st.selectedFormats) st.selectedFormats = new Set();
+    if (!st.selectedOwners)  st.selectedOwners  = new Set();
+
+    var zone = _gidExtraZoneScreensRaw();
+    var hasZone = zone.length > 0;
+
+    var badge = document.getElementById("gid-extra-zone-badge");
+    var badgeText = document.getElementById("gid-extra-zone-text");
+    var drawBtn = document.getElementById("gid-extra-zone-draw");
+    var filtersWrap = document.getElementById("gid-extra-filters");
+    var summary = document.getElementById("gid-extra-summary");
+
+    if (badge) badge.style.display = hasZone ? "flex" : "none";
+    if (drawBtn) drawBtn.textContent = hasZone ? "✏️ Изменить зону" : "🗺 Нарисовать зону на карте";
+    if (filtersWrap) filtersWrap.style.display = hasZone ? "block" : "none";
+    if (!hasZone) { if (summary) summary.textContent = ""; return; }
+
+    var typed = _gidExtraTypedSet();
+    var selFmt = st.selectedFormats, selOwn = st.selectedOwners;
+
+    // Наборы форматов/операторов зоны (без учёта уже указанных GID-ов)
+    var fmtCounts = {}, ownCounts = {};
+    zone.forEach(function(s){
+      if (typed.has(_gidExtraScreenId(s))) return;
+      var f = String(s.format || "").trim(); if (f) fmtCounts[f] = (fmtCounts[f] || 0) + 1;
+      var o = _gidExtraOwnerOf(s);           if (o) ownCounts[o] = (ownCounts[o] || 0) + 1;
+    });
+
+    function renderChips(containerId, counts, selSet) {
+      var box = document.getElementById(containerId);
+      if (!box) return;
+      box.innerHTML = "";
+      var keys = Object.keys(counts).sort(function(a,b){ return counts[b] - counts[a]; });
+      if (!keys.length) { box.innerHTML = "<span style=\\"font-size:12px;color:#98a2b3;\\">— нет данных в зоне —</span>"; return; }
+      keys.forEach(function(key){
+        var chip = document.createElement("button");
+        chip.type = "button";
+        var active = selSet.has(key);
+        chip.textContent = key + " (" + counts[key].toLocaleString("ru-RU") + ")";
+        chip.style.cssText = "padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid " +
+          (active ? "#5B3EF5;background:#EDE9FD;color:#4930C7;" : "rgba(15,23,42,.14);background:#fff;color:#374151;");
+        chip.addEventListener("click", function(){
+          if (selSet.has(key)) selSet.delete(key); else selSet.add(key);
+          window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+        });
+        box.appendChild(chip);
+      });
+    }
+    renderChips("gid-extra-formats", fmtCounts, selFmt);
+    renderChips("gid-extra-owners",  ownCounts, selOwn);
+
+    // Итог: сколько экранов реально добавится (зона ∩ форматы ∩ операторы, без GID-ов)
+    var added = 0;
+    zone.forEach(function(s){
+      if (typed.has(_gidExtraScreenId(s))) return;
+      if (selFmt.size > 0 && !selFmt.has(String(s.format || "").trim())) return;
+      if (selOwn.size > 0 && !selOwn.has(_gidExtraOwnerOf(s))) return;
+      added++;
+    });
+    if (badgeText) badgeText.textContent = zone.length.toLocaleString("ru-RU") + " экранов в зоне";
+    if (summary) summary.textContent = "Будет добавлено к GID-списку: " + added.toLocaleString("ru-RU") + " экранов";
+  }
+  window.renderGidExtra = renderGidExtra;
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
