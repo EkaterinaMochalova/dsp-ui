@@ -3443,10 +3443,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   window.addEventListener("planner:regions-changed", renderCityFmtRows);
   renderCityFmtRows();
 })();
-\`);
+`);
 
   // Script block 8
-  runScript(\`
+  runScript(`
 (function(){
   const PAD = 12;
   let tt = null;
