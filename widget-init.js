@@ -953,7 +953,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
   await loadScript("https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js");
   await loadScript("https://rawcdn.githack.com/EkaterinaMochalova/dspbov2.0/e38e8d05a826dc5b94b8eccd28fbc19559bcb9dc/geo.js");
-  await loadScript("https://rawcdn.githack.com/EkaterinaMochalova/dspbov2.0/4620f53/planner.js");
+  await loadScript("https://rawcdn.githack.com/EkaterinaMochalova/dspbov2.0/4620f53828366575f829b7d4164073215c4a9312/planner.js");
 
   // 4. Inject HTML markup into planner-root
   root.innerHTML = `<!-- ===================== PLANNER WIDGET (CLEAN, SINGLE-SOURCE, NO DUPLICATES) ===================== -->
@@ -1458,8 +1458,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <span>📍</span><span id="gid-extra-zone-text"></span>
       <button id="gid-extra-zone-clear" type="button" style="margin-left:auto; background:none; border:none; color:#5B3EF5; cursor:pointer; font-size:12px; text-decoration:underline; padding:0;">Очистить зону</button>
     </div>
-    <button id="gid-extra-zone-draw" type="button" class="wiz-btn ghost">🗺 Нарисовать зону на карте</button>
-    <div id="gid-extra-filters" style="display:none; margin-top:14px;">
+    <button id="gid-extra-zone-draw" type="button" class="wiz-btn ghost" onclick="(function(){var b=document.getElementById('poly-draw-btn');if(b)b.click();else{var m=document.getElementById('poly-modal');if(m){m.style.display='flex';}}})()">🗺 Нарисовать зону на карте</button>
+    <div id="gid-extra-filters" style="display:block; margin-top:14px;">
       <div class="planner-label" style="font-size:13px; margin-bottom:4px;">Форматы добавленных экранов</div>
       <div class="planner-note" style="margin-bottom:6px;">Ничего не выбрано = берём все форматы из зоны.</div>
       <div id="gid-extra-formats" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
@@ -4644,15 +4644,16 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
     if (badge) badge.style.display = hasZone ? "flex" : "none";
     if (drawBtn) drawBtn.textContent = hasZone ? "✏️ Изменить зону" : "🗺 Нарисовать зону на карте";
-    if (filtersWrap) filtersWrap.style.display = hasZone ? "block" : "none";
-    if (!hasZone) { if (summary) summary.textContent = ""; return; }
+    // Форматы/операторы показываем всегда — можно выбрать до рисования зоны
+    if (filtersWrap) filtersWrap.style.display = "block";
 
     var typed = _gidExtraTypedSet();
     var selFmt = st.selectedFormats, selOwn = st.selectedOwners;
 
-    // Наборы форматов/операторов зоны (без учёта уже указанных GID-ов)
+    // Источник для чипов: экраны зоны если она нарисована, иначе весь инвентарь
+    var screenSource = hasZone ? zone : (Array.isArray(st.screensAll) ? st.screensAll : []);
     var fmtCounts = {}, ownCounts = {};
-    zone.forEach(function(s){
+    screenSource.forEach(function(s){
       if (typed.has(_gidExtraScreenId(s))) return;
       var f = String(s.format || "").trim(); if (f) fmtCounts[f] = (fmtCounts[f] || 0) + 1;
       var o = _gidExtraOwnerOf(s);           if (o) ownCounts[o] = (ownCounts[o] || 0) + 1;
@@ -4663,7 +4664,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if (!box) return;
       box.innerHTML = "";
       var keys = Object.keys(counts).sort(function(a,b){ return counts[b] - counts[a]; });
-      if (!keys.length) { box.innerHTML = "<span style=\\"font-size:12px;color:#98a2b3;\\">— нет данных в зоне —</span>"; return; }
+      if (!keys.length) { box.innerHTML = "<span style=\\"font-size:12px;color:#98a2b3;\\">— нет данных —</span>"; return; }
       keys.forEach(function(key){
         var chip = document.createElement("button");
         chip.type = "button";
@@ -4680,6 +4681,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
     renderChips("gid-extra-formats", fmtCounts, selFmt);
     renderChips("gid-extra-owners",  ownCounts, selOwn);
+
+    if (!hasZone) { if (summary) summary.textContent = ""; return; }
 
     // Итог: сколько экранов реально добавится (зона ∩ форматы ∩ операторы, без GID-ов)
     var added = 0;
