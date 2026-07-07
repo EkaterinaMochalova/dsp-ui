@@ -1459,13 +1459,25 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       <button id="gid-extra-zone-clear" type="button" style="margin-left:auto; background:none; border:none; color:#5B3EF5; cursor:pointer; font-size:12px; text-decoration:underline; padding:0;">Очистить зону</button>
     </div>
     <button id="gid-extra-zone-draw" type="button" class="wiz-btn ghost" onclick="(function(){var b=document.getElementById('poly-draw-btn');if(b)b.click();else{var m=document.getElementById('poly-modal');if(m){m.style.display='flex';}}})()">🗺 Нарисовать зону на карте</button>
-    <div id="gid-extra-filters" style="display:block; margin-top:14px;">
+    <div id="gid-extra-filters" style="display:none; margin-top:14px;">
       <div class="planner-label" style="font-size:13px; margin-bottom:4px;">Форматы добавленных экранов</div>
-      <div class="planner-note" style="margin-bottom:6px;">Ничего не выбрано = берём все форматы из зоны.</div>
+      <div class="planner-note" style="margin-bottom:8px;">Ничего не выбрано = берём все форматы из зоны.</div>
+      <div style="display:flex; gap:14px; align-items:center; margin-bottom:10px;">
+        <button type="button" id="gid-extra-fmt-all" class="wiz-btn ghost">Выбрать все</button>
+        <button type="button" id="gid-extra-fmt-clear" class="wiz-btn ghost">Очистить</button>
+        <div style="margin-left:auto; font-size:12px; color:#667085;">Выбрано: <span id="gid-extra-fmt-count">—</span></div>
+      </div>
       <div id="gid-extra-formats" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
-      <div class="planner-label" style="font-size:13px; margin-top:12px; margin-bottom:4px;">Операторы добавленных экранов</div>
-      <div class="planner-note" style="margin-bottom:6px;">Ничего не выбрано = берём всех операторов из зоны.</div>
+      <button type="button" id="gid-extra-fmt-toggle" class="fmt-toggle" style="display:none; margin-top:8px;">Показать все форматы</button>
+      <div class="planner-label" style="font-size:13px; margin-top:16px; margin-bottom:4px;">Операторы добавленных экранов</div>
+      <div class="planner-note" style="margin-bottom:8px;">Ничего не выбрано = берём всех операторов из зоны.</div>
+      <div style="display:flex; gap:14px; align-items:center; margin-bottom:10px;">
+        <button type="button" id="gid-extra-own-all" class="wiz-btn ghost">Выбрать все</button>
+        <button type="button" id="gid-extra-own-clear" class="wiz-btn ghost">Очистить</button>
+        <div style="margin-left:auto; font-size:12px; color:#667085;">Выбрано: <span id="gid-extra-own-count">—</span></div>
+      </div>
       <div id="gid-extra-owners" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      <button type="button" id="gid-extra-own-toggle" class="fmt-toggle" style="display:none; margin-top:8px;">Показать всех операторов</button>
     </div>
     <div id="gid-extra-summary" style="margin-top:12px; font-size:13px; color:#5b3ef5; font-weight:600;"></div>
   </div>
@@ -4575,6 +4587,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     // GID-режим: панель «Дополнительные экраны с карты»
     document.getElementById("gid-extra-zone-draw")?.addEventListener("click", openModal);
     document.getElementById("gid-extra-zone-clear")?.addEventListener("click", () => { clearPolygon(); });
+    document.getElementById("gid-extra-fmt-all")?.addEventListener("click", () => { _gidExtraSelectAll("formats"); });
+    document.getElementById("gid-extra-fmt-clear")?.addEventListener("click", () => { _gidExtraClear("formats"); });
+    document.getElementById("gid-extra-fmt-toggle")?.addEventListener("click", () => { _gidExtraToggleExpand("gidExtraFmtExpanded"); });
+    document.getElementById("gid-extra-own-all")?.addEventListener("click", () => { _gidExtraSelectAll("owners"); });
+    document.getElementById("gid-extra-own-clear")?.addEventListener("click", () => { _gidExtraClear("owners"); });
+    document.getElementById("gid-extra-own-toggle")?.addEventListener("click", () => { _gidExtraToggleExpand("gidExtraOwnExpanded"); });
     window.addEventListener("planner:filters-changed", renderGidExtra);
     window.addEventListener("planner:screens-ready", renderGidExtra);
 
@@ -4584,8 +4602,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   // ===== GID-режим: «Дополнительные экраны с карты» =====
   // База — типизированный GID-список (сохраняется всегда). Здесь считаем/рисуем
   // ТОЛЬКО добавляемые экраны: внутри нарисованной зоны + подходящие под выбранные
-  // форматы/операторы. Пишем в state.selectedFormats / state.selectedOwners /
-  // state.polygonFilter — те же поля, что читает planner.js (аддитивно в GID-режиме).
+  // форматы/операторы. Выбор пишем в ОТДЕЛЬНЫЕ наборы state.gidExtraFormats /
+  // state.gidExtraOwners (не в городские selectedFormats/selectedOwners — иначе
+  // городские модули по planner:filters-changed сбрасывают выбор). Эти наборы читает
+  // planner.js в режиме manual_screens (аддитивно к GID-списку).
   function _gidExtraTypedSet() {
     var ta = document.getElementById("manual-gids");
     var raw = (ta && ta.value) ? ta.value : "";
@@ -4625,13 +4645,53 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       return list.some(function(p){ return fn(s.lat, s.lon, p); });
     });
   }
+  var GID_EXTRA_COLLAPSE_LIMIT = 6;
+  // Источник чипов: зона если нарисована, иначе весь инвентарь (можно выбрать заранее)
+  function _gidExtraSource() {
+    var zone = _gidExtraZoneScreensRaw();
+    if (zone.length) return zone;
+    var st = window.PLANNER && window.PLANNER.state;
+    return (st && Array.isArray(st.screensAll)) ? st.screensAll : [];
+  }
+  function _gidExtraCounts(kind) {
+    var typed = _gidExtraTypedSet();
+    var source = _gidExtraSource();
+    var counts = {};
+    source.forEach(function(s){
+      if (typed.has(_gidExtraScreenId(s))) return;
+      var k = (kind === "owners") ? _gidExtraOwnerOf(s) : String(s.format || "").trim();
+      if (k) counts[k] = (counts[k] || 0) + 1;
+    });
+    return counts;
+  }
+  function _gidExtraSelectAll(kind) {
+    var st = window.PLANNER && window.PLANNER.state; if (!st) return;
+    var set = (kind === "owners")
+      ? (st.gidExtraOwners = st.gidExtraOwners || new Set())
+      : (st.gidExtraFormats = st.gidExtraFormats || new Set());
+    Object.keys(_gidExtraCounts(kind)).forEach(function(k){ set.add(k); });
+    renderGidExtra();
+  }
+  function _gidExtraClear(kind) {
+    var st = window.PLANNER && window.PLANNER.state; if (!st) return;
+    var set = (kind === "owners") ? st.gidExtraOwners : st.gidExtraFormats;
+    if (set) set.clear();
+    renderGidExtra();
+  }
+  function _gidExtraToggleExpand(key) {
+    window.PLANNER.ui = window.PLANNER.ui || {};
+    window.PLANNER.ui[key] = !window.PLANNER.ui[key];
+    renderGidExtra();
+  }
   function renderGidExtra() {
     var block = document.getElementById("step4-gid-extra-block");
     if (!block) return;
     var st = window.PLANNER && window.PLANNER.state;
     if (!st) return;
-    if (!st.selectedFormats) st.selectedFormats = new Set();
-    if (!st.selectedOwners)  st.selectedOwners  = new Set();
+    // Отдельные наборы для GID-режима — не пересекаются с городскими
+    if (!st.gidExtraFormats) st.gidExtraFormats = new Set();
+    if (!st.gidExtraOwners)  st.gidExtraOwners  = new Set();
+    window.PLANNER.ui = window.PLANNER.ui || {};
 
     var zone = _gidExtraZoneScreensRaw();
     var hasZone = zone.length > 0;
@@ -4648,24 +4708,23 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (filtersWrap) filtersWrap.style.display = "block";
 
     var typed = _gidExtraTypedSet();
-    var selFmt = st.selectedFormats, selOwn = st.selectedOwners;
+    var selFmt = st.gidExtraFormats, selOwn = st.gidExtraOwners;
 
-    // Источник для чипов: экраны зоны если она нарисована, иначе весь инвентарь
-    var screenSource = hasZone ? zone : (Array.isArray(st.screensAll) ? st.screensAll : []);
-    var fmtCounts = {}, ownCounts = {};
-    screenSource.forEach(function(s){
-      if (typed.has(_gidExtraScreenId(s))) return;
-      var f = String(s.format || "").trim(); if (f) fmtCounts[f] = (fmtCounts[f] || 0) + 1;
-      var o = _gidExtraOwnerOf(s);           if (o) ownCounts[o] = (ownCounts[o] || 0) + 1;
-    });
+    var fmtCounts = _gidExtraCounts("formats");
+    var ownCounts = _gidExtraCounts("owners");
+    // Убираем из выбора то, чего больше нет в источнике (напр. после сужения зоны)
+    selFmt.forEach(function(k){ if (!(k in fmtCounts)) selFmt.delete(k); });
+    selOwn.forEach(function(k){ if (!(k in ownCounts)) selOwn.delete(k); });
 
-    function renderChips(containerId, counts, selSet) {
+    function renderChips(containerId, toggleId, countId, counts, selSet, expandKey, labelMore, labelLess) {
       var box = document.getElementById(containerId);
       if (!box) return;
-      box.innerHTML = "";
       var keys = Object.keys(counts).sort(function(a,b){ return counts[b] - counts[a]; });
-      if (!keys.length) { box.innerHTML = "<span style=\\"font-size:12px;color:#98a2b3;\\">— нет данных —</span>"; return; }
-      keys.forEach(function(key){
+      var expanded = !!window.PLANNER.ui[expandKey];
+      var visible = expanded ? keys : keys.slice(0, GID_EXTRA_COLLAPSE_LIMIT);
+      box.innerHTML = "";
+      if (!keys.length) box.innerHTML = "<span style=\\"font-size:12px;color:#98a2b3;\\">— нет данных —</span>";
+      visible.forEach(function(key){
         var chip = document.createElement("button");
         chip.type = "button";
         var active = selSet.has(key);
@@ -4674,13 +4733,23 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           (active ? "#5B3EF5;background:#EDE9FD;color:#4930C7;" : "rgba(15,23,42,.14);background:#fff;color:#374151;");
         chip.addEventListener("click", function(){
           if (selSet.has(key)) selSet.delete(key); else selSet.add(key);
-          window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+          renderGidExtra();
         });
         box.appendChild(chip);
       });
+      var tgl = document.getElementById(toggleId);
+      if (tgl) {
+        var need = keys.length > GID_EXTRA_COLLAPSE_LIMIT;
+        tgl.style.display = need ? "inline-flex" : "none";
+        if (need) tgl.textContent = expanded ? labelLess : (labelMore + " (" + keys.length + ")");
+      }
+      var cnt = document.getElementById(countId);
+      if (cnt) cnt.textContent = String(selSet.size);
     }
-    renderChips("gid-extra-formats", fmtCounts, selFmt);
-    renderChips("gid-extra-owners",  ownCounts, selOwn);
+    renderChips("gid-extra-formats", "gid-extra-fmt-toggle", "gid-extra-fmt-count",
+      fmtCounts, selFmt, "gidExtraFmtExpanded", "Показать все форматы", "Свернуть форматы");
+    renderChips("gid-extra-owners", "gid-extra-own-toggle", "gid-extra-own-count",
+      ownCounts, selOwn, "gidExtraOwnExpanded", "Показать всех операторов", "Свернуть операторов");
 
     if (!hasZone) { if (summary) summary.textContent = ""; return; }
 

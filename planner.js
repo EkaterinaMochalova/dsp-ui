@@ -2115,9 +2115,6 @@ async function buildMediaPlanBlob() {
   const vatRatePct   = Math.max(0, Number(el("vat-rate")?.value || 20));
   const vatRate      = vatRatePct / 100;
   const vatOn        = (vatEnabledUI || showVatDetail) && vatRate > 0;
-  const clientMarkupPct = Math.max(0, Number(el("client-markup-rate")?.value || 0));
-  const clientMarkup    = clientMarkupPct / 100;
-  const hasClientMarkup = clientMarkup > 0;
 
   const netBudget = brief.budget?.amount || meta.totalBudget || 0;
   const days = meta.days || 31;
@@ -2287,8 +2284,8 @@ async function buildMediaPlanBlob() {
   ws.getColumn(2).width = 14;
   ws.getColumn(3).width = 14;
   ws.getColumn(4).width = 22;
-  // E onwards: per-format sub-columns (ensure col 7 has width when client markup present)
-  for (let i = 0; i < Math.max(maxFmts, hasClientMarkup ? 3 : 2); i++) ws.getColumn(5 + i).width = 18;
+  // E onwards: per-format sub-columns
+  for (let i = 0; i < Math.max(maxFmts, 2); i++) ws.getColumn(5 + i).width = 18;
 
   // ── Rows 1-5: meta header ────────────────────────────────────────
   const metaRows = [
@@ -2325,7 +2322,6 @@ async function buildMediaPlanBlob() {
     hdrE = `Прогноз бюджета + НДС ${vatRatePct}%`;
   }
   const hdr7 = ["Город", "Прогноз кол-ва выходов", "Прогноз кол-ва OTS", "Прогноз бюджета", hdrE, hdrF];
-  if (hasClientMarkup) hdr7.push(`Бюджет клиента (+${clientMarkupPct}%)`);
   hdr7.forEach((h, i) => sc(ws, 7, i + 1, h,
     { bold: true, fill: C_HDR, h: "center", v: "center", wrap: true }));
 
@@ -2333,7 +2329,7 @@ async function buildMediaPlanBlob() {
   const SUMMARY_START = 8;
   const nCities  = cities.length;
   const totalRow = SUMMARY_START + nCities;
-  const BLOCK_ROWS = hasClientMarkup ? 10 : 8, BLOCK_GAP = 2;
+  const BLOCK_ROWS = 8, BLOCK_GAP = 2;
 
   // One block per city (format sub-columns within each block)
   const blockStarts = {};
@@ -2414,7 +2410,6 @@ async function buildMediaPlanBlob() {
       ws.getCell(r, 5).border = NO_B;
       ws.getCell(r, 6).border = NO_B;
     }
-    if (hasClientMarkup) sc(ws, r, 7, r2(b * (1 + clientMarkup)), { fill: C_LIGHT, numFmt: '#,##0.00 "₽"' });
   }
 
   // ── Итого row ────────────────────────────────────────────────────
@@ -2441,7 +2436,6 @@ async function buildMediaPlanBlob() {
     ws.getCell(totalRow, 5).border = NO_B;
     ws.getCell(totalRow, 6).border = NO_B;
   }
-  if (hasClientMarkup) sc(ws, totalRow, 7, r2(totB * (1 + clientMarkup)), { bold: true, fill: C_HDR, numFmt: '#,##0.00 "₽"' });
 
   // ── Detail blocks — one per city, format sub-columns at E, F, G… ─
   for (const city of cities) {
@@ -2538,26 +2532,6 @@ async function buildMediaPlanBlob() {
       sc(ws, base + 7, 5 + fi, r2(cfStats[city][fmt_]?.budget || 0),
         { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
     });
-
-    if (hasClientMarkup) {
-      // ── base+8: Клиентская ставка за показ ───────────────────────
-      const wtClientRate = wtAvgBid > 0 ? +(wtAvgBid * (1 + clientMarkup)).toFixed(2) : null;
-      sc(ws, base + 8, 1, `Клиентская ставка (+${clientMarkupPct}%)`, { bold: true, fill: C_LIGHT });
-      sc(ws, base + 8, 2, wtClientRate, { fill: C_GREEN, numFmt: "0.00" });
-      fmts.forEach((fmt_, fi) => {
-        const ab = cfStats[city][fmt_]?.avgBid;
-        const rv = ab > 0 ? +(ab * (1 + clientMarkup)).toFixed(2) : null;
-        sc(ws, base + 8, 5 + fi, rv, { fill: C_GREEN, numFmt: "0.00" });
-      });
-
-      // ── base+9: Клиентский бюджет ─────────────────────────────────
-      sc(ws, base + 9, 1, "Клиентский бюджет", { bold: true, fill: C_LIGHT });
-      sc(ws, base + 9, 2, r2(regBudget * (1 + clientMarkup)), { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
-      fmts.forEach((fmt_, fi) => {
-        sc(ws, base + 9, 5 + fi, r2((cfStats[city][fmt_]?.budget || 0) * (1 + clientMarkup)),
-          { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
-      });
-    }
 
     // ── OTS footnote (base+BLOCK_ROWS) ───────────────────────────
     const noteCell = ws.getCell(base + BLOCK_ROWS, 5);
@@ -4113,8 +4087,8 @@ async function onCalcClick() {
             ? _addPolyRaw
             : (_addPolyRaw.length >= 3 ? [_addPolyRaw] : []))
         : [];
-      const _addFmt  = (state.selectedFormats && state.selectedFormats.size > 0) ? state.selectedFormats : null;
-      const _addOwn  = (state.selectedOwners  && state.selectedOwners.size  > 0) ? state.selectedOwners  : null;
+      const _addFmt  = (state.gidExtraFormats && state.gidExtraFormats.size > 0) ? state.gidExtraFormats : null;
+      const _addOwn  = (state.gidExtraOwners  && state.gidExtraOwners.size  > 0) ? state.gidExtraOwners  : null;
       const _ownerOf = (s) => String(s.owner ?? s.OWNER ?? s.operator ?? s.vendor ?? s.network ?? "").trim();
       const _isAddedScreen = (s) => {
         if (!_addPolyList.length) return false;
