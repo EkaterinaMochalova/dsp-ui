@@ -5397,19 +5397,14 @@ document.querySelectorAll('input[name="weekly_mode"]').forEach(r => {
     });
   }
 
-  // "max" кнопка для кол-ва конструкций
+  // "max" кнопка для кол-ва конструкций.
+  // Используем computePoolPreview() — тот же полный набор фильтров (гео, форматы,
+  // only-active-bids, полигон, GRP, операторы, affinity), что даёт цифру в блоке
+  // «Доступный инвентарь». Раньше здесь был дублирующий укороченный расчёт без
+  // GRP/полигон/affinity-фильтров — из-за этого «max» подставлял завышенное число.
   el("constructions-max-btn")?.addEventListener("click", () => {
-    const regions = Array.isArray(state.selectedRegions) ? state.selectedRegions : [];
-    // Считаем пул: экраны выбранных регионов (с учётом фильтра форматов и операторов)
-    let pool = state.screens.filter(s => !regions.length || regions.some(r => screenMatchesGeoChoice(s, r)));
-    const fmtsAuto = !!el("formats-auto")?.checked;
-    if (!fmtsAuto && state.selectedFormats?.size) {
-      pool = pool.filter(s => state.selectedFormats.has(s.format));
-    }
-    if (typeof window.PLANNER?.getScreensFilteredByOwner === "function") {
-      pool = window.PLANNER.getScreensFilteredByOwner(pool);
-    }
-    const maxCount = pool.length;
+    const preview = computePoolPreview();
+    const maxCount = preview ? preview.countFinal : 0;
     const inp = el("constructions-count");
     if (inp) { inp.value = maxCount; inp.dispatchEvent(new Event("input")); }
     renderProgress();
