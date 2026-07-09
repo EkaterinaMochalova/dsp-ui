@@ -2348,7 +2348,11 @@ async function buildMediaPlanBlob() {
     const regBudget  = rd.budget  || 0;
     const regPlays   = rd.plays   || 0;
     const regOts     = rd.ots     || 0;
-    const regCnt     = rd.screens || Object.values(rfMap[city] || {}).reduce((a, v) => a + v.length, 0);
+    // rfMap holds the actual per-format chosen screens (ground truth after any
+    // per-format limits) — prefer its sum over rd.screens, which can be stale
+    // if a per-format cap reduced the set after rd.screens was first computed.
+    const rfSum      = Object.values(rfMap[city] || {}).reduce((a, v) => a + v.length, 0);
+    const regCnt     = rfSum > 0 ? rfSum : (rd.screens || 0);
     cfStats[city] = {};
 
     // First pass: compute per-format avg bids and screen-count weights
@@ -2444,7 +2448,10 @@ async function buildMediaPlanBlob() {
     const regBudget = rd.budget  || 0;
     const regPlays  = rd.plays   || 0;
     const regOts    = rd.ots     || 0;
-    const regCnt    = rd.screens || cfStats[city] && Object.values(cfStats[city]).reduce((a, v) => a + v.cnt, 0) || 0;
+    // Same fix as cfStats computation above: cfStats[city][fmt].cnt is ground truth
+    // (actual chosen screens per format), rd.screens can be stale after per-format caps.
+    const cfSum     = cfStats[city] ? Object.values(cfStats[city]).reduce((a, v) => a + v.cnt, 0) : 0;
+    const regCnt    = cfSum > 0 ? cfSum : (rd.screens || 0);
     const fmts      = Object.keys(rfMap[city] || {});     // format keys for this city
 
     // Weighted averages for col B (aggregate column)
