@@ -670,6 +670,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   /* ===== STRATEGY / BID CHIPS ===== */
   #planner-widget .strategy-chips{display:flex;gap:8px;}
+  /* Длительность ролика — может быть много вариантов (5..150 сек), поэтому
+     галерея с горизонтальным скроллом вместо равного flex-растяжения. */
+  #planner-widget .strategy-chips.duration-chips{
+    flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;
+    scrollbar-width:thin;
+  }
+  #planner-widget .strategy-chips.duration-chips .str-chip{flex:0 0 auto;min-width:64px;}
+  #planner-widget .strategy-chips.duration-chips .str-chip-body{padding:8px 14px;text-align:center;}
+  #planner-widget .strategy-chips.duration-chips .str-chip-title{white-space:nowrap;}
   #planner-widget .str-chip{flex:1;cursor:pointer;display:block;}
   #planner-widget .str-chip input[type="radio"]{display:none;}
   #planner-widget .str-chip-body{
@@ -1507,7 +1516,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   <div class="planner-block" id="duration-block" style="display:none;">
     <div class="planner-label">Длительность ролика</div>
     <div class="planner-note" style="margin-bottom:8px;">Ставка зависит от длительности — длиннее ролик, выше цена за выход.</div>
-    <div class="strategy-chips" id="duration-chips"></div>
+    <div class="strategy-chips duration-chips" id="duration-chips"></div>
   </div>
   <!-- ===== АУДИТОРИЯ VK ===== -->
     <div class="planner-block" id="audience-block">
