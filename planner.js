@@ -5828,7 +5828,10 @@ async function dspFetchForecastBids(screens, brief) {
     if (!Number.isFinite(s._dspId)) continue;
     const cached = _recoBidCache.get(s._dspId);
     if (cached && (now - cached.ts) < RECO_BID_CACHE_TTL) {
-      s.recoBid = cached.recoBid;
+      // cached.recoBid is the raw, duration-agnostic forecast price — scale it by the
+      // currently selected duration the same way a fresh fetch would (see below).
+      s._baseRecoBid = cached.recoBid;
+      s.recoBid = cached.recoBid * _durationRatioForScreen(s, state.selectedDurationMs);
     } else {
       toFetch.push(s);
     }
@@ -5882,7 +5885,10 @@ async function dspFetchForecastBids(screens, brief) {
       _recoBidCache.set(dspId, { recoBid: price, ts: now });
       const s = idToScreen.get(dspId);
       if (s) {
-        s.recoBid = price;
+        // price is duration-agnostic (this forecast endpoint has no duration concept) —
+        // scale it by the currently selected duration's ratio, same as the cache-hit path.
+        s._baseRecoBid = price;
+        s.recoBid = price * _durationRatioForScreen(s, state.selectedDurationMs);
         // Forecast API OTS is always preferred — period-specific traffic data
         // beats both the inventory's static value and format-average interpolation.
         const avgOts = elem?.statistic?.averageOts;
@@ -6622,10 +6628,30 @@ function mapDspInventory(inv) {
   };
 }
 
-// Перезаписывает .minBid у экранов с durationBidInfo под выбранную длительность (мс).
-// durationMs=null → возврат к базовой ставке (кратчайшая длительность, уже в .minBid
-// по умолчанию из mapDspInventory). Идемпотентно: всегда читает из исходного
-// durationBidInfo, а не из уже перезаписанного .minBid.
+// Находит запись durationBidInfo для выбранной длительности (точное совпадение,
+// иначе ближайшая по значению duration). null если у экрана нет данных/длительность не задана.
+function _resolveDurationMatch(s, durationMs) {
+  if (!durationMs || !Array.isArray(s.durationBidInfo) || !s.durationBidInfo.length) return null;
+  const exact = s.durationBidInfo.find(d => d.duration === durationMs);
+  return exact || s.durationBidInfo.reduce((best, d) =>
+    (!best || Math.abs(d.duration - durationMs) < Math.abs(best.duration - durationMs)) ? d : best, null);
+}
+
+// Множитель цены для выбранной длительности относительно базовой (кратчайшей).
+// Используется и для .minBid (точное значение из durationBidInfo), и для .recoBid
+// (который приходит из отдельного forecast-price API, не знающего о длительности —
+// поэтому его масштабируем тем же коэффициентом, а не берём отдельное значение).
+function _durationRatioForScreen(s, durationMs) {
+  const base = Number.isFinite(s._baseMinBid) ? s._baseMinBid : s.minBid;
+  if (!Number.isFinite(base) || base <= 0) return 1;
+  const match = _resolveDurationMatch(s, durationMs);
+  return (match && Number.isFinite(match.minBid) && match.minBid > 0) ? match.minBid / base : 1;
+}
+
+// Перезаписывает .minBid и (если известен) .recoBid у экранов с durationBidInfo под
+// выбранную длительность (мс). durationMs=null → возврат к базовой ставке (кратчайшая
+// длительность). Идемпотентно: всегда читает из исходных durationBidInfo/_baseRecoBid,
+// а не из уже перезаписанных .minBid/.recoBid.
 function applySelectedDuration(durationMs) {
   state.selectedDurationMs = durationMs || null;
   for (const arr of [state.screensAll, state.screens]) {
@@ -6633,11 +6659,12 @@ function applySelectedDuration(durationMs) {
     for (const s of arr) {
       if (!Array.isArray(s.durationBidInfo) || !s.durationBidInfo.length) continue;
       if (!Number.isFinite(s._baseMinBid)) s._baseMinBid = s.minBid;
-      if (!durationMs) { s.minBid = s._baseMinBid; continue; }
-      const exact = s.durationBidInfo.find(d => d.duration === durationMs);
-      const match = exact || s.durationBidInfo.reduce((best, d) =>
-        (!best || Math.abs(d.duration - durationMs) < Math.abs(best.duration - durationMs)) ? d : best, null);
-      if (match && Number.isFinite(match.minBid)) s.minBid = match.minBid;
+      const match = _resolveDurationMatch(s, durationMs);
+      s.minBid = (match && Number.isFinite(match.minBid)) ? match.minBid : s._baseMinBid;
+      if (Number.isFinite(s._baseRecoBid)) {
+        const ratio = _durationRatioForScreen(s, durationMs);
+        s.recoBid = s._baseRecoBid * ratio;
+      }
     }
   }
 }
