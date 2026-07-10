@@ -6696,11 +6696,13 @@ const DSP_IDB_NAME   = "dsp_planner";
 const DSP_IDB_STORE  = "inventory";
 const DSP_IDB_VER    = 1;
 
+// v6: bumped because mapDspInventory now attaches durationBidInfo — old cached
+// screen objects (v5 and earlier) don't have it, so they must be re-fetched.
 function getDspCacheKey() {
   const agencyId = getDspAgencyId() || "default";
   const emailKey = normalizeKey(getDspUserEmail() || "").replace(/[^a-z0-9._@-]/gi, "_");
-  if (agencyId && agencyId !== "default") return `dsp_inv_v5_agency_${agencyId}`;
-  if (emailKey) return `dsp_inv_v5_email_${emailKey}`;
+  if (agencyId && agencyId !== "default") return `dsp_inv_v6_agency_${agencyId}`;
+  if (emailKey) return `dsp_inv_v6_email_${emailKey}`;
   return null;
 }
 
