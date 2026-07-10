@@ -1503,6 +1503,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     <div class="planner-note" style="margin-top:8px;" id="bid-mode-hint-recommended">Оптимальная ставка для стабильного открута — предсказуемый результат.</div>
     <div class="planner-note" style="margin-top:8px; display:none;" id="bid-mode-hint-min">Минимальная цена из инвентаря. Больше выходов, но без гарантии полного открута.</div>
   </div>
+  <!-- ===== ДЛИТЕЛЬНОСТЬ РОЛИКА ===== -->
+  <div class="planner-block" id="duration-block" style="display:none;">
+    <div class="planner-label">Длительность ролика</div>
+    <div class="planner-note" style="margin-bottom:8px;">Ставка зависит от длительности — длиннее ролик, выше цена за выход.</div>
+    <div class="strategy-chips" id="duration-chips"></div>
+  </div>
   <!-- ===== АУДИТОРИЯ VK ===== -->
     <div class="planner-block" id="audience-block">
       <div class="vk-card" id="vk-affinity-card">
@@ -5175,6 +5181,60 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       if(h2) h2.style.display = isMin ? "block" : "none";
     });
   });
+})();
+`);
+
+  // Script block 14b — «Длительность ролика»: чипы строятся из durationBidInfo,
+  // ставка за выбранную длительность применяется через window.PLANNER.applySelectedDuration.
+  runScript(`
+(function(){
+  function el(id){ return document.getElementById(id); }
+  function fmtSec(ms){ return Math.round(ms / 1000) + " сек"; }
+
+  function collectDurations(){
+    var st = window.PLANNER && window.PLANNER.state;
+    var screens = (st && Array.isArray(st.screensAll)) ? st.screensAll : [];
+    var set = new Set();
+    screens.forEach(function(s){
+      if (!Array.isArray(s.durationBidInfo)) return;
+      s.durationBidInfo.forEach(function(d){ if (Number.isFinite(d.duration)) set.add(d.duration); });
+    });
+    return [...set].sort(function(a,b){ return a - b; });
+  }
+
+  function renderDurationChips(){
+    var block = el("duration-block");
+    var wrap = el("duration-chips");
+    if (!block || !wrap) return;
+    var durations = collectDurations();
+    if (!durations.length) { block.style.display = "none"; return; }
+    block.style.display = "";
+
+    var st = window.PLANNER.state;
+    if (!durations.includes(st.selectedDurationMs)) st.selectedDurationMs = durations[0];
+
+    wrap.innerHTML = "";
+    durations.forEach(function(ms){
+      var label = document.createElement("label");
+      label.className = "str-chip";
+      var active = ms === st.selectedDurationMs;
+      label.innerHTML = "<input type=\\"radio\\" name=\\"duration_ms\\" value=\\"" + ms + "\\"" + (active ? " checked" : "") + ">" +
+        "<div class=\\"str-chip-body\\"><div class=\\"str-chip-title\\">" + fmtSec(ms) + "</div></div>";
+      label.querySelector("input").addEventListener("change", function(){
+        st.selectedDurationMs = ms;
+        if (typeof window.PLANNER.applySelectedDuration === "function") window.PLANNER.applySelectedDuration(ms);
+        window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+      });
+      wrap.appendChild(label);
+    });
+    // Применяем выбор сразу — на случай если инвентарь перезагрузился и minBid ещё «база»
+    if (typeof window.PLANNER.applySelectedDuration === "function") window.PLANNER.applySelectedDuration(st.selectedDurationMs);
+  }
+
+  window.renderDurationChips = renderDurationChips;
+  window.addEventListener("planner:screens-ready", renderDurationChips);
+  window.addEventListener("planner:filters-changed", renderDurationChips);
+  renderDurationChips();
 })();
 `);
 

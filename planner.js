@@ -1513,6 +1513,7 @@ const globalIntervals = (scheduleType === "weekly" && typeof getGlobalScheduleFr
     onlyActiveBids: !!el("only-active-bids")?.checked,
     recoTier: document.querySelector('input[name="reco_tier"]:checked')?.value || "optimal",
     bidMode: el("bid-mode-min")?.checked ? "min" : "recommended",
+    duration: { ms: Number.isFinite(state.selectedDurationMs) ? state.selectedDurationMs : null },
     reachMode: getReachModeFromUI(),
     goal: {
       ots: (() => {
@@ -6585,6 +6586,17 @@ function mapDspInventory(inv) {
     ?? meta.otsInfo?.estimatedOts
     ?? NaN;
 
+  // Per-duration bid breakdown (e.g. 5s/10s/15s spots at different rates).
+  // Base .minBid above already equals the shortest duration's entry — kept as the
+  // no-selection default. applySelectedDuration() overwrites .minBid from this array
+  // once the user picks a duration in step 4; screens without the array are untouched.
+  const durationBidInfo = Array.isArray(mbInfo.durationBidInfo)
+    ? mbInfo.durationBidInfo
+        .map(d => ({ duration: Number(d.duration), minBid: Number(d.minBidCharged ?? d.minBid) }))
+        .filter(d => Number.isFinite(d.duration) && Number.isFinite(d.minBid))
+        .sort((a, b) => a.duration - b.duration)
+    : [];
+
   return {
     screen_id:   inv.gid || String(inv.id),
     city:        inv.inventoryTypeAndCity?.cityName
@@ -6605,9 +6617,32 @@ function mapDspInventory(inv) {
     aspectRatio,
     size_wh,
     side,
+    durationBidInfo,
     _dspId:      inv.id,
   };
 }
+
+// Перезаписывает .minBid у экранов с durationBidInfo под выбранную длительность (мс).
+// durationMs=null → возврат к базовой ставке (кратчайшая длительность, уже в .minBid
+// по умолчанию из mapDspInventory). Идемпотентно: всегда читает из исходного
+// durationBidInfo, а не из уже перезаписанного .minBid.
+function applySelectedDuration(durationMs) {
+  state.selectedDurationMs = durationMs || null;
+  for (const arr of [state.screensAll, state.screens]) {
+    if (!Array.isArray(arr)) continue;
+    for (const s of arr) {
+      if (!Array.isArray(s.durationBidInfo) || !s.durationBidInfo.length) continue;
+      if (!Number.isFinite(s._baseMinBid)) s._baseMinBid = s.minBid;
+      if (!durationMs) { s.minBid = s._baseMinBid; continue; }
+      const exact = s.durationBidInfo.find(d => d.duration === durationMs);
+      const match = exact || s.durationBidInfo.reduce((best, d) =>
+        (!best || Math.abs(d.duration - durationMs) < Math.abs(best.duration - durationMs)) ? d : best, null);
+      if (match && Number.isFinite(match.minBid)) s.minBid = match.minBid;
+    }
+  }
+}
+window.PLANNER = window.PLANNER || {};
+window.PLANNER.applySelectedDuration = applySelectedDuration;
 
 // Нормализует массив сырых инвентарей в state.screens
 function dspApplyInventories(raw) {
