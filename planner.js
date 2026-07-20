@@ -2258,8 +2258,8 @@ async function buildMediaPlanBlob() {
   // Schedule time-range text for col C
   function scheduleText(sch) {
     if (!sch) return "";
-    if (sch.type === "all_day") return "00:00 – 24:00";
-    if (sch.type === "peak")    return "07:00 – 23:00";
+    if (sch.type === "all_day") return "07:00 – 22:00";
+    if (sch.type === "peak")    return "07:00–10:00 / 17:00–21:00";
     if (sch.type === "custom")  return `${sch.from || "00:00"} – ${sch.to || "24:00"}`;
     if (sch.type === "weekly") {
       if (sch.mode === "global") {
