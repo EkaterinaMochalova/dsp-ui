@@ -3908,6 +3908,11 @@ async function onCalcClick() {
         pool = window.PLANNER.getScreensFilteredByOwner(pool);
       }
 
+      // Фильтр по стороне экрана (A/Б), выбирается на шаге 4
+      if (state.selectedSides && state.selectedSides.size > 0) {
+        pool = pool.filter(s => state.selectedSides.has(String(s.side || "").trim()));
+      }
+
       // Фильтр по нарисованным полигонам (массив полигонов или один полигон — обратная совместимость)
       const poly = state.polygonFilter;
       if (poly && poly.length > 0) {
@@ -5150,6 +5155,11 @@ function computePoolPreview() {
   // onlyActiveBids: when toggled on, filter no-bid screens from the preview counts too.
   if (brief.onlyActiveBids) {
     pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+  }
+
+  // Фильтр по стороне экрана (A/Б) — та же логика, что в onCalcClick
+  if (state.selectedSides && state.selectedSides.size > 0) {
+    pool = pool.filter(s => state.selectedSides.has(String(s.side || "").trim()));
   }
 
   // 3. Polygon zone filter (same logic as onCalcClick)
@@ -6546,6 +6556,19 @@ async function dspFetchInventoriesByCityId(cityId) {
   return all;
 }
 
+// Сводит сырые значения стороны экрана ("A1", "A51", "А", "Б", "b12"…) к простым
+// "A"/"B". Берём первую букву, транслитерируем кириллицу (А→A, Б→B), остальное
+// (цифры-позиции и т.п.) отбрасываем. Нераспознанное — возвращаем как есть,
+// чтобы не потерять данные молча.
+function normalizeSide(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const first = s[0].toUpperCase();
+  if (first === "A" || first === "А") return "A"; // латинская/кириллическая А
+  if (first === "B" || first === "Б") return "B"; // латинская B / кириллическая Б
+  return s;
+}
+
 function mapDspInventory(inv) {
   const loc    = inv.location   || {};
   const meta   = inv.metadata   || {};
@@ -6583,8 +6606,9 @@ function mapDspInventory(inv) {
     ? `${(dimW / 1000).toFixed(1)}×${(dimH / 1000).toFixed(1)}`
     : "";
 
-  // Side
-  const side = meta.side || "";
+  // Side — API returns raw values like "A1", "A51", "А" (cyrillic), "Б" (cyrillic)
+  // etc. Normalize everything down to plain "A"/"B" so filtering/display is simple.
+  const side = normalizeSide(meta.side || "");
 
   // OTS per play: minBidInfo.ots is the canonical per-play OTS used in bidding
   const ots = mbInfo.ots

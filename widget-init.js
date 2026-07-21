@@ -680,7 +680,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   #planner-widget .strategy-chips.duration-chips .str-chip-body{padding:8px 14px;text-align:center;}
   #planner-widget .strategy-chips.duration-chips .str-chip-title{white-space:nowrap;}
   #planner-widget .str-chip{flex:1;cursor:pointer;display:block;}
-  #planner-widget .str-chip input[type="radio"]{display:none;}
+  #planner-widget .str-chip input[type="radio"],
+  #planner-widget .str-chip input[type="checkbox"]{display:none;}
   #planner-widget .str-chip-body{
     padding:10px 12px;border:1.5px solid #e5e3f0;border-radius:12px;
     background:#fff;transition:all 0.12s;
@@ -1364,6 +1365,21 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         <span id="city-formats-arrow">▶</span> Форматы по городам
       </button>
       <div id="city-formats-rows" class="city-fmt-rows" style="display:none;"></div>
+    </div>
+  </div>
+  <!-- ===== СТОРОНА ЭКРАНА A/Б ===== -->
+  <div class="planner-block" id="side-block" style="display:none;">
+    <div class="planner-label">Сторона экрана</div>
+    <div class="planner-note" style="margin-bottom:8px;">Ничего не выбрано = все стороны.</div>
+    <div class="strategy-chips" id="side-chips" style="max-width:280px;">
+      <label class="str-chip">
+        <input type="checkbox" id="side-a" value="A">
+        <div class="str-chip-body"><div class="str-chip-title">Сторона A</div></div>
+      </label>
+      <label class="str-chip">
+        <input type="checkbox" id="side-b" value="B">
+        <div class="str-chip-body"><div class="str-chip-title">Сторона Б</div></div>
+      </label>
     </div>
   </div>
   <!-- Стратегия подбора -->
@@ -5244,6 +5260,51 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
   window.addEventListener("planner:screens-ready", renderDurationChips);
   window.addEventListener("planner:filters-changed", renderDurationChips);
   renderDurationChips();
+})();
+`);
+
+  // Script block 14c — «Сторона экрана A/Б»: блок показываем только если у
+  // инвентаря реально есть нормализованные значения side; чекбоксы пишут
+  // выбор в state.selectedSides, который читает planner.js (onCalcClick + preview).
+  runScript(`
+(function(){
+  function hasSideData(){
+    var st = window.PLANNER && window.PLANNER.state;
+    var screens = (st && Array.isArray(st.screensAll)) ? st.screensAll : [];
+    return screens.some(function(s){ return s.side === "A" || s.side === "B"; });
+  }
+
+  function renderSideBlock(){
+    var block = document.getElementById("side-block");
+    if (!block) return;
+    block.style.display = hasSideData() ? "" : "none";
+  }
+
+  function bindSideCheckboxes(){
+    var st = window.PLANNER && window.PLANNER.state;
+    if (!st) return;
+    if (!st.selectedSides) st.selectedSides = new Set();
+    ["side-a", "side-b"].forEach(function(id){
+      var cb = document.getElementById(id);
+      if (!cb || cb._sideBound) return;
+      cb._sideBound = true;
+      cb.checked = st.selectedSides.has(cb.value);
+      cb.addEventListener("change", function(){
+        if (cb.checked) st.selectedSides.add(cb.value); else st.selectedSides.delete(cb.value);
+        window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+      });
+    });
+  }
+
+  function init(){
+    bindSideCheckboxes();
+    renderSideBlock();
+  }
+
+  window.addEventListener("planner:screens-ready", function(){ bindSideCheckboxes(); renderSideBlock(); });
+  window.addEventListener("planner:filters-changed", renderSideBlock);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
 })();
 `);
 
