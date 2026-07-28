@@ -2000,13 +2000,15 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (step === 4) window._plannerStep4Visited = true; // logical step 4 = Settings (physical div 4)
     _origSetStep(step);
     if (step === 4) { // Настройки is logical step 4
-      // В GID-режиме скрываем лишнее -- только кнопка "Рассчитать" + "Назад"
+      // В GID-режиме скрываем лишнее -- только кнопка "Рассчитать" + "Назад".
+      // «Аудитория VK» (audience-block) НЕ скрывается: фильтр по данным ВК
+      // работает и по GID-списку (сужает введённый набор до топ-X% по аффинити).
       const gidsBlock = el("geo-gids-block");
       const isGidMode = gidsBlock && gidsBlock.style.display !== "none";
       const d = isGidMode ? "none" : "";
       [
         "step4-formats-block", "step4-strategy-block",
-        "audience-block", "step4-map-zone-block", "step4-selection-block",
+        "step4-map-zone-block", "step4-selection-block",
         "pool-preview-block"
       ].forEach(id => { const n = el(id); if (n) n.style.display = d; });
       document.querySelectorAll("#wiz-step-4 .additional-filters-divider").forEach(n => n.style.display = d);
@@ -2243,6 +2245,32 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     updateAudienceCoverage();
   }
 
+  function isGeoGidMode() {
+    const b = el("geo-gids-block");
+    return !!(b && b.style.display !== "none");
+  }
+
+  // В GID-режиме базой аффинити-фильтра служит сам GID-список (это и есть пул
+  // расчёта), а не весь инвентарь ВК. Возвращаем Set найденных в инвентаре
+  // GID-ов, либо null -- если список пуст или инвентарь ещё не загружен.
+  function getGidPoolIds() {
+    const ta = el("manual-gids");
+    const parse = window.PLANNER?._parseManualGids;
+    if (!ta || typeof parse !== "function") return null;
+    const typed = parse(ta.value || "");
+    if (!typed.size) return null;
+    const all = window.PLANNER?.state?.screensAll?.length
+      ? window.PLANNER.state.screensAll
+      : (window.PLANNER?.state?.screens || []);
+    if (!all.length) return null;
+    const matched = new Set();
+    all.forEach(s => {
+      const sid = (s?.screen_id ?? s?.gid ?? s?.GID ?? s?.id ?? "").toString().trim();
+      if (typed.has(sid)) matched.add(sid);
+    });
+    return matched.size ? matched : null;
+  }
+
   function updateAudienceCoverage() {
     const coverageEl = el("audience-coverage");
     if (!coverageEl) return;
@@ -2251,7 +2279,6 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     if (!stats || !affinityMap) return;
 
     const topPct = parseInt(el("audience-top-pct")?.value || "10", 10) / 100;
-    const total = affinityMap.size;
 
     const selected = [];
     document.querySelectorAll('#audience-segment-wrap input[type="checkbox"]:checked')
@@ -2263,28 +2290,41 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     }
 
     // Score each screen = avg affinity across selected segments (0 if missing)
-    const scored = [];
-    for (const rec of affinityMap.values()) {
-      const score = selected.reduce((sum, seg) => sum + (rec[seg] ?? 0), 0) / selected.length;
-      scored.push(score);
-    }
-    scored.sort((a, b) => b - a);
-    const keepN = Math.max(1, Math.ceil(total * topPct));
-    const cutoff = scored[keepN - 1] ?? 0;
+    const scoreOf = rec => rec
+      ? selected.reduce((sum, seg) => sum + (rec[seg] ?? 0), 0) / selected.length
+      : 0;
 
-    // Count screens meeting cutoff
-    let passing = 0;
-    for (const rec of affinityMap.values()) {
-      const score = selected.reduce((sum, seg) => sum + (rec[seg] ?? 0), 0) / selected.length;
-      if (score >= cutoff) passing++;
+    const gidIds = isGeoGidMode() ? getGidPoolIds() : null;
+    const recs = gidIds
+      ? [...gidIds].map(id => affinityMap.get(id) || null)
+      : [...affinityMap.values()];
+    const total = recs.length;
+    const keepN = Math.max(1, Math.ceil(total * topPct));
+
+    let passing;
+    if (gidIds) {
+      // planner.js оставляет из пула ровно keepN экранов -- показываем то же число
+      passing = Math.min(keepN, total);
+    } else {
+      const scored = recs.map(scoreOf).sort((a, b) => b - a);
+      const cutoff = scored[keepN - 1] ?? 0;
+      passing = recs.reduce((n, rec) => n + (scoreOf(rec) >= cutoff ? 1 : 0), 0);
     }
     const pct = total > 0 ? Math.round(passing / total * 100) : 0;
+    const noData = gidIds ? recs.reduce((n, rec) => n + (rec ? 0 : 1), 0) : 0;
 
     // Сегменты чипами
     const segChips = selected.map(seg =>
       \`<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;
         background:#ede9fe;color:#4c1d95;border:1px solid #c4b5fd;">\${seg}</span>\`
     ).join('');
+
+    // В GID-режиме показываем базу отбора -- иначе непонятно, от чего считается %
+    const baseNote = gidIds
+      ? \`<div style="font-size:11px;color:#9ca3af;margin-top:6px;">
+           База отбора: \${total.toLocaleString('ru-RU')} экр. из GID-списка\${noData ? ', без данных ВК: ' + noData.toLocaleString('ru-RU') + ' (отбираются последними)' : ''}
+         </div>\`
+      : '';
 
     coverageEl.innerHTML = \`
       <div style="padding:10px 12px;background:#f8f7ff;border:1px solid #ede9fe;border-radius:12px;">
@@ -2293,6 +2333,7 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
           <span style="font-size:16px;font-weight:700;color:#166534;">\${passing.toLocaleString('ru-RU')} <span style="font-size:12px;font-weight:500;">(\${pct}%)</span></span>
         </div>
         \${segChips ? \`<div style="border-top:1px solid #ede9fe;padding-top:8px;display:flex;flex-wrap:wrap;gap:4px;">\${segChips}</div>\` : ''}
+        \${baseNote}
       </div>
     \`;
   }
@@ -2531,6 +2572,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
                 statusEl.style.color = matchedCount > 0 ? "#5b3ef5" : "#dc2626";
               }
             }
+            // GID-список -- база аффинити-фильтра, пересчитываем покрытие ВК
+            updateAudienceCoverage();
             renderProgress();
           }
           ta.addEventListener("input", _runGidCounter);
@@ -2544,6 +2587,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         }
       }
 
+      // База аффинити-фильтра разная в городском и GID-режиме -- пересчитываем
+      updateAudienceCoverage();
       renderProgress();
     }
     window.setGeoMode = setGeoMode;
@@ -3103,6 +3148,8 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     audienceEnabled.addEventListener("change", e => {
       const wrap = el("audience-wrap");
       if (wrap) wrap.style.display = e.target.checked ? "block" : "none";
+      // База отбора зависит от режима шага 1 (города / GID-список) -- пересчитываем
+      if (e.target.checked) updateAudienceCoverage();
       renderProgress();
     });
   }

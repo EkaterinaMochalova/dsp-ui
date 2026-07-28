@@ -4146,17 +4146,23 @@ async function onCalcClick() {
     }
 
     // In GID mode the user explicitly specified which screens to use —
-    // skip all additional filters (affinity, GRP, bid-filter) so the count stays fixed.
-    // VK Affinity filter — top-X% by avg affinity score across selected segments
-    if (!_isManualMode && brief.audience?.enabled && brief.audience.segments?.length > 0) {
+    // skip GRP and bid-filter so the count stays fixed.
+    // VK Affinity filter — top-X% by avg affinity score across selected segments.
+    // Работает и в городском, и в GID-режиме: в GID-режиме базой служит сам
+    // GID-список (+ экраны, добавленные с карты), поэтому фильтр сужает именно
+    // пользовательский набор. Тумблер «Аудитория VK» выключен по умолчанию →
+    // без него количество экранов в GID-режиме по-прежнему не меняется.
+    if (brief.audience?.enabled && brief.audience.segments?.length > 0) {
       if (state.affinityMap?.size > 0) {
         const segs = brief.audience.segments;
         const topPct = brief.audience.topPct ?? 0.10;
         const before = pool.length;
         // Score each screen in pool
         const hasPremiumSeg = segs.some(seg => PREMIUM_INCOME_SEGS.has(seg));
+        let noVkData = 0;
         const withScore = pool.map(s => {
           const aff = state.affinityMap.get(_screenIdOf(s));
+          if (!aff) noVkData++;
           const excl = hasPremiumSeg && _isExcludedForPremium(s);
           const score = aff ? segs.reduce((sum, seg) => {
             if (excl && PREMIUM_INCOME_SEGS.has(seg)) return sum;
@@ -4168,6 +4174,17 @@ async function onCalcClick() {
         const keepN = Math.max(1, Math.ceil(before * topPct));
         pool = withScore.slice(0, keepN).map(x => x.s);
         setStatus(`Аудитория: топ ${Math.round(topPct * 100)}% → ${pool.length} из ${before}`);
+        // В GID-режиме предупреждаем отдельно: экраны без данных ВК получают
+        // score = 0 и отбрасываются первыми, т.е. фильтр может выкинуть часть
+        // введённого списка — пользователь должен это видеть.
+        if (_isManualMode) {
+          const _where = region === "__gid_mode__" ? "" : ` в «${regionDisplay}»`;
+          warnings.push(
+            `ℹ️ Фильтр ВК${_where}: из ${before} экранов GID-списка оставлено ${pool.length} ` +
+            `(топ ${Math.round(topPct * 100)}% по [${segs.join(", ")}])` +
+            (noVkData > 0 ? `; у ${noVkData} экр. нет данных ВК — они отбираются последними.` : ".")
+          );
+        }
         if (!pool.length) {
           perRegionRows.push({ region: regionDisplay, tier, budget: 0, screens: 0, plays: 0, ots: null,
             note: `аффинити-фильтр: нет экранов в топ ${Math.round(topPct * 100)}% по [${segs.join(", ")}]` });
