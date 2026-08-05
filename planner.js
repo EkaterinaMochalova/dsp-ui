@@ -2289,11 +2289,17 @@ async function buildMediaPlanBlob() {
   for (let i = 0; i < Math.max(maxFmts, 2); i++) ws.getColumn(5 + i).width = 18;
 
   // ── Rows 1-5: meta header ────────────────────────────────────────
+  // Длительность дописываем к строке "Формат" (а не отдельной строкой), чтобы не
+  // сдвигать нумерацию строк ниже — она жёстко привязана к текущему количеству
+  // metaRows (см. hdr7 на строке 7, SUMMARY_START=8 и т.д.).
+  const durationMs = Number(brief.duration?.ms);
+  const fmtLabelWithDuration = (allFmts.join(", ") || "—") +
+    (Number.isFinite(durationMs) && durationMs > 0 ? ` (длительность: ${Math.round(durationMs / 1000)} сек)` : "");
   const metaRows = [
     ["Период размещения",  periodStr],
     ["Город",              cities.join(", ") || "—"],
     ["Адресная программа", screens.length],
-    ["Формат",             allFmts.join(", ") || "—"],
+    ["Формат",             fmtLabelWithDuration],
     ["Количество дней",    days],
   ];
   for (let i = 0; i < metaRows.length; i++) {
@@ -3698,6 +3704,11 @@ async function onCalcClick() {
     const regions0 = Array.isArray(brief0?.geo?.regions) ? brief0.geo.regions : [];
     if (regions0.length) {
       await dspEnsureInventoryForRegions(regions0);
+      // Defensive re-apply: dspEnsureInventoryForRegions builds state.screens from
+      // raw (base-duration) cached inventory and normally relies on the
+      // "planner:screens-ready" listener in widget-init.js to resolve per-duration
+      // bids. Don't depend on that cross-file wiring being bound in time — resolve here too.
+      if (state.selectedDurationMs) applySelectedDuration(state.selectedDurationMs);
     }
   }
 
@@ -6712,6 +6723,40 @@ function applySelectedDuration(durationMs) {
 window.PLANNER = window.PLANNER || {};
 window.PLANNER.applySelectedDuration = applySelectedDuration;
 
+// Канонический список всех доступных длительностей (мс) — не зависит от того,
+// какой инвентарь уже загружен/закэширован (в отличие от union по screensAll,
+// который отражает только то, что успело подгрузиться). Результат кэшируется в
+// state.availableDurationsMs; используется как приоритетный источник для чипов
+// длительности в widget-init.js, с фолбэком на union при ошибке/недоступности.
+async function dspFetchAvailableDurations() {
+  if (!window.DSP_AUTH_ENABLED) return null;
+  const token = getDspToken();
+  if (!token) return null;
+  try {
+    const r = await fetch(`${DSP_API}/api/v1.0/clients/inventories/available-durations`, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    // Defensive: API shape not fully documented — accept plain array of numbers,
+    // array of objects with .duration/.value, or wrapped in {content:[]}/{durations:[]}.
+    const raw = Array.isArray(j) ? j
+      : Array.isArray(j?.content)   ? j.content
+      : Array.isArray(j?.durations) ? j.durations
+      : [];
+    const durations = raw
+      .map(d => Number(typeof d === "object" && d !== null ? (d.duration ?? d.value) : d))
+      .filter(d => Number.isFinite(d) && d > 0);
+    const result = [...new Set(durations)].sort((a, b) => a - b);
+    state.availableDurationsMs = result;
+    return result;
+  } catch (e) {
+    console.warn("[DSP] available-durations fetch failed:", e.message);
+    return null;
+  }
+}
+window.PLANNER.dspFetchAvailableDurations = dspFetchAvailableDurations;
+
 // Нормализует массив сырых инвентарей в state.screens
 function dspApplyInventories(raw) {
   state.screens = raw.map(inv => {
@@ -6904,6 +6949,11 @@ function dspApplyMappedScreens(screens) {
 // Загружает весь инвентарь, строит список городов и кэш по городу (cityName → [mapped screens])
 async function loadScreensFromDSP() {
   setStatus("Загружаю инвентарь…");
+
+  // Fire-and-forget: canonical duration list, independent of inventory warmup.
+  dspFetchAvailableDurations().then(list => {
+    if (list && list.length) window.dispatchEvent(new CustomEvent("planner:filters-changed"));
+  });
 
   let cityCache = await dspLoadInventoryFromStorage();
   if (cityCache) {

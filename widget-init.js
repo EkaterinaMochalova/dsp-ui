@@ -5265,6 +5265,11 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
 
   function collectDurations(){
     var st = window.PLANNER && window.PLANNER.state;
+    // Канонический список с /inventories/available-durations — не зависит от того,
+    // что уже успело подгрузиться в screensAll. Фолбэк — union из текущего инвентаря.
+    if (st && Array.isArray(st.availableDurationsMs) && st.availableDurationsMs.length) {
+      return st.availableDurationsMs.slice().sort(function(a,b){ return a - b; });
+    }
     var screens = (st && Array.isArray(st.screensAll)) ? st.screensAll : [];
     var set = new Set();
     screens.forEach(function(s){
@@ -6107,6 +6112,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       ots:            meta.totalOts,
       formats:        formats,
       selection_mode: brief.selection?.mode || "",
+      duration_sec:   Number.isFinite(Number(brief.duration?.ms)) && Number(brief.duration?.ms) > 0
+                        ? Math.round(Number(brief.duration.ms) / 1000)
+                        : null,
     };
 
     try {
