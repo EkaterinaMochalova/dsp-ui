@@ -2571,6 +2571,9 @@ async function buildMediaPlanBlob() {
     { h: "Адрес",              w: 50, fn: s => s.address    ?? "" },
     { h: "Сторона",            w: 10, fn: s => s.side       ?? "" },
     { h: "Формат экрана",      w: 18, fn: s => s.format     ?? "" },
+    { h: "Длительность, сек",  w: 14, fn: s => (Array.isArray(s.durationBidInfo) && s.durationBidInfo.length && Number.isFinite(durationMs) && durationMs > 0)
+                                        ? Math.round(durationMs / 1000)
+                                        : "" },
     { h: "Вид. разрешение",    w: 20, fn: s => s.resolution ?? "" },
     { h: "Соотношение сторон", w: 20, fn: s => s.aspectRatio ?? "" },
     { h: "Широта",             w: 14, fn: s => Number.isFinite(s.lat) ? s.lat : "" },
