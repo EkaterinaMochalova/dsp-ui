@@ -2507,7 +2507,11 @@ async function buildMediaPlanBlob() {
     sc(ws, base + 3, 2, wtOtsD,             { fill: C_GREEN, numFmt: "0.##" });
     fmts.forEach((fmt_, fi) => {
       const st = cfStats[city][fmt_];
-      const o = st?.avgOts > 0 ? st.avgOts : null;
+      // Prefer the proportionally-distributed city total (st.ots/st.cnt) over
+      // the raw per-screen average (st.avgOts) — a format whose screens simply
+      // lack per-screen OTS data (common for small formats) would otherwise
+      // always show 0 here even though the city clearly has real OTS.
+      const o = st?.cnt > 0 ? st.ots / st.cnt : (st?.avgOts > 0 ? st.avgOts : null);
       sc(ws, base + 3, 5 + fi, o, { fill: C_GREEN, numFmt: "0.##" });
     });
 
@@ -2535,7 +2539,12 @@ async function buildMediaPlanBlob() {
     sc(ws, base + 6, 2, regOts || null, { fill: C_GREEN, numFmt: "#,##0" });
     fmts.forEach((fmt_, fi) => {
       const st = cfStats[city][fmt_];
-      const o  = st?.avgOts > 0 ? st.plays * st.avgOts : 0;
+      // st.ots (regOts * weight) is already the correct proportional split of
+      // the city's real total OTS — using it directly instead of recomputing
+      // from st.avgOts (which is 0 whenever a format's screens lack raw
+      // per-screen OTS data) matches the pattern already used in the Свод
+      // sheet's own per-format OTS column.
+      const o = st?.ots || 0;
       sc(ws, base + 6, 5 + fi, o, { fill: C_GREEN, numFmt: "#,##0" });
     });
 
