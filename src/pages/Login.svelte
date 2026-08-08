@@ -49,7 +49,7 @@
   <div class="card login-card">
     <div class="login-logo">
       <div class="logo-box" style="width:40px;height:40px;font-size:11px;border-radius:10px">
-        <div>Omni</div><div>360</div>
+        <div style="line-height:1.1;text-align:center">Omni<br/>360</div>
       </div>
       <div class="login-logo-name">Omni360 DSP</div>
     </div>

@@ -15,7 +15,7 @@
   <!-- Logo -->
   <div class="sidebar-logo">
     <div class="logo-box">
-      <span>Omni</span><span>360</span>
+      <span style="line-height:1.1;text-align:center">Omni<br/>360</span>
     </div>
   </div>
 
