@@ -151,6 +151,16 @@ function getScreenPphCap(s) {
 }
 const RECO_HOURS_PER_DAY = 12; // для режима "нужна рекомендация"
 
+// "Активный" экран = есть валидная ставка И (нет данных о слотах в сутки ИЛИ их > 0).
+// slotCountPerDay сейчас не всегда приходит от API (см. mapDspInventory) — если его
+// нет, не исключаем экран молча, иначе "только активные" начнёт выбрасывать все
+// экраны на источниках инвентаря без этого поля.
+function hasActiveInventory(s) {
+  if (!Number.isFinite(s?.minBid) || s.minBid <= 0) return false;
+  if (Number.isFinite(s?.slotCountPerDay) && s.slotCountPerDay <= 0) return false;
+  return true;
+}
+
 // ===== State =====
 const state = {
   screens: [],
@@ -2536,7 +2546,11 @@ async function buildMediaPlanBlob() {
     // ── base+6: Прогноз кол-ва OTS* ──────────────────────────────
     ws.getRow(base + 6).height = 24.75;
     sc(ws, base + 6, 1, "Прогноз кол-ва OTS*", { bold: true, fill: C_LIGHT });
-    sc(ws, base + 6, 2, regOts || null, { fill: C_GREEN, numFmt: "#,##0" });
+    // numFmt shows zero as "–" instead of a bare "0" — a format with no OTS data
+    // otherwise reads as "0 OTS" (looks like real, verified zero) rather than
+    // "no data for this format", which is what it actually means here.
+    const OTS_NUMFMT = '#,##0;-#,##0;"–"';
+    sc(ws, base + 6, 2, regOts || null, { fill: C_GREEN, numFmt: OTS_NUMFMT });
     fmts.forEach((fmt_, fi) => {
       const st = cfStats[city][fmt_];
       // st.ots (regOts * weight) is already the correct proportional split of
@@ -2545,7 +2559,7 @@ async function buildMediaPlanBlob() {
       // per-screen OTS data) matches the pattern already used in the Свод
       // sheet's own per-format OTS column.
       const o = st?.ots || 0;
-      sc(ws, base + 6, 5 + fi, o, { fill: C_GREEN, numFmt: "#,##0" });
+      sc(ws, base + 6, 5 + fi, o, { fill: C_GREEN, numFmt: OTS_NUMFMT });
     });
 
     // ── base+7: Прогноз бюджета ───────────────────────────────────
@@ -2556,8 +2570,11 @@ async function buildMediaPlanBlob() {
         { bold: true, fill: C_GREEN, numFmt: '#,##0.00 "₽"' });
     });
 
-    // ── OTS footnote (base+BLOCK_ROWS) ───────────────────────────
-    const noteCell = ws.getCell(base + BLOCK_ROWS, 5);
+    // ── OTS footnote (base+BLOCK_ROWS) — merged across all format sub-columns ──
+    const noteRow = base + BLOCK_ROWS;
+    const noteLastCol = fmts.length > 1 ? 5 + fmts.length - 1 : 5;
+    if (noteLastCol > 5) ws.mergeCells(noteRow, 5, noteRow, noteLastCol);
+    const noteCell = ws.getCell(noteRow, 5);
     noteCell.value = "*не все экраны передают OTS";
     noteCell.font  = { italic: true, size: 9, name: "Calibri", color: { argb: "FF555555" } };
 
@@ -4221,7 +4238,7 @@ async function onCalcClick() {
     // onlyActiveBids=false or GID mode → estimate bid for no-bid screens from same-format avg.
     const _skipBidFilter = (brief.constructions?.enabled && brief.constructions.count > 0) || _isManualMode;
     if (!_skipBidFilter) {
-      const bidScreens = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+      const bidScreens = pool.filter(hasActiveInventory);
       if (bidScreens.length > 0) {
         if (brief.onlyActiveBids !== false) {
           pool = bidScreens;
@@ -4241,7 +4258,7 @@ async function onCalcClick() {
       }
     } else {
       // GID mode or constructions mode: estimate bids for screens that don't have one
-      const bidScreens = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+      const bidScreens = pool.filter(hasActiveInventory);
       if (bidScreens.length > 0 && bidScreens.length < pool.length) {
         const fmtAvg = {};
         for (const s of bidScreens) {
@@ -5194,7 +5211,7 @@ function computePoolPreview() {
 
   // onlyActiveBids: when toggled on, filter no-bid screens from the preview counts too.
   if (brief.onlyActiveBids) {
-    pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+    pool = pool.filter(hasActiveInventory);
   }
 
   // Фильтр по стороне экрана (A/Б) — та же логика, что в onCalcClick
@@ -6169,7 +6186,7 @@ function computeRecoBudgetTiers() {
     if (formatsMode === "manual" && manualFormats.size > 0) {
       pool = pool.filter(s => manualFormats.has(s.format));
     }
-    pool = pool.filter(s => Number.isFinite(s.minBid) && s.minBid > 0);
+    pool = pool.filter(hasActiveInventory);
     if (!pool.length) continue;
 
     const tier = getTierForGeo(regionKey);
@@ -6667,6 +6684,12 @@ function mapDspInventory(inv) {
         .sort((a, b) => a.duration - b.duration)
     : [];
 
+  // Daily slot count, when the API provides it (seen on campaign-segment responses
+  // as inv.inventoryInfo.slotCountPerDay — not confirmed present on the plain
+  // inventories-list endpoint, so this stays NaN/absent there and every consumer
+  // must treat NaN as "unknown" rather than "zero/inactive").
+  const slotCountPerDay = Number(inv.inventoryInfo?.slotCountPerDay);
+
   return {
     screen_id:   inv.gid || String(inv.id),
     city:        inv.inventoryTypeAndCity?.cityName
@@ -6688,6 +6711,7 @@ function mapDspInventory(inv) {
     size_wh,
     side,
     durationBidInfo,
+    slotCountPerDay: Number.isFinite(slotCountPerDay) ? slotCountPerDay : NaN,
     _dspId:      inv.id,
   };
 }

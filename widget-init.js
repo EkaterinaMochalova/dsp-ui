@@ -2483,7 +2483,10 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         chip.classList.add('active');
         const sel = el('selection-mode');
         const mode = chip.dataset.mode;
-        if (sel) { sel.value = mode; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+        // Re-clicking the already-active chip must be a no-op: dispatching "change"
+        // unconditionally wipes the address list (renderSelectionExtra rebuilds it
+        // from scratch), destroying anything the user already typed.
+        if (sel && sel.value !== mode) { sel.value = mode; sel.dispatchEvent(new Event('change', { bubbles: true })); }
         renderProgress();
       });
     });
@@ -2510,10 +2513,12 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
         Object.assign(tab.style, active ? _activeTab : _inactiveTab);
       });
 
-      // Sync selection-mode select
+      // Sync selection-mode select — only dispatch when it actually changes,
+      // otherwise renderSelectionExtra() wipes the typed address list for no reason.
       if (selEl) {
+        const _prevMode = selEl.value;
         selEl.value = isGid ? "manual_screens" : (selEl.value === "manual_screens" ? "city_even" : selEl.value);
-        selEl.dispatchEvent(new Event("change", { bubbles: true }));
+        if (selEl.value !== _prevMode) selEl.dispatchEvent(new Event("change", { bubbles: true }));
       }
 
       // При переходе в GID-режим: показать прогресс загрузки инвентаря, если ещё не загружен
@@ -3074,7 +3079,13 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
       } else {
         if (totalEl) { totalEl.textContent = Math.floor(sum).toLocaleString("ru-RU") + " \\u20BD"; totalEl.style.color = "#5b3ef5"; }
         const main = el("budget-input");
-        if (main && sum > 0) main.value = Math.floor(sum);
+        if (main && sum > 0) {
+          main.value = Math.floor(sum);
+          // Programmatic .value= doesn't fire "input" — the НДС/комиссия live
+          // preview (script block 21) only recomputes on that event, so without
+          // this it freezes at the pre-edit amount after a per-city split.
+          main.dispatchEvent(new Event("input", { bubbles: true }));
+        }
       }
       renderProgress();
     }
@@ -4663,7 +4674,9 @@ if (window.DSP_AUTH_ENABLED === undefined) window.DSP_AUTH_ENABLED = true;
     });
 
     // GID-режим: панель «Дополнительные экраны с карты»
-    document.getElementById("gid-extra-zone-draw")?.addEventListener("click", openModal);
+    // gid-extra-zone-draw already opens the modal via its inline onclick (forwards
+    // to poly-draw-btn.click()) — no separate listener here, or openModal() (which
+    // synchronously rebuilds every screen marker on the map) fires twice per click.
     document.getElementById("gid-extra-zone-clear")?.addEventListener("click", () => { clearPolygon(); });
     document.getElementById("gid-extra-fmt-all")?.addEventListener("click", () => { _gidExtraSelectAll("formats"); });
     document.getElementById("gid-extra-fmt-clear")?.addEventListener("click", () => { _gidExtraClear("formats"); });
