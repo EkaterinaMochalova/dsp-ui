@@ -12,6 +12,8 @@ if (!TOKEN) { console.error('TELEGRAM_BOT_TOKEN не задан'); process.exit(
 if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) { console.error('Нужен OPENAI_API_KEY или ANTHROPIC_API_KEY'); process.exit(1) }
 
 const API = `${process.env.TELEGRAM_API || 'https://api.telegram.org'}/bot${TOKEN}`
+// YouTrack (опционально): YOUTRACK_URL, YOUTRACK_TOKEN, YOUTRACK_PROJECT (короткое имя проекта, напр. DSP)
+const YT = { url: process.env.YOUTRACK_URL?.replace(/\/$/, ''), token: process.env.YOUTRACK_TOKEN, project: process.env.YOUTRACK_PROJECT }
 const DATA_FILE = process.env.GATEKEEPER_DATA || 'gatekeeper-data.json'
 const STATUS_LABEL = {
   READY_FOR_PRODUCT_REVIEW: 'К ревью продукта',
@@ -52,8 +54,39 @@ const show = v => Array.isArray(v) ? (v.length ? v.join('; ') : '—') : (v || '
 
 function formatBrief(r) {
   const b = r.brief
-  const head = `📋 ${r.id} · ${b.title}\nСтатус: ${STATUS_LABEL[r.status]}${r.override ? ` (переопределён: ${r.override.by} — ${r.override.reason})` : ''}\nКатегория: ${b.category}\nАвтор: ${r.requester}\n`
+  const head = `📋 ${r.id} · ${b.title}\nСтатус: ${STATUS_LABEL[r.status]}${r.override ? ` (переопределён: ${r.override.by} — ${r.override.reason})` : ''}\nКатегория: ${b.category}\nАвтор: ${r.requester}\n${r.youtrack ? `YouTrack: ${r.youtrack.url}\n` : ''}`
   return head + FIELDS.map(([k, l]) => `\n${l}: ${show(b[k])}`).join('')
+}
+
+// ── YouTrack ──────────────────────────────────────────────────────────────────
+function briefMarkdown(r) {
+  const b = r.brief
+  return [
+    `**Статус гейткипера:** ${STATUS_LABEL[r.status]}${r.override ? ` (переопределён: ${r.override.by} — ${r.override.reason})` : ''}`,
+    `**Категория:** ${b.category}`,
+    `**Автор запроса:** ${r.requester}`,
+    `**Исходный запрос:** ${b.original_request}`,
+    '',
+    ...FIELDS.map(([k, l]) => `- **${l}:** ${show(b[k])}`),
+    '',
+    `_Создано AI-гейткипером продуктовых запросов, id ${r.id}_`,
+  ].join('\n')
+}
+
+async function createYoutrackIssue(r) {
+  if (!YT.url || !YT.token || !YT.project) throw new Error('YouTrack не настроен: нужны YOUTRACK_URL, YOUTRACK_TOKEN, YOUTRACK_PROJECT')
+  const headers = { Authorization: `Bearer ${YT.token}`, 'Content-Type': 'application/json', Accept: 'application/json' }
+  const pr = await fetch(`${YT.url}/api/admin/projects?fields=id,shortName&$top=500`, { headers })
+  if (!pr.ok) throw new Error(`YouTrack projects: HTTP ${pr.status}`)
+  const project = (await pr.json()).find(p => p.shortName === YT.project)
+  if (!project) throw new Error(`Проект ${YT.project} не найден в YouTrack`)
+  const ir = await fetch(`${YT.url}/api/issues?fields=idReadable`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ project: { id: project.id }, summary: r.brief.title, description: briefMarkdown(r) }),
+  })
+  const issue = await ir.json()
+  if (!ir.ok) throw new Error(`YouTrack issue: ${issue.error_description ?? issue.error ?? `HTTP ${ir.status}`}`)
+  return { id: issue.idReadable, url: `${YT.url}/issue/${issue.idReadable}` }
 }
 
 function formatList() {
@@ -125,6 +158,7 @@ const HELP = `Я — скептичный продакт. Опишите, что
 /list — сохранённые запросы
 /show R… — показать бриф
 /set R… СТАТУС причина — решение продукта (${Object.keys(STATUS_LABEL).join(', ')})
+/task R… — создать задачу в YouTrack из брифа (после решения продукта)
 /help — это сообщение`
 
 async function handleCommand(msg, cmd, args) {
@@ -147,6 +181,15 @@ async function handleCommand(msg, cmd, args) {
       r.status = status
       save()
       return reply(chat, `${r.id}: статус → ${STATUS_LABEL[status]}${r.override ? ` (переопределение, причина: ${r.override.reason})` : ' (совпадает с оценкой AI)'}`)
+    }
+    case 'task': {
+      const r = db.requests.find(x => x.id === args[0])
+      if (!r) return reply(chat, 'Не нашёл такой запрос. /list покажет список.')
+      if (r.youtrack) return reply(chat, `Задача уже есть: ${r.youtrack.url}`)
+      try {
+        r.youtrack = await createYoutrackIssue(r); save()
+        return reply(chat, `Создал ${r.youtrack.id}: ${r.youtrack.url}`)
+      } catch (e) { return reply(chat, `Ошибка: ${e.message}`) }
     }
     default: return reply(chat, 'Не знаю такой команды. /help')
   }
