@@ -124,10 +124,13 @@ export function toOpenAIMessages(system, messages) {
   for (const m of messages) {
     if (typeof m.content === 'string') { out.push({ role: m.role, content: m.content }); continue }
     if (m.role === 'user') {
+      const parts = []
       for (const b of m.content) {
         if (b.type === 'tool_result') out.push({ role: 'tool', tool_call_id: b.tool_use_id, content: String(b.content ?? '') })
-        else if (b.type === 'text') out.push({ role: 'user', content: b.text })
+        else if (b.type === 'text') parts.push({ type: 'text', text: b.text })
+        else if (b.type === 'image') parts.push({ type: 'image_url', image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } })
       }
+      if (parts.length) out.push({ role: 'user', content: parts })
     } else {
       const text = m.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
       const calls = m.content.filter(b => b.type === 'tool_use')

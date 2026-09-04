@@ -111,11 +111,23 @@ function saveBrief(thread, brief, requester) {
   return r
 }
 
+// Фото из Telegram → image-блок (Anthropic-shape; в OpenAI конвертируется в data-URL).
+// ponytail: base64 хранится в истории и пересылается каждый ход — при длинных тредах с картинками вынести в файлы.
+async function photoBlock(msg) {
+  const photo = msg.photo?.at(-1)
+  if (!photo) return null
+  const file = await tg('getFile', { file_id: photo.file_id })
+  const r = await fetch(`${API.replace('/bot', '/file/bot')}/${file.file_path}`)
+  const data = Buffer.from(await r.arrayBuffer()).toString('base64')
+  return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }
+}
+
 async function handleText(msg, text) {
   const key = threadKey(msg)
   const thread = db.threads[key] ??= { messages: [], requestId: null }
   const requester = requesterName(msg.from)
-  thread.messages.push({ role: 'user', content: text })
+  const image = await photoBlock(msg)
+  thread.messages.push({ role: 'user', content: image ? [image, { type: 'text', text: text || 'Скриншот' }] : text })
   await tg('sendChatAction', { chat_id: msg.chat.id, action: 'typing' })
 
   try {
@@ -202,7 +214,7 @@ console.log(`Бот @${me.username} запущен. Данные: ${DATA_FILE}. 
 function addressedToMe(msg) {
   if (msg.chat.type === 'private') return true
   if (msg.reply_to_message?.from?.id === me.id) return true
-  return (msg.entities ?? []).some(e => e.type === 'mention' && msg.text.slice(e.offset, e.offset + e.length).toLowerCase() === `@${me.username.toLowerCase()}`)
+  return (msg.entities ?? msg.caption_entities ?? []).some(e => e.type === 'mention' && msg.text.slice(e.offset, e.offset + e.length).toLowerCase() === `@${me.username.toLowerCase()}`)
 }
 
 let offset = 0
@@ -214,11 +226,12 @@ while (true) {
   for (const u of updates) {
     offset = u.update_id + 1
     const msg = u.message
-    if (!msg?.text) continue
+    if (!msg || (!msg.text && !msg.photo)) continue
+    msg.text = msg.text ?? msg.caption ?? ''
     const m = msg.text.match(/^\/(\w+)(?:@\w+)?\s*(.*)$/s)
     if (m) { await handleCommand(msg, m[1].toLowerCase(), m[2].split(/\s+/).filter(Boolean)); continue }
     if (!addressedToMe(msg)) continue
     const text = msg.text.replace(new RegExp(`@${me.username}`, 'gi'), '').trim()
-    if (text) await handleText(msg, text)
+    if (text || msg.photo) await handleText(msg, text)
   }
 }

@@ -70,6 +70,11 @@ assert.equal(back.stop_reason, 'tool_use')
 assert.deepEqual(back.content[0], { type: 'tool_use', id: 'c2', name: 'finalize_assessment', input: { status: 'DECLINE' } })
 assert.equal(fromOpenAI({ choices: [{ message: { content: 'ok' } }] }).stop_reason, 'end_turn')
 
+const img = toOpenAIMessages('S', [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAA' } }, { type: 'text', text: 'Скриншот' }] }])
+assert.equal(img.length, 2)
+assert.deepEqual(img[1].content.map(p => p.type), ['image_url', 'text'])
+assert.ok(img[1].content[0].image_url.url.startsWith('data:image/jpeg;base64,AAA'))
+
 process.env.OPENAI_API_KEY = 'oa'
 globalThis.fetch = async (url, opts) => {
   sentUrl = url; sent = JSON.parse(opts.body)
