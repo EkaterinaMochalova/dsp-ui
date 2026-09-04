@@ -5,7 +5,7 @@
 // ponytail: состояние в одном JSON-файле — V1; при втором инстансе или >1000 запросов переезжать в БД.
 
 import fs from 'node:fs'
-import { runTurn } from '../api/gatekeeper-chat.js'
+import { runTurn, composeTask } from '../api/gatekeeper-chat.js'
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN
 if (!TOKEN) { console.error('TELEGRAM_BOT_TOKEN не задан'); process.exit(1) }
@@ -73,8 +73,24 @@ function briefMarkdown(r) {
   ].join('\n')
 }
 
+// Текстовая расшифровка диалога (без tool-блоков и картинок) — для постановки задачи.
+function transcriptOf(requestId) {
+  const thread = Object.values(db.threads).find(t => t.requestId === requestId)
+  if (!thread) return []
+  return thread.messages.flatMap(m => {
+    const text = typeof m.content === 'string' ? m.content : m.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+    return text.trim() ? [{ role: m.role, text: text.replace(/\n\n\[Применено Империо[\s\S]*?\]$/, '').trim() }] : []
+  })
+}
+
+async function taskTextFor(r) {
+  try { return await composeTask(r, transcriptOf(r.id)) }
+  catch (e) { console.error('[composeTask]', e.message); return { summary: r.brief.title, description: briefMarkdown(r) } }
+}
+
 async function createYoutrackIssue(r) {
   if (!YT.url || !YT.token || !YT.project) throw new Error('YouTrack не настроен: нужны YOUTRACK_URL, YOUTRACK_TOKEN, YOUTRACK_PROJECT')
+  const task = await taskTextFor(r)
   const headers = { Authorization: `Bearer ${YT.token}`, 'Content-Type': 'application/json', Accept: 'application/json' }
   const pr = await fetch(`${YT.url}/api/admin/projects?fields=id,shortName&$top=500`, { headers })
   if (!pr.ok) throw new Error(`YouTrack projects: HTTP ${pr.status}`)
@@ -82,7 +98,7 @@ async function createYoutrackIssue(r) {
   if (!project) throw new Error(`Проект ${YT.project} не найден в YouTrack`)
   const ir = await fetch(`${YT.url}/api/issues?fields=idReadable`, {
     method: 'POST', headers,
-    body: JSON.stringify({ project: { id: project.id }, summary: r.brief.title, description: briefMarkdown(r) }),
+    body: JSON.stringify({ project: { id: project.id }, summary: task.summary, description: task.description }),
   })
   const issue = await ir.json()
   if (!ir.ok) throw new Error(`YouTrack issue: ${issue.error_description ?? issue.error ?? `HTTP ${ir.status}`}`)

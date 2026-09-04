@@ -153,7 +153,7 @@ export function fromOpenAI(data) {
   return { content, stop_reason: msg.tool_calls?.length ? 'tool_use' : 'end_turn' }
 }
 
-async function callOpenAI(apiKey, system, messages) {
+async function callOpenAI(apiKey, system, messages, tools = TOOLS, forceTool) {
   const upstream = await fetch(OPENAI_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -161,19 +161,88 @@ async function callOpenAI(apiKey, system, messages) {
       model: openaiModel(),
       max_completion_tokens: MAX_TOKENS,
       messages: toOpenAIMessages(system, messages),
-      tools: TOOLS.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema, strict: true } })),
+      tools: tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema, strict: true } })),
+      ...(forceTool ? { tool_choice: { type: 'function', function: { name: forceTool } } } : {}),
     }),
   })
   return { status: upstream.status, data: fromOpenAI(await upstream.json()) }
 }
 
-async function callAnthropic(apiKey, system, messages) {
+async function callAnthropic(apiKey, system, messages, tools = TOOLS, forceTool) {
   const upstream = await fetch(ANTHROPIC_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, system, tools: TOOLS, messages }),
+    body: JSON.stringify({
+      model: MODEL, max_tokens: MAX_TOKENS, system, tools, messages,
+      ...(forceTool ? { tool_choice: { type: 'tool', name: forceTool } } : {}),
+    }),
   })
   return { status: upstream.status, data: await upstream.json() }
+}
+
+function call(system, messages, tools, forceTool) {
+  const openaiKey = process.env.OPENAI_API_KEY
+  return openaiKey
+    ? callOpenAI(openaiKey, system, messages, tools, forceTool)
+    : callAnthropic(process.env.ANTHROPIC_API_KEY, system, messages, tools, forceTool)
+}
+
+// ── Постановка задачи для трекера ─────────────────────────────────────────────
+const TASK_TOOL = {
+  name: 'write_task',
+  description: 'Готовая постановка задачи для трекера.',
+  strict: true,
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      summary:     str('Заголовок задачи: результат для пользователя, до 80 символов, без слов «нужно», «фича», «сделать»'),
+      description: str('Описание задачи в Markdown по заданной структуре'),
+    },
+    required: ['summary', 'description'],
+  },
+}
+
+const TASK_SYSTEM = `Ты — старший продакт-менеджер. Пишешь постановку задачи для разработки в YouTrack на русском.
+На входе: структурированный бриф гейткипера и расшифровка диалога с автором запроса.
+
+Требования к задаче:
+- Только факты из брифа и диалога. Ничего не выдумывай: ни цифр, ни пользователей, ни технических деталей.
+  Всё, что неизвестно, — в раздел «Открытые вопросы», а не в текст как утверждение.
+- Проблема отделена от решения. Предложенное решение — гипотеза; если в диалоге были альтернативы, упомяни.
+- Критерии приёмки проверяемые: конкретное наблюдаемое поведение продукта («при тёмной теме графики используют палитру темы»),
+  а не мнения, отзывы или удовлетворённость — такие пункты запрещены.
+- Продукт называется Omni 360 DSP, не переименовывай и не сокращай иначе.
+- Кратко. Разработчик должен понять за минуту, что и зачем делать. Без воды и повторов.
+- Если данных для критериев приёмки нет — напиши, каких данных не хватает, а не общие фразы.
+
+Структура description (Markdown, заголовки ##):
+## Контекст
+Кто сталкивается, с чем, как часто, к чему приводит. Только известное.
+## Цель
+Какой результат должен получить пользователь/бизнес.
+## Что сделать
+Предлагаемое решение как гипотеза; границы. Рассмотренные альтернативы — одной строкой, если были.
+## Критерии приёмки
+Список «- [ ] …», каждый пункт проверяем.
+## Вне скоупа
+Что намеренно не делаем (если из диалога ясно; иначе пропусти раздел).
+## Открытые вопросы
+Что нужно выяснить до/во время работы. Сюда — все неизвестные.
+## Источник
+Одной строкой: id брифа, автор, статус гейткипера, пометка «Империо» если была.
+
+Вызови write_task ровно один раз.`
+
+export async function composeTask(request, transcript = []) {
+  const dialogue = transcript.map(m => `${m.role === 'user' ? 'Автор' : 'Гейткипер'}: ${m.text}`).join('\n\n') || '(нет)'
+  const meta = { id: request.id, requester: request.requester, status: request.status, override: request.override?.reason ?? null }
+  const messages = [{ role: 'user', content: `Метаданные: ${JSON.stringify(meta)}\n\nБриф:\n${JSON.stringify(request.brief, null, 2)}\n\nДиалог:\n${dialogue}` }]
+  const { status, data } = await call(TASK_SYSTEM, messages, [TASK_TOOL], 'write_task')
+  if (status !== 200) throw new Error(data.error?.message ?? data.error ?? `HTTP ${status}`)
+  const task = data.content?.find(b => b.type === 'tool_use' && b.name === 'write_task')?.input
+  if (!task?.summary || !task?.description) throw new Error('Модель не вернула постановку задачи')
+  return task
 }
 
 async function readJson(req) {
@@ -203,10 +272,6 @@ export default async function handler(req, res) {
 }
 
 // Один ход модели. Используется и HTTP-хендлером, и Telegram-ботом (tools/gatekeeper_bot.mjs).
-export async function runTurn(messages, ctx) {
-  const system = systemPrompt(ctx)
-  const openaiKey = process.env.OPENAI_API_KEY
-  return openaiKey
-    ? callOpenAI(openaiKey, system, messages)
-    : callAnthropic(process.env.ANTHROPIC_API_KEY, system, messages)
+export function runTurn(messages, ctx) {
+  return call(systemPrompt(ctx), messages)
 }

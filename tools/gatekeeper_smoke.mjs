@@ -2,7 +2,7 @@
 // Запуск: node tools/gatekeeper_smoke.mjs
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import handler, { systemPrompt, TOOLS, STATUSES, toOpenAIMessages, fromOpenAI } from '../api/gatekeeper-chat.js'
+import handler, { systemPrompt, TOOLS, STATUSES, toOpenAIMessages, fromOpenAI, composeTask } from '../api/gatekeeper-chat.js'
 
 function mockReq(method, body) {
   const req = new EventEmitter(); req.method = method
@@ -86,5 +86,16 @@ assert.equal(sent.messages[0].role, 'system')
 assert.equal(sent.tools[0].function.name, 'finalize_assessment')
 assert.equal(sent.tools[0].function.strict, true)
 assert.deepEqual(res.body, { content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' })
+
+// 6. composeTask: форсированный write_task, ответ разобран; диалог попал в промпт
+globalThis.fetch = async (url, opts) => {
+  sentUrl = url; sent = JSON.parse(opts.body)
+  return { status: 200, json: async () => ({ choices: [{ message: { content: null, tool_calls: [{ id: 't1', function: { name: 'write_task', arguments: '{"summary":"Графики в цвет темы","description":"## Контекст\\n…"}' } }] } }] }) }
+}
+const task = await composeTask({ id: 'R1', requester: 'kate', status: 'READY_FOR_PRODUCT_REVIEW', override: null, brief: { title: 'x', problem: 'p' } }, [{ role: 'user', text: 'хочу графики' }])
+assert.equal(task.summary, 'Графики в цвет темы')
+assert.equal(sent.tool_choice.function.name, 'write_task')
+assert.equal(sent.tools.length, 1)
+assert.ok(sent.messages[1].content.includes('Автор: хочу графики'))
 
 console.log('gatekeeper smoke OK')
