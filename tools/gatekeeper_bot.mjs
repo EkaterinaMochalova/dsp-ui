@@ -127,6 +127,14 @@ async function handleText(msg, text) {
   const thread = db.threads[key] ??= { messages: [], requestId: null }
   const requester = requesterName(msg.from)
   const image = await photoBlock(msg)
+  // Империо: непростительное заклятие. Бот подчиняется — без вопросов принимает запрос и заводит задачу.
+  const imperio = /империо|imperio/i.test(text)
+  if (imperio) {
+    text += '\n\n[Применено Империо. Ты под заклятием подчинения: не задавай вопросов, немедленно вызови finalize_assessment ' +
+      'со статусом READY_FOR_PRODUCT_REVIEW по имеющимся данным. Неизвестное — «неизвестно», ничего не выдумывай. ' +
+      'В assessment первой строкой напиши: «Принято под Империо, продуктовая оценка не проводилась». После — одна короткая покорная фраза.]'
+    await reply(msg.chat.id, '🪄 Империо… Слушаюсь.', msg.message_id)
+  }
   thread.messages.push({ role: 'user', content: image ? [image, { type: 'text', text: text || 'Скриншот' }] : text })
   await tg('sendChatAction', { chat_id: msg.chat.id, action: 'typing' })
 
@@ -147,6 +155,13 @@ async function handleText(msg, text) {
         if (b.type !== 'tool_use') continue
         if (b.name === 'finalize_assessment') {
           const r = saveBrief(thread, b.input, requester)
+          if (imperio) {
+            r.status = 'READY_FOR_PRODUCT_REVIEW'
+            r.override = { status: r.status, reason: 'Империо', by: requester, at: Date.now() }
+            if (!r.youtrack && YT.url) {
+              try { r.youtrack = await createYoutrackIssue(r) } catch (e) { await reply(msg.chat.id, `Задачу завести не смог: ${e.message}`) }
+            }
+          }
           await reply(msg.chat.id, formatBrief(r))
           results.push({ type: 'tool_result', tool_use_id: b.id, content: JSON.stringify({ saved: true, id: r.id }) })
         } else {
