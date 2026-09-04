@@ -74,6 +74,12 @@
       </svg>
       {$t('nav_directories')}
     </button>
+    <button class="nav-item" class:active={$page === 'gatekeeper'} on:click={() => nav('gatekeeper')}>
+      <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M2 4a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H7l-4 3v-3H4a2 2 0 01-2-2V4zm4 2v2h8V6H6zm0 3v2h5V9H6z"/>
+      </svg>
+      {$t('nav_requests')}
+    </button>
 
   </nav>
 

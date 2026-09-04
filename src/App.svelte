@@ -12,6 +12,7 @@
   import Analytics        from './pages/Analytics.svelte'
   import Directories      from './pages/Directories.svelte'
   import Notifications    from './pages/Notifications.svelte'
+  import Gatekeeper       from './pages/Gatekeeper.svelte'
   // import ChatPanel from './components/ChatPanel.svelte'
 
   onMount(async () => {
@@ -64,6 +65,8 @@
         <Directories />
       {:else if $page === 'notifications'}
         <Notifications />
+      {:else if $page === 'gatekeeper'}
+        <Gatekeeper />
       {:else}
         <div style="padding:32px;color:var(--text-muted);font-size:14px">
           Страница в разработке

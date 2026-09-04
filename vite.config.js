@@ -1,8 +1,27 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
-export default defineConfig({
-  plugins: [svelte()],
+// Dev-мост для Vercel-функций из api/: локально их иначе не запустить (без него /api/* уходит на proddsp).
+function localApi(env) {
+  return {
+    name: 'local-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const m = req.url.match(/^\/api\/(brief-chat|gatekeeper-chat)(\?|$)/)
+        if (!m) return next()
+        process.env.ANTHROPIC_API_KEY ||= env.ANTHROPIC_API_KEY || env.VITE_ANTHROPIC_API_KEY
+        const { default: handler } = await server.ssrLoadModule(`/api/${m[1]}.js`)
+        res.status = (c) => { res.statusCode = c; return res }
+        res.json = (o) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(o)) }
+        res.send = (b) => res.end(b)
+        handler(req, res)
+      })
+    },
+  }
+}
+
+export default defineConfig(({ mode }) => ({
+  plugins: [svelte(), localApi(loadEnv(mode, process.cwd(), ''))],
   server: {
     port: 5173,
     proxy: {
@@ -26,4 +45,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

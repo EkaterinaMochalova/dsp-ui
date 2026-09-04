@@ -14,6 +14,7 @@ const TR = {
     nav_creatives: 'Рекламные',
     nav_analytics: 'Аналитика',
     nav_directories: 'Справочники',
+    nav_requests: 'Запросы',
     // Campaigns list
     cl_title: 'Рекламные кампании',
     cl_new: '+ Рекламная кампания',
@@ -132,6 +133,7 @@ const TR = {
     nav_creatives: 'Creatives',
     nav_analytics: 'Analytics',
     nav_directories: 'Directories',
+    nav_requests: 'Requests',
     // Campaigns list
     cl_title: 'Ad Campaigns',
     cl_new: '+ Ad Campaign',
