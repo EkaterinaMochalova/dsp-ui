@@ -10,6 +10,9 @@ export const config = { maxDuration: 120 }
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
 const MODEL = 'claude-opus-5'
 const MAX_TOKENS = 4000
+// Провайдер: если задан OPENAI_API_KEY — GPT, иначе Anthropic. Формат ответа для фронта одинаковый (Anthropic-shape).
+const OPENAI_API = 'https://api.openai.com/v1/chat/completions'
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o'
 
 export const STATUSES = ['READY_FOR_PRODUCT_REVIEW', 'NEEDS_EVIDENCE', 'REFRAME', 'EXISTING_SOLUTION', 'DECLINE']
 
@@ -115,6 +118,61 @@ DECLINE — не оправдывает продуктовую работу — 
 Автор запроса: ${requester}.`
 }
 
+// ── OpenAI: конвертация туда и обратно ────────────────────────────────────────
+export function toOpenAIMessages(system, messages) {
+  const out = [{ role: 'system', content: system }]
+  for (const m of messages) {
+    if (typeof m.content === 'string') { out.push({ role: m.role, content: m.content }); continue }
+    if (m.role === 'user') {
+      for (const b of m.content) {
+        if (b.type === 'tool_result') out.push({ role: 'tool', tool_call_id: b.tool_use_id, content: String(b.content ?? '') })
+        else if (b.type === 'text') out.push({ role: 'user', content: b.text })
+      }
+    } else {
+      const text = m.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+      const calls = m.content.filter(b => b.type === 'tool_use')
+      const msg = { role: 'assistant', content: text || null }
+      if (calls.length) msg.tool_calls = calls.map(b => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input) } }))
+      out.push(msg)
+    }
+  }
+  return out
+}
+
+export function fromOpenAI(data) {
+  if (data.error) return data
+  const msg = data.choices?.[0]?.message ?? {}
+  const content = []
+  if (msg.content) content.push({ type: 'text', text: msg.content })
+  for (const tc of msg.tool_calls ?? []) {
+    content.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input: JSON.parse(tc.function.arguments || '{}') })
+  }
+  return { content, stop_reason: msg.tool_calls?.length ? 'tool_use' : 'end_turn' }
+}
+
+async function callOpenAI(apiKey, system, messages) {
+  const upstream = await fetch(OPENAI_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      max_completion_tokens: MAX_TOKENS,
+      messages: toOpenAIMessages(system, messages),
+      tools: TOOLS.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema, strict: true } })),
+    }),
+  })
+  return { status: upstream.status, data: fromOpenAI(await upstream.json()) }
+}
+
+async function callAnthropic(apiKey, system, messages) {
+  const upstream = await fetch(ANTHROPIC_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, system, tools: TOOLS, messages }),
+  })
+  return { status: upstream.status, data: await upstream.json() }
+}
+
 async function readJson(req) {
   return new Promise((resolve) => {
     const chunks = []
@@ -130,23 +188,16 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' })
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured on server' })
+  const openaiKey = process.env.OPENAI_API_KEY
+  const anthropicKey = process.env.ANTHROPIC_API_KEY
+  if (!openaiKey && !anthropicKey) return res.status(500).json({ error: 'OPENAI_API_KEY or ANTHROPIC_API_KEY not configured on server' })
 
   const body = await readJson(req)
   if (!body?.messages?.length) return res.status(400).json({ error: 'messages required' })
 
-  const upstream = await fetch(ANTHROPIC_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt({ requester: body.requester, existingRequests: body.existingRequests }),
-      tools: TOOLS,
-      messages: body.messages,
-    }),
-  })
-
-  res.status(upstream.status).json(await upstream.json())
+  const system = systemPrompt({ requester: body.requester, existingRequests: body.existingRequests })
+  const { status, data } = openaiKey
+    ? await callOpenAI(openaiKey, system, body.messages)
+    : await callAnthropic(anthropicKey, system, body.messages)
+  res.status(status).json(data)
 }

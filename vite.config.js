@@ -10,6 +10,8 @@ function localApi(env) {
         const m = req.url.match(/^\/api\/(brief-chat|gatekeeper-chat)(\?|$)/)
         if (!m) return next()
         process.env.ANTHROPIC_API_KEY ||= env.ANTHROPIC_API_KEY || env.VITE_ANTHROPIC_API_KEY
+        process.env.OPENAI_API_KEY ||= env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY
+        if (env.OPENAI_MODEL) process.env.OPENAI_MODEL = env.OPENAI_MODEL
         const { default: handler } = await server.ssrLoadModule(`/api/${m[1]}.js`)
         res.status = (c) => { res.statusCode = c; return res }
         res.json = (o) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(o)) }

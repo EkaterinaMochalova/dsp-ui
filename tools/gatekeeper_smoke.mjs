@@ -2,7 +2,7 @@
 // Запуск: node tools/gatekeeper_smoke.mjs
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import handler, { systemPrompt, TOOLS, STATUSES } from '../api/gatekeeper-chat.js'
+import handler, { systemPrompt, TOOLS, STATUSES, toOpenAIMessages, fromOpenAI } from '../api/gatekeeper-chat.js'
 
 function mockReq(method, body) {
   const req = new EventEmitter(); req.method = method
@@ -18,14 +18,15 @@ function mockRes() {
   return res
 }
 
-let sent = null
-globalThis.fetch = async (_url, opts) => {
-  sent = JSON.parse(opts.body)
+let sent = null, sentUrl = ''
+globalThis.fetch = async (url, opts) => {
+  sentUrl = url; sent = JSON.parse(opts.body)
   return { status: 200, json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }) }
 }
 
-// 1. без ключа — 500
+// 1. без ключей — 500
 delete process.env.ANTHROPIC_API_KEY
+delete process.env.OPENAI_API_KEY
 let res = mockRes(); await handler(mockReq('POST', { messages: [{ role: 'user', content: 'x' }] }), res)
 assert.equal(res.code, 500)
 
@@ -53,5 +54,32 @@ assert.deepEqual(Object.keys(sent.tools[0].input_schema.properties).sort(), [...
 // 4. без existingRequests — плейсхолдер, не падает
 assert.ok(systemPrompt().includes('(пока нет)'))
 assert.equal(TOOLS.length, 1)
+
+// 5. OpenAI-ветка: конвертация истории с tool_use/tool_result туда и ответа обратно
+const hist = [
+  { role: 'user', content: 'Нужен экспорт' },
+  { role: 'assistant', content: [{ type: 'text', text: 'Зачем?' }, { type: 'tool_use', id: 'c1', name: 'finalize_assessment', input: { title: 'x' } }] },
+  { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', content: '{"saved":true}' }] },
+]
+const oa = toOpenAIMessages('SYS', hist)
+assert.deepEqual(oa.map(m => m.role), ['system', 'user', 'assistant', 'tool'])
+assert.equal(oa[2].tool_calls[0].function.arguments, '{"title":"x"}')
+assert.equal(oa[3].tool_call_id, 'c1')
+const back = fromOpenAI({ choices: [{ message: { content: null, tool_calls: [{ id: 'c2', function: { name: 'finalize_assessment', arguments: '{"status":"DECLINE"}' } }] } }] })
+assert.equal(back.stop_reason, 'tool_use')
+assert.deepEqual(back.content[0], { type: 'tool_use', id: 'c2', name: 'finalize_assessment', input: { status: 'DECLINE' } })
+assert.equal(fromOpenAI({ choices: [{ message: { content: 'ok' } }] }).stop_reason, 'end_turn')
+
+process.env.OPENAI_API_KEY = 'oa'
+globalThis.fetch = async (url, opts) => {
+  sentUrl = url; sent = JSON.parse(opts.body)
+  return { status: 200, json: async () => ({ choices: [{ message: { content: 'ok' } }] }) }
+}
+res = mockRes(); await handler(mockReq('POST', { messages: [{ role: 'user', content: 'x' }] }), res)
+assert.ok(sentUrl.includes('openai.com'))
+assert.equal(sent.messages[0].role, 'system')
+assert.equal(sent.tools[0].function.name, 'finalize_assessment')
+assert.equal(sent.tools[0].function.strict, true)
+assert.deepEqual(res.body, { content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' })
 
 console.log('gatekeeper smoke OK')
