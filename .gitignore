@@ -2,3 +2,6 @@ node_modules/
 .env.local
 .env.*.local
 .env
+
+# Telegram gatekeeper bot state
+gatekeeper-data.json

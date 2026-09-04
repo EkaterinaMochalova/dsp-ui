@@ -195,9 +195,15 @@ export default async function handler(req, res) {
   const body = await readJson(req)
   if (!body?.messages?.length) return res.status(400).json({ error: 'messages required' })
 
-  const system = systemPrompt({ requester: body.requester, existingRequests: body.existingRequests })
-  const { status, data } = openaiKey
-    ? await callOpenAI(openaiKey, system, body.messages)
-    : await callAnthropic(anthropicKey, system, body.messages)
+  const { status, data } = await runTurn(body.messages, { requester: body.requester, existingRequests: body.existingRequests })
   res.status(status).json(data)
+}
+
+// Один ход модели. Используется и HTTP-хендлером, и Telegram-ботом (tools/gatekeeper_bot.mjs).
+export async function runTurn(messages, ctx) {
+  const system = systemPrompt(ctx)
+  const openaiKey = process.env.OPENAI_API_KEY
+  return openaiKey
+    ? callOpenAI(openaiKey, system, messages)
+    : callAnthropic(process.env.ANTHROPIC_API_KEY, system, messages)
 }
