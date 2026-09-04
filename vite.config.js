@@ -2,16 +2,20 @@ import { defineConfig, loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 // Dev-мост для Vercel-функций из api/: локально их иначе не запустить (без него /api/* уходит на proddsp).
-function localApi(env) {
+function localApi(mode) {
   return {
     name: 'local-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const m = req.url.match(/^\/api\/(brief-chat|gatekeeper-chat)(\?|$)/)
         if (!m) return next()
-        process.env.ANTHROPIC_API_KEY ||= env.ANTHROPIC_API_KEY || env.VITE_ANTHROPIC_API_KEY
-        process.env.OPENAI_API_KEY ||= env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY
-        if (env.OPENAI_MODEL) process.env.OPENAI_MODEL = env.OPENAI_MODEL
+        // .env.local читается на каждый запрос — смена ключа не требует перезапуска.
+        // Только непустые значения: process.env.X = undefined даёт строку "undefined".
+        const env = loadEnv(mode, process.cwd(), '')
+        for (const k of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENAI_MODEL']) {
+          const v = env[k] || env['VITE_' + k]
+          if (v) process.env[k] = v
+        }
         const { default: handler } = await server.ssrLoadModule(`/api/${m[1]}.js`)
         res.status = (c) => { res.statusCode = c; return res }
         res.json = (o) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(o)) }
@@ -23,7 +27,7 @@ function localApi(env) {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [svelte(), localApi(loadEnv(mode, process.cwd(), ''))],
+  plugins: [svelte(), localApi(mode)],
   server: {
     port: 5173,
     proxy: {

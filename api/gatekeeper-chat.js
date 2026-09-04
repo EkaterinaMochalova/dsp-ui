@@ -12,7 +12,7 @@ const MODEL = 'claude-opus-5'
 const MAX_TOKENS = 4000
 // Провайдер: если задан OPENAI_API_KEY — GPT, иначе Anthropic. Формат ответа для фронта одинаковый (Anthropic-shape).
 const OPENAI_API = 'https://api.openai.com/v1/chat/completions'
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o'
+const openaiModel = () => process.env.OPENAI_MODEL || 'gpt-4o'
 
 export const STATUSES = ['READY_FOR_PRODUCT_REVIEW', 'NEEDS_EVIDENCE', 'REFRAME', 'EXISTING_SOLUTION', 'DECLINE']
 
@@ -155,7 +155,7 @@ async function callOpenAI(apiKey, system, messages) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: OPENAI_MODEL,
+      model: openaiModel(),
       max_completion_tokens: MAX_TOKENS,
       messages: toOpenAIMessages(system, messages),
       tools: TOOLS.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema, strict: true } })),
