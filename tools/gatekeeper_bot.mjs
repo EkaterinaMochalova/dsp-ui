@@ -146,7 +146,25 @@ function isClosed(thread) {
   return !!r && (!!r.youtrack || CLOSING.has(r.status))
 }
 
+// «Империо» без другого текста на треде с сохранённым брифом → сразу задача по нему.
+async function imperioOnSaved(msg, text) {
+  const thread = db.threads[threadKey(msg)]
+  const r = thread && db.requests.find(x => x.id === thread.requestId)
+  const bare = /империо|imperio/i.test(text) && text.replace(/империо|imperio/gi, '').replace(/[^\p{L}\p{N}]/gu, '').length < 8
+  if (!r || !bare) return false
+  if (r.youtrack) { await reply(msg.chat.id, `🪄 Уже сделано: ${r.youtrack.url}`, msg.message_id); return true }
+  await reply(msg.chat.id, '🪄 Империо… Слушаюсь.', msg.message_id)
+  r.status = 'READY_FOR_PRODUCT_REVIEW'
+  r.override = { status: r.status, reason: 'Империо', by: requesterName(msg.from), at: Date.now() }
+  try {
+    r.youtrack = await createYoutrackIssue(r); save()
+    await reply(msg.chat.id, `Задача ${r.youtrack.id}: ${r.youtrack.url}`)
+  } catch (e) { save(); await reply(msg.chat.id, `Задачу завести не смог: ${e.message}`) }
+  return true
+}
+
 async function handleText(msg, text) {
+  if (await imperioOnSaved(msg, text)) return
   const key = threadKey(msg)
   if (db.threads[key] && isClosed(db.threads[key])) delete db.threads[key]
   const thread = db.threads[key] ??= { messages: [], requestId: null }
@@ -210,7 +228,8 @@ const HELP = `Я — скептичный продакт. Опишите, что
 /list — сохранённые запросы
 /show R… — показать бриф
 /set R… СТАТУС причина — решение продукта (${Object.keys(STATUS_LABEL).join(', ')})
-/task R… — создать задачу в YouTrack из брифа (после решения продукта)
+Империо — непростительное: в тексте запроса — принять без вопросов и завести задачу; после сохранённого брифа — завести задачу по нему
+/task R… — то же, но без магии
 /help — это сообщение`
 
 async function handleCommand(msg, cmd, args) {
