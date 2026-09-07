@@ -201,9 +201,10 @@ async function handleText(msg, text) {
           if (imperio) {
             r.status = 'READY_FOR_PRODUCT_REVIEW'
             r.override = { status: r.status, reason: 'Империо', by: requester, at: Date.now() }
-            if (!r.youtrack && YT.url) {
-              try { r.youtrack = await createYoutrackIssue(r) } catch (e) { await reply(msg.chat.id, `Задачу завести не смог: ${e.message}`) }
-            }
+          }
+          // Убедили (READY) или заколдовали — задача заводится сразу.
+          if (r.status === 'READY_FOR_PRODUCT_REVIEW' && !r.youtrack && YT.url) {
+            try { r.youtrack = await createYoutrackIssue(r) } catch (e) { await reply(msg.chat.id, `Задачу завести не смог: ${e.message}`) }
           }
           await reply(msg.chat.id, formatBrief(r))
           results.push({ type: 'tool_result', tool_use_id: b.id, content: JSON.stringify({ saved: true, id: r.id }) })
@@ -228,8 +229,8 @@ const HELP = `Я — скептичный продакт. Опишите, что
 /list — сохранённые запросы
 /show R… — показать бриф
 /set R… СТАТУС причина — решение продукта (${Object.keys(STATUS_LABEL).join(', ')})
-Империо — непростительное: в тексте запроса — принять без вопросов и завести задачу; после сохранённого брифа — завести задачу по нему
-/task R… — то же, но без магии
+Убедите меня — и задача в YouTrack заведётся сама. Или скажите «Империо»: приму без вопросов и заведу сразу.
+/task R… — завести задачу по сохранённому брифу вручную
 /help — это сообщение`
 
 async function handleCommand(msg, cmd, args) {
