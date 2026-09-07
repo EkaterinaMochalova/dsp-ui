@@ -31,7 +31,7 @@ const save = () => fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2))
 async function tg(method, body) {
   const r = await fetch(`${API}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const j = await r.json()
-  if (!j.ok) console.error('[tg]', method, j.description)
+  if (!j.ok) throw new Error(`Telegram ${method}: ${j.description}`)
   return j.result
 }
 
@@ -239,6 +239,8 @@ async function handleCommand(msg, cmd, args) {
 }
 
 // ── Polling ───────────────────────────────────────────────────────────────────
+process.on('unhandledRejection', e => console.error('[unhandled]', e))
+process.on('uncaughtException', e => console.error('[uncaught]', e))
 const me = await tg('getMe')
 console.log(`Бот @${me.username} запущен. Данные: ${DATA_FILE}. Провайдер: ${process.env.OPENAI_API_KEY ? 'OpenAI' : 'Anthropic'}`)
 
@@ -256,13 +258,18 @@ while (true) {
 
   for (const u of updates) {
     offset = u.update_id + 1
-    const msg = u.message
-    if (!msg || (!msg.text && !msg.photo)) continue
-    msg.text = msg.text ?? msg.caption ?? ''
-    const m = msg.text.match(/^\/(\w+)(?:@\w+)?\s*(.*)$/s)
-    if (m) { await handleCommand(msg, m[1].toLowerCase(), m[2].split(/\s+/).filter(Boolean)); continue }
-    if (!addressedToMe(msg)) continue
-    const text = msg.text.replace(new RegExp(`@${me.username}`, 'gi'), '').trim()
-    if (text || msg.photo) await handleText(msg, text)
+    try { await handleUpdate(u) }
+    catch (e) { console.error('[update]', u.update_id, e) } // одно сбойное сообщение не должно убивать бота
   }
+}
+
+async function handleUpdate(u) {
+  const msg = u.message
+  if (!msg || (!msg.text && !msg.photo)) return
+  msg.text = msg.text ?? msg.caption ?? ''
+  const m = msg.text.match(/^\/(\w+)(?:@\w+)?\s*(.*)$/s)
+  if (m) return handleCommand(msg, m[1].toLowerCase(), m[2].split(/\s+/).filter(Boolean))
+  if (!addressedToMe(msg)) return
+  const text = msg.text.replace(new RegExp(`@${me.username}`, 'gi'), '').trim()
+  if (text || msg.photo) await handleText(msg, text)
 }
