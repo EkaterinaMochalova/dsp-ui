@@ -138,8 +138,17 @@ async function photoBlock(msg) {
   return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }
 }
 
+// Тред закрыт (запрос решён или задача заведена) → следующее сообщение открывает новый запрос.
+// NEEDS_EVIDENCE / REFRAME оставляют тред открытым: автор должен донести данные.
+const CLOSING = new Set(['READY_FOR_PRODUCT_REVIEW', 'EXISTING_SOLUTION', 'DECLINE'])
+function isClosed(thread) {
+  const r = db.requests.find(x => x.id === thread.requestId)
+  return !!r && (!!r.youtrack || CLOSING.has(r.status))
+}
+
 async function handleText(msg, text) {
   const key = threadKey(msg)
+  if (db.threads[key] && isClosed(db.threads[key])) delete db.threads[key]
   const thread = db.threads[key] ??= { messages: [], requestId: null }
   const requester = requesterName(msg.from)
   const image = await photoBlock(msg)
