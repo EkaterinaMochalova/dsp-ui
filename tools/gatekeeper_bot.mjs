@@ -167,8 +167,10 @@ async function imperioOnSaved(msg, text) {
 async function confundus(msg, text) {
   const m = text.match(/^\s*(?:конфундус|confundus)[\s,:—-]*([\s\S]*)$/i)
   if (!m) return false
-  const body = m[1].trim()
-  if (!body) { await reply(msg.chat.id, '🪄 Конфундус… а что заводить? Текст после заклинания: первая строка — заголовок, дальше — описание.', msg.message_id); return true }
+  // Голое заклинание реплаем — берём текст того сообщения (или подпись к фото).
+  const quoted = msg.reply_to_message
+  const body = (m[1].trim() || (quoted?.text ?? quoted?.caption ?? '')).trim()
+  if (!body) { await reply(msg.chat.id, '🪄 Конфундус… а что заводить? Текст после заклинания или реплаем на сообщение: первая строка — заголовок, дальше — описание.', msg.message_id); return true }
   const [first, ...rest] = body.split('\n')
   const summary = first.trim().slice(0, 200)
   const description = rest.join('\n').trim()
@@ -258,7 +260,7 @@ const HELP = `Я — скептичный продакт. Опишите, что
 /show R… — показать бриф
 /set R… СТАТУС причина — решение продукта (${Object.keys(STATUS_LABEL).join(', ')})
 Убедите меня — и задача в YouTrack заведётся сама. Или скажите «Империо»: приму без вопросов и заведу сразу.
-«Конфундус» + текст — заведу задачу дословно, как написали: первая строка заголовок, дальше описание.
+«Конфундус» + текст (или реплаем на сообщение) — заведу задачу дословно: первая строка заголовок, дальше описание.
 /task R… — завести задачу по сохранённому брифу вручную
 /help — это сообщение`
 
