@@ -88,9 +88,9 @@ async function taskTextFor(r) {
   catch (e) { console.error('[composeTask]', e.message); return { summary: r.brief.title, description: briefMarkdown(r) } }
 }
 
-async function createYoutrackIssue(r) {
+async function createYoutrackIssue(r, task) {
   if (!YT.url || !YT.token || !YT.project) throw new Error('YouTrack не настроен: нужны YOUTRACK_URL, YOUTRACK_TOKEN, YOUTRACK_PROJECT')
-  const task = await taskTextFor(r)
+  task ??= await taskTextFor(r)
   const headers = { Authorization: `Bearer ${YT.token}`, 'Content-Type': 'application/json', Accept: 'application/json' }
   const pr = await fetch(`${YT.url}/api/admin/projects?fields=id,shortName&$top=500`, { headers })
   if (!pr.ok) throw new Error(`YouTrack projects: HTTP ${pr.status}`)
@@ -163,7 +163,35 @@ async function imperioOnSaved(msg, text) {
   return true
 }
 
+// Конфундус: текст после заклинания — в YouTrack дословно. Первая строка — заголовок, остальное — описание. Без модели.
+async function confundus(msg, text) {
+  const m = text.match(/^\s*(?:конфундус|confundus)[\s,:—-]*([\s\S]*)$/i)
+  if (!m) return false
+  const body = m[1].trim()
+  if (!body) { await reply(msg.chat.id, '🪄 Конфундус… а что заводить? Текст после заклинания: первая строка — заголовок, дальше — описание.', msg.message_id); return true }
+  const [first, ...rest] = body.split('\n')
+  const summary = first.trim().slice(0, 200)
+  const description = rest.join('\n').trim()
+  const requester = requesterName(msg.from)
+  await reply(msg.chat.id, '🪄 Конфундус… Записываю слово в слово.', msg.message_id)
+  const r = {
+    id: 'R' + Date.now().toString(36), title: summary, requester, createdAt: Date.now(),
+    brief: { title: summary, status: 'READY_FOR_PRODUCT_REVIEW', category: 'OTHER', original_request: body, problem: description || summary,
+      assessment: 'Принято под Конфундусом, текст автора без изменений, продуктовая оценка не проводилась.' },
+    aiStatus: 'READY_FOR_PRODUCT_REVIEW', status: 'READY_FOR_PRODUCT_REVIEW',
+    override: { status: 'READY_FOR_PRODUCT_REVIEW', reason: 'Конфундус', by: requester, at: Date.now() },
+  }
+  db.requests.push(r)
+  try {
+    r.youtrack = await createYoutrackIssue(r, { summary, description: description + `\n\n_Бриф ${r.id}, автор ${requester}, Конфундус_` })
+    await reply(msg.chat.id, `Задача ${r.youtrack.id}: ${r.youtrack.url}`)
+  } catch (e) { await reply(msg.chat.id, `Задачу завести не смог: ${e.message}`) }
+  save()
+  return true
+}
+
 async function handleText(msg, text) {
+  if (await confundus(msg, text)) return
   if (await imperioOnSaved(msg, text)) return
   const key = threadKey(msg)
   if (db.threads[key] && isClosed(db.threads[key])) delete db.threads[key]
@@ -230,6 +258,7 @@ const HELP = `Я — скептичный продакт. Опишите, что
 /show R… — показать бриф
 /set R… СТАТУС причина — решение продукта (${Object.keys(STATUS_LABEL).join(', ')})
 Убедите меня — и задача в YouTrack заведётся сама. Или скажите «Империо»: приму без вопросов и заведу сразу.
+«Конфундус» + текст — заведу задачу дословно, как написали: первая строка заголовок, дальше описание.
 /task R… — завести задачу по сохранённому брифу вручную
 /help — это сообщение`
 
