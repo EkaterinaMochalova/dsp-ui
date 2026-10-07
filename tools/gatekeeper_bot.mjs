@@ -268,6 +268,7 @@ const HELP = `Я — скептичный продакт. Опишите, что
 /task R… — завести задачу по сохранённому брифу вручную
 /help — это сообщение`
 
+const KNOWN = new Set(['start', 'help', 'new', 'list', 'show', 'set', 'task'])
 async function handleCommand(msg, cmd, args) {
   const chat = msg.chat.id
   switch (cmd) {
@@ -331,8 +332,13 @@ async function handleUpdate(u) {
   const msg = u.message
   if (!msg || (!msg.text && !msg.photo)) return
   msg.text = msg.text ?? msg.caption ?? ''
-  const m = msg.text.match(/^\/(\w+)(?:@\w+)?\s*(.*)$/s)
-  if (m) return handleCommand(msg, m[1].toLowerCase(), m[2].split(/\s+/).filter(Boolean))
+  const m = msg.text.match(/^\/(\w+)(?:@(\w+))?\s*(.*)$/s)
+  if (m) {
+    // В группе чужие команды (/health@omni_checkerbot, /digest) — не наши: молчим, а не «не знаю такой команды».
+    if (m[2] && m[2].toLowerCase() !== me.username.toLowerCase()) return
+    if (!m[2] && msg.chat.type !== 'private' && !KNOWN.has(m[1].toLowerCase())) return
+    return handleCommand(msg, m[1].toLowerCase(), m[3].split(/\s+/).filter(Boolean))
+  }
   if (!addressedToMe(msg)) return
   const text = msg.text.replace(new RegExp(`@${me.username}`, 'gi'), '').trim()
   if (text || msg.photo) await handleText(msg, text)
