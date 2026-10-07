@@ -1,5 +1,5 @@
 // Заводит эпики из docs/youtrack-epics.json в YouTrack и дописывает их номера обратно в файл.
-// Повторный запуск безопасен: записи с id и задачи с тем же заголовком в проекте пропускаются.
+// Повторный запуск безопасен: у записей с id обновляется описание, задачи с тем же заголовком не дублируются.
 // Запуск: node --env-file=.env.local tools/youtrack_epics.mjs
 import { readFileSync, writeFileSync } from 'node:fs'
 
@@ -17,7 +17,12 @@ async function yt(path, init) {
 
 const project = await yt(`admin/projects/${data.project}?fields=id`)
 for (const e of data.issues) {
-  if (e.id) continue
+  if (e.id) {
+    // уже заведён — только приводим описание к файлу
+    await yt(`issues/${e.id}?fields=idReadable`, { method: 'POST', body: JSON.stringify({ description: e.description }) })
+    console.log(`${e.id} (описание обновлено) · ${e.summary}`)
+    continue
+  }
   const q = encodeURIComponent(`project: ${data.project} summary: "${e.summary}"`)
   const found = (await yt(`issues?query=${q}&fields=idReadable,summary`)).find(i => i.summary === e.summary)
   e.id = found?.idReadable ?? (await yt('issues?fields=idReadable', {
